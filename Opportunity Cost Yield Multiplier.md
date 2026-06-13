@@ -14,7 +14,7 @@ The protocol has a deliberate **two-tier system** where wrapping status directly
 
 ### How the Math Works
 
-The key formula from [§15.2](file:///c:/Gally/capital-protocol/milestone/gally%20core/protocol_flow.md#L718-L730):
+The key formula from: 
 
 $$\Delta\text{index} = \frac{\text{investor\_portion} \times \text{SCALE}}{\text{unwrapped}(\text{acc})}$$
 
