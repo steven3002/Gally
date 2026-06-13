@@ -25,7 +25,7 @@ use gally_core::usdc::USDC;
 use gally_core::validator::{Self, ValidatorCap, ValidatorPool};
 use sui::balance::Balance;
 use sui::clock::Clock;
-use sui::coin::{Self, Coin, TreasuryCap};
+use sui::coin::{Self, Coin, TreasuryCap, CoinMetadata};
 use sui::dynamic_field as df;
 use sui::event;
 
@@ -54,6 +54,11 @@ const EInvalidTrancheSchedule: u64 = 308;
 const EInsufficientCollateral: u64 = 309;
 /// `EntityCap` does not match the asset being operated on.
 const EWrongEntityCap: u64 = 311;
+/// Entity token `CoinMetadata` reports decimals ≠ 6 at finalize (spec §8).
+/// The token must share USDC's precision so the 1:1 wrap peg displays at
+/// parity; metadata is the only on-chain carrier of decimals, so finalize
+/// reads it directly (handoff: template_flow.md §3).
+const EInvalidDecimals: u64 = 312;
 /// `revenue_split_bps` outside [1, 10_000] (mirrors governance code 101).
 const EInvalidBps: u64 = 101;
 /// Tranche operated out of sequence (spec §9 rule 1).
@@ -603,12 +608,18 @@ public fun contribute_capital(
 /// PERMISSIONLESS finalize (D3): once the goal is hit, no absent or
 /// malicious entity can strand investor capital. Requires the entity's
 /// VIRGIN `TreasuryCap<T>` (checked in the accumulator — pre-minted supply
-/// would break I-W1 forever). Creates the accumulator, which custodies the
-/// cap permanently. State: FUNDING → EXECUTING.
+/// would break I-W1 forever) plus its `CoinMetadata<T>`, asserted to report
+/// 6 decimals (`EInvalidDecimals`) so the entity token shares USDC precision
+/// and the 1:1 wrap peg displays at parity (spec §8; handoff
+/// template_flow.md §3). `metadata` is read-only — borrowed, never stored or
+/// mutated; same-`T` typing makes a mismatched-metadata attack impossible.
+/// Creates the accumulator, which custodies the cap permanently.
+/// State: FUNDING → EXECUTING.
 public fun finalize_successful_raise<T>(
     asset: &mut Asset,
     config: &ProtocolConfig,
     treasury_cap: TreasuryCap<T>,
+    metadata: &CoinMetadata<T>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -616,6 +627,8 @@ public fun finalize_successful_raise<T>(
     assert_state(asset, STATE_FUNDING);
     assert!(asset.raised == asset.funding_goal, EGoalNotMet);
     assert!(clock.timestamp_ms() <= asset.funding_deadline_ms, EDeadlinePassed);
+    // 6-decimal parity, enforced before the cap is swallowed (spec §8).
+    assert!(coin::get_decimals(metadata) == 6, EInvalidDecimals);
 
     let asset_id = object::id(asset);
     let acc_id =

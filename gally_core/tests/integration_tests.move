@@ -13,6 +13,7 @@ module gally_core::integration_tests;
 
 use gally_core::accumulator::{Self, GlobalYieldAccumulator};
 use gally_core::asset::{Self, Asset, ContributionReceipt, EntityCap};
+use gally_core::int_token::{Self, INT_TOKEN};
 use gally_core::dispute::{Self, Dispute};
 use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share::{Self, GallyShare};
@@ -23,8 +24,6 @@ use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
 use sui::test_scenario as ts;
 
-/// Witness for this suite's per-asset token type.
-public struct INT_TOKEN has drop {}
 
 const ADMIN: address = @0xA1; // also the protocol treasury (init default)
 const TARGET: address = @0xC3; // the vouching validator
@@ -176,8 +175,9 @@ fun finalize(s: &mut ts::Scenario) {
     let mut asset = s.take_shared<Asset>();
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(s, 3_000);
-    let cap = coin::create_treasury_cap_for_testing<INT_TOKEN>(s.ctx());
-    asset::finalize_successful_raise<INT_TOKEN>(&mut asset, &config, cap, &clock, s.ctx());
+    let (cap, metadata) = int_token::new(s.ctx());
+    asset::finalize_successful_raise<INT_TOKEN>(&mut asset, &config, cap, &metadata, &clock, s.ctx());
+    transfer::public_freeze_object(metadata);
     clock.destroy_for_testing();
     ts::return_shared(asset);
     ts::return_shared(config);
@@ -1319,10 +1319,10 @@ fun test_attack_a7_premint_cap_rejected() {
     let mut asset = s.take_shared<Asset>();
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(&mut s, 3_000);
-    let mut cap = coin::create_treasury_cap_for_testing<INT_TOKEN>(s.ctx());
+    let (mut cap, metadata) = int_token::new(s.ctx());
     let pre = coin::mint(&mut cap, 1, s.ctx()); // tainted supply
     transfer::public_transfer(pre, STRANGER);
-    asset::finalize_successful_raise<INT_TOKEN>(&mut asset, &config, cap, &clock, s.ctx());
+    asset::finalize_successful_raise<INT_TOKEN>(&mut asset, &config, cap, &metadata, &clock, s.ctx());
     abort 0
 }
 

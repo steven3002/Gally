@@ -11,6 +11,7 @@ module gally_core::accumulator_tests;
 
 use gally_core::accumulator::{Self, GlobalYieldAccumulator};
 use gally_core::asset::{Self, Asset, ContributionReceipt, EntityCap};
+use gally_core::acc_token::{Self, ACC_TOKEN};
 use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share::{Self, GallyShare};
 use gally_core::usdc::USDC;
@@ -20,8 +21,6 @@ use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
 use sui::test_scenario as ts;
 
-/// Witness for this suite's asset token type.
-public struct ACC_TOKEN has drop {}
 
 const ADMIN: address = @0xA1; // also the protocol treasury (init default)
 const VALIDATOR: address = @0xC3;
@@ -122,8 +121,9 @@ fun to_operational(): ts::Scenario {
         let mut asset = s.take_shared<Asset>();
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(&mut s, 3_000);
-        let cap = coin::create_treasury_cap_for_testing<ACC_TOKEN>(s.ctx());
-        asset::finalize_successful_raise<ACC_TOKEN>(&mut asset, &config, cap, &clock, s.ctx());
+        let (cap, metadata) = acc_token::new(s.ctx());
+        asset::finalize_successful_raise<ACC_TOKEN>(&mut asset, &config, cap, &metadata, &clock, s.ctx());
+        transfer::public_freeze_object(metadata);
         clock.destroy_for_testing();
         ts::return_shared(asset);
         ts::return_shared(config);
@@ -811,8 +811,9 @@ fun test_deposit_before_operational_aborts() {
         let mut asset = s.take_shared<Asset>();
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(&mut s, 3_000);
-        let cap = coin::create_treasury_cap_for_testing<ACC_TOKEN>(s.ctx());
-        asset::finalize_successful_raise<ACC_TOKEN>(&mut asset, &config, cap, &clock, s.ctx());
+        let (cap, metadata) = acc_token::new(s.ctx());
+        asset::finalize_successful_raise<ACC_TOKEN>(&mut asset, &config, cap, &metadata, &clock, s.ctx());
+        transfer::public_freeze_object(metadata);
         clock.destroy_for_testing();
         ts::return_shared(asset);
         ts::return_shared(config);

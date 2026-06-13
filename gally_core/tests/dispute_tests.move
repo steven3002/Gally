@@ -11,6 +11,7 @@ module gally_core::dispute_tests;
 
 use gally_core::accumulator::{Self, GlobalYieldAccumulator};
 use gally_core::asset::{Self, Asset, ContributionReceipt, EntityCap};
+use gally_core::dispute_token::{Self, DISPUTE_TOKEN};
 use gally_core::dispute::{Self, Dispute};
 use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share::GallyShare;
@@ -19,8 +20,6 @@ use gally_core::validator::{Self, ValidatorCap, ValidatorPool};
 use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
 use sui::test_scenario as ts;
-
-public struct DISPUTE_TOKEN has drop {}
 
 const ADMIN: address = @0xA1;
 const TARGET: address = @0xC3; // the vouching validator (dispute target)
@@ -141,8 +140,9 @@ fun finalize(s: &mut ts::Scenario) {
     let mut asset = s.take_shared<Asset>();
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(s, 3_000);
-    let cap = coin::create_treasury_cap_for_testing<DISPUTE_TOKEN>(s.ctx());
-    asset::finalize_successful_raise<DISPUTE_TOKEN>(&mut asset, &config, cap, &clock, s.ctx());
+    let (cap, metadata) = dispute_token::new(s.ctx());
+    asset::finalize_successful_raise<DISPUTE_TOKEN>(&mut asset, &config, cap, &metadata, &clock, s.ctx());
+    transfer::public_freeze_object(metadata);
     clock.destroy_for_testing();
     ts::return_shared(asset);
     ts::return_shared(config);

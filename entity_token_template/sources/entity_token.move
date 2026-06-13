@@ -14,6 +14,7 @@
 /// `Coin<ENTITY_TOKEN>` is `gally_core`'s wrap machine, so total supply always
 /// equals `total_wrapped_shares` (I-W1).
 ///
+/// 
 /// Deployment — copy-rename-publish (T1): copy this package, rename the module
 /// AND the witness struct to the entity's slug. The witness name MUST equal
 /// the module name uppercased, or `coin::create_currency`'s one-time-witness
@@ -30,9 +31,9 @@ use sui::url;
 const NAME: vector<u8> = b"Gally Entity Deed";
 /// Ticker, ASCII.
 const SYMBOL: vector<u8> = b"GALLYD";
-/// Description; include the Gally asset id once it is known.
-const DESCRIPTION: vector<u8> =
-    b"Fractional equity deed for a Gally-funded real-world asset.";
+/// Description; include the Gally asset id once it is known. Single line so the
+/// `scripts/instantiate.sh` substitution (ET-M3) stays a clean one-liner.
+const DESCRIPTION: vector<u8> = b"Fractional equity deed for a Gally-funded real-world asset.";
 /// Icon URL bytes. Leave empty for none (resolved to `option::none()` below).
 const ICON_URL: vector<u8> = b"";
 

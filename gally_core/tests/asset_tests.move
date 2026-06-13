@@ -10,6 +10,8 @@ module gally_core::asset_tests;
 
 use gally_core::accumulator::{Self, GlobalYieldAccumulator};
 use gally_core::asset::{Self, Asset, ContributionReceipt, EntityCap};
+use gally_core::asset_token::{Self, ASSET_TOKEN};
+use gally_core::bad_decimals_token::{Self, BAD_DECIMALS_TOKEN};
 use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share;
 use gally_core::usdc::USDC;
@@ -18,8 +20,6 @@ use sui::clock::{Self, Clock};
 use sui::coin;
 use sui::test_scenario as ts;
 
-/// Witness for the test asset's wrapped-token type (M5 uses it for real).
-public struct ASSET_TOKEN has drop {}
 
 const ADMIN: address = @0xA1;
 const VALIDATOR: address = @0xC3;
@@ -136,8 +136,9 @@ fun finalize(s: &mut ts::Scenario, now_ms: u64) {
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(s, now_ms);
 
-    let cap = coin::create_treasury_cap_for_testing<ASSET_TOKEN>(s.ctx());
-    asset::finalize_successful_raise<ASSET_TOKEN>(&mut asset, &config, cap, &clock, s.ctx());
+    let (cap, metadata) = asset_token::new(s.ctx());
+    asset::finalize_successful_raise<ASSET_TOKEN>(&mut asset, &config, cap, &metadata, &clock, s.ctx());
+    transfer::public_freeze_object(metadata);
 
     clock.destroy_for_testing();
     ts::return_shared(asset);
@@ -547,11 +548,30 @@ fun test_finalize_nonvirgin_cap_aborts() {
     let mut asset = s.take_shared<Asset>();
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(&mut s, 3_000);
-    let mut cap = coin::create_treasury_cap_for_testing<ASSET_TOKEN>(s.ctx());
+    let (mut cap, metadata) = asset_token::new(s.ctx());
     // Pre-mint: the cap is no longer virgin.
     let premint = cap.mint(1, s.ctx());
     premint.burn_for_testing();
-    asset::finalize_successful_raise<ASSET_TOKEN>(&mut asset, &config, cap, &clock, s.ctx());
+    asset::finalize_successful_raise<ASSET_TOKEN>(&mut asset, &config, cap, &metadata, &clock, s.ctx());
+    abort 0
+}
+
+#[test]
+#[expected_failure(abort_code = asset::EInvalidDecimals)]
+fun test_finalize_rejects_wrong_decimals() {
+    let mut s = setup();
+    create_default_asset(&mut s);
+    vouch(&mut s);
+    fund_fully(&mut s);
+
+    s.next_tx(STRANGER);
+    let mut asset = s.take_shared<Asset>();
+    let config = s.take_shared<ProtocolConfig>();
+    let clock = make_clock(&mut s, 3_000);
+    // Virgin cap, but its metadata reports 9 decimals — finalize rejects it
+    // before swallowing the cap (spec §8, handoff template_flow.md §3).
+    let (cap, metadata) = bad_decimals_token::new(s.ctx());
+    asset::finalize_successful_raise<BAD_DECIMALS_TOKEN>(&mut asset, &config, cap, &metadata, &clock, s.ctx());
     abort 0
 }
 
