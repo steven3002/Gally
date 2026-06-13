@@ -1,0 +1,7 @@
+[package]
+name = "entity_token_template"
+edition = "2024"
+
+[dependencies]
+# Sui framework is an implicit system dependency (edition 2024).
+# NOTHING else — this package must never depend on gally_core (T2, I-T4).
