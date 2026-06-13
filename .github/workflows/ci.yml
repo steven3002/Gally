@@ -23,8 +23,15 @@ jobs:
 
       - name: Install Sui CLI
         run: |
-          curl -fsSL https://sui.io/install.sh | bash
-          echo "$HOME/.sui/bin" >> $GITHUB_PATH
+          # Step 1: Install suiup (official Sui version manager)
+          curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh
+
+          # Add suiup/sui to PATH for subsequent steps
+          echo "${HOME}/.sui/bin" >> $GITHUB_PATH
+          export PATH="${HOME}/.sui/bin:${PATH}"
+
+          # Step 2: Install Sui via suiup
+          suiup install sui@mainnet
 
       - name: Verify Sui version
         run: sui --version
