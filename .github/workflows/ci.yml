@@ -24,17 +24,20 @@ jobs:
       - name: Install Sui CLI
         run: |
           # Step 1: Install suiup (official Sui version manager)
+          # suiup installs to ~/.local/bin/
           curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh
 
-          # Add suiup/sui to PATH for subsequent steps
-          echo "${HOME}/.sui/bin" >> $GITHUB_PATH
-          export PATH="${HOME}/.sui/bin:${PATH}"
+          # suiup and sui both live in ~/.local/bin/
+          export PATH="${HOME}/.local/bin:${PATH}"
 
           # Step 2: Install Sui via suiup
           suiup install sui@mainnet
 
-      - name: Verify Sui version
-        run: sui --version
+          # Persist PATH for subsequent steps
+          echo "${HOME}/.local/bin" >> $GITHUB_PATH
+
+          # Verify install succeeded in this same step
+          sui --version
 
       - name: Build gally_core
         working-directory: gally_core

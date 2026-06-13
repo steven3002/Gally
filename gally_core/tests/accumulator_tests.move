@@ -468,8 +468,19 @@ fun test_dust_floors_into_reward_pool_never_against_it() {
     s.end();
 }
 
+/// Deterministic LCG (Knuth MMIX constants); computed in u128 so the
+/// modular wrap never trips Move's overflow abort (the u128 product is at
+/// most ~1.2e38, within range).
+fun next_rand(state: u64): u64 {
+    let s = (state as u128) * 6364136223846793005u128 + 1442695040888963407u128;
+    ((s % 18446744073709551616u128) as u64) // mod 2^64
+}
+
 #[test]
-fun test_index_monotonic_and_solvent_through_sequence() {
+fun test_solvency_property_fuzz() {
+    // m4.md pass criterion 1: I-M1 + I-M2 after EVERY step of >= 1_000
+    // randomized operations (deposit / claim A / claim B), with dust-heavy
+    // amounts; criterion 4: terminal dust within the predicted bound.
     let mut s = to_operational();
 
     s.next_tx(STRANGER);
@@ -486,48 +497,95 @@ fun test_index_monotonic_and_solvent_through_sequence() {
         let mut bob =
             share::mint_for_testing(accumulator::asset_id(&acc), BOB_SHARES, 0, s.ctx());
 
-        // Awkward, dust-heavy amounts; claims interleaved.
-        let deposits = vector[997_123_457u64, 13_001u64, 501_999_983u64, 89u64, 1_234_567_891u64];
+        let mut rng = 0x9E3779B97F4A7C15u64; // arbitrary nonzero seed
         let mut last_index = 0u128;
-        let mut i = 0;
-        while (i < deposits.length()) {
-            let funds = balance::create_for_testing<USDC>(deposits[i]);
-            accumulator::add_revenue(&mut acc, funds);
-
-            // I-M1: the index never decreases.
-            assert!(accumulator::cumulative_yield_index(&acc) >= last_index);
-            last_index = accumulator::cumulative_yield_index(&acc);
-
-            // I-M2: reward_pool >= total owed, after every step.
-            let owed = accumulator::pending_payout(&acc, &alice)
-                + accumulator::pending_payout(&acc, &bob);
-            assert!(accumulator::reward_pool_value(&acc) >= owed);
-
-            // Interleave claims to move snapshots around.
-            if (i % 2 == 0) {
+        let mut deposit_count = 0u64;
+        let mut step = 0u64;
+        while (step < 1_000) {
+            rng = next_rand(rng);
+            let op = rng % 3;
+            if (op == 0) {
+                // Amounts 1 .. 2e9 raw units: spans pure-dust through ~2k USDC.
+                let amount = (rng % 2_000_000_000) + 1;
+                let funds = balance::create_for_testing<USDC>(amount);
+                accumulator::add_revenue(&mut acc, funds);
+                deposit_count = deposit_count + 1;
+            } else if (op == 1) {
                 let c = accumulator::claim_rewards(&mut acc, &mut alice, s.ctx());
                 c.burn_for_testing();
             } else {
                 let c = accumulator::claim_rewards(&mut acc, &mut bob, s.ctx());
                 c.burn_for_testing();
             };
-            let owed_after = accumulator::pending_payout(&acc, &alice)
+
+            // I-M1: the index never decreases, under any operation.
+            assert!(accumulator::cumulative_yield_index(&acc) >= last_index);
+            last_index = accumulator::cumulative_yield_index(&acc);
+
+            // I-M2: reward_pool >= total owed, after EVERY step.
+            let owed = accumulator::pending_payout(&acc, &alice)
                 + accumulator::pending_payout(&acc, &bob);
-            assert!(accumulator::reward_pool_value(&acc) >= owed_after);
-            i = i + 1;
+            assert!(accumulator::reward_pool_value(&acc) >= owed);
+
+            step = step + 1;
         };
 
-        // Drain both; what remains is pure truncation dust, bounded by one
-        // floor-loss per index advance (≤ deposits × unwrapped/SCALE units).
+        // Drain both; the residue is pure truncation dust, bounded by one
+        // floor-loss per index advance: < unwrapped/SCALE (= 100 raw units)
+        // per deposit.
         let ca = accumulator::claim_rewards(&mut acc, &mut alice, s.ctx());
         ca.burn_for_testing();
         let cb = accumulator::claim_rewards(&mut acc, &mut bob, s.ctx());
         cb.burn_for_testing();
-        assert!(accumulator::reward_pool_value(&acc) <= 5 * 100); // 5 × (1e11/1e9)
+        assert!(accumulator::reward_pool_value(&acc) <= deposit_count * 100);
 
         transfer::public_transfer(alice, ALICE);
         transfer::public_transfer(bob, BOB);
         ts::return_shared(acc);
+    };
+    s.end();
+}
+
+#[test]
+fun test_split_reassembly_randomized_amounts() {
+    // m4.md pass criterion 5: fee + investor + entity == gross for varied,
+    // awkward amounts through the FULL deposit_revenue path. Per-iteration
+    // checks: treasury coin == expected fee, entity coin == expected
+    // remainder, reward_pool grows by exactly the expected investor portion.
+    let mut s = to_operational();
+
+    let mut rng = 0xC0FFEEu64;
+    let mut expected_pool = 0u64;
+    let mut i = 0u64;
+    while (i < 12) {
+        rng = next_rand(rng);
+        // 100 .. ~5e9: fee >= 1 so a treasury coin always exists.
+        let gross = (rng % 5_000_000_000) + 100;
+        let fee = gross / 100; // 1% (default protocol_fee_bps = 100)
+        let investor = (gross - fee) / 2; // 50% revenue split
+        let entity_cut = gross - fee - investor;
+        assert!(fee + investor + entity_cut == gross); // reassembly identity
+
+        deposit(&mut s, gross);
+        expected_pool = expected_pool + investor;
+
+        s.next_tx(ADMIN);
+        {
+            let fee_coin = s.take_from_sender<Coin<USDC>>();
+            assert!(fee_coin.burn_for_testing() == fee);
+        };
+        s.next_tx(ENTITY);
+        {
+            let entity_coin = s.take_from_sender<Coin<USDC>>();
+            assert!(entity_coin.burn_for_testing() == entity_cut);
+        };
+        s.next_tx(STRANGER);
+        {
+            let acc = s.take_shared<GlobalYieldAccumulator<ACC_TOKEN>>();
+            assert!(accumulator::reward_pool_value(&acc) == expected_pool);
+            ts::return_shared(acc);
+        };
+        i = i + 1;
     };
     s.end();
 }

@@ -13,9 +13,11 @@ module gally_core::accumulator;
 
 // === Imports ===
 
+use gally_core::protocol::{Self, ProtocolConfig};
 use gally_core::share::{Self, GallyShare};
 use gally_core::usdc::USDC;
 use sui::balance::{Self, Balance};
+use sui::clock::Clock;
 use sui::coin::{Self, Coin, TreasuryCap};
 use sui::event;
 
@@ -30,6 +32,10 @@ const ECapNotVirgin: u64 = 306;
 const EAccumulatorMismatch: u64 = 310;
 /// Share belongs to a different asset than this accumulator.
 const EShareAssetMismatch: u64 = 500;
+/// Wrapping halted during a compensation grace window (decision D5).
+const EWrappingFrozen: u64 = 501;
+/// Share acquired too recently to wrap (defense-in-depth, spec §12).
+const EWrapCooldown: u64 = 502;
 /// Computed payout exceeds u64 — beyond the stated capacity limit (§15.1).
 const EPayoutOverflow: u64 = 503;
 
@@ -95,6 +101,22 @@ public struct YieldClaimedEvent has copy, drop {
     index_at_claim: u128,
 }
 
+/// Wrap-ratio time series (Flow H, spec P3).
+public struct SharesWrappedEvent has copy, drop {
+    asset_id: ID,
+    holder: address,
+    count: u64,
+    total_wrapped_after: u64,
+}
+
+public struct SharesUnwrappedEvent has copy, drop {
+    asset_id: ID,
+    holder: address,
+    count: u64,
+    share_object_id: ID,
+    total_wrapped_after: u64,
+}
+
 // === Public Functions ===
 
 /// Lazy pull claim (Flow G, math §15.3):
@@ -130,6 +152,94 @@ public fun sweep_rollover<T>(acc: &mut GlobalYieldAccumulator<T>) {
     assert!(acc.rollover_reserve.value() > 0, EZeroAmount);
     assert!(unwrapped_supply(acc) > 0, EZeroAmount);
     sweep_rollover_internal(acc);
+}
+
+/// Wraps a deed into vanilla `Coin<T>` (Flow H, decision D2: burn-and-
+/// remint, not object-locking). Exact order is normative (spec §12):
+///   1. guards: pause (capital entry), compensation freeze, cooldown;
+///   2. FORCE-CLAIM history — once wrapped the holder is ineligible, so
+///      unsettled yield must leave now or strand forever;
+///   3. supply counter up, deed destroyed, coin minted 1:1.
+/// Returns (wrapped coin, force-claimed yield) per purity §23.3. Supply
+/// parity I-W1 is structural: this is the ONLY mint path for Coin<T>, and
+/// the cap never leaves the accumulator.
+public fun wrap_shares<T>(
+    acc: &mut GlobalYieldAccumulator<T>,
+    config: &ProtocolConfig,
+    share: GallyShare,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Coin<T>, Coin<USDC>) {
+    protocol::assert_version(config);
+    protocol::assert_not_paused(config);
+    assert!(!acc.wrapping_frozen, EWrappingFrozen);
+    assert!(
+        clock.timestamp_ms()
+            >= share::acquired_at_ms(&share) + protocol::min_wrap_duration_ms(config),
+        EWrapCooldown,
+    );
+
+    // Settle history first (also enforces the share↔accumulator binding).
+    let mut share = share;
+    let claimed = claim_rewards(acc, &mut share, ctx);
+
+    let (_, count) = share::burn(share);
+    acc.total_wrapped_shares = acc.total_wrapped_shares + count;
+
+    event::emit(SharesWrappedEvent {
+        asset_id: acc.asset_id,
+        holder: ctx.sender(),
+        count,
+        total_wrapped_after: acc.total_wrapped_shares,
+    });
+
+    (coin::mint(&mut acc.treasury_cap, count, ctx), claimed)
+}
+
+/// Unwraps `Coin<T>` back into a fresh deed (Flow H). Exact order is
+/// normative (spec §12, corrected at M5):
+///   1. burn the coin, decrement the wrapped counter;
+///   2. mint the fresh share at the CURRENT (pre-sweep) index — the
+///      anti-retroactive-yield write: every wrapped-period delta is
+///      unrepresentable on this snapshot;
+///   3. THEN auto-sweep any rollover — the sweep's delta lands on the fresh
+///      share ("the first unwrapper shares in stranded revenue"), which is a
+///      fresh distribution to an unwrapped holder, not retroactive yield.
+/// EXIT PATH: no pause check, no freeze check — unwrapping must work
+/// ESPECIALLY during a compensation grace window (D5/D6).
+public fun unwrap_coins<T>(
+    acc: &mut GlobalYieldAccumulator<T>,
+    coin: Coin<T>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): GallyShare {
+    let amount = coin.value();
+    assert!(amount > 0, EZeroAmount);
+
+    coin::burn(&mut acc.treasury_cap, coin);
+    acc.total_wrapped_shares = acc.total_wrapped_shares - amount;
+
+    let fresh = share::mint(
+        acc.asset_id,
+        amount,
+        acc.cumulative_yield_index,
+        clock.timestamp_ms(),
+        ctx,
+    );
+
+    if (acc.rollover_reserve.value() > 0 && unwrapped_supply(acc) > 0) {
+        sweep_rollover_internal(acc);
+    };
+
+    event::emit(SharesUnwrappedEvent {
+        asset_id: acc.asset_id,
+        holder: ctx.sender(),
+        count: amount,
+        share_object_id: object::id(&fresh),
+        total_wrapped_after: acc.total_wrapped_shares,
+    });
+
+    fresh
 }
 
 /// Merges `victim` into `target` (spec §8.1, v1 rule): force-claim BOTH so
@@ -170,6 +280,13 @@ public fun pending_payout<T>(acc: &GlobalYieldAccumulator<T>, share: &GallyShare
     let payout = delta * (share::share_count(share) as u128) / SCALE;
     assert!(payout <= MAX_U64, EPayoutOverflow);
     (payout as u64)
+}
+
+/// Live total supply of Coin<T>, read from the custodied cap. Invariant
+/// I-W1: this must equal `total_wrapped_shares` at every instant outside a
+/// single PTB — the fuzz suite asserts it after every operation.
+public fun wrapped_coin_supply<T>(acc: &GlobalYieldAccumulator<T>): u64 {
+    coin::total_supply(&acc.treasury_cap)
 }
 
 public fun asset_id<T>(acc: &GlobalYieldAccumulator<T>): ID { acc.asset_id }
