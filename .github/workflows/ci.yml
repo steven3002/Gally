@@ -1,0 +1,38 @@
+name: CI — Gally Core Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "gally_core/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "gally_core/**"
+      - ".github/workflows/ci.yml"
+
+jobs:
+  sui-move-tests:
+    name: Sui Move Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Sui CLI
+        run: |
+          curl -fsSL https://sui.io/install.sh | bash
+          echo "$HOME/.sui/bin" >> $GITHUB_PATH
+
+      - name: Verify Sui version
+        run: sui --version
+
+      - name: Build gally_core
+        working-directory: gally_core
+        run: sui move build
+
+      - name: Run gally_core tests
+        working-directory: gally_core
+        run: sui move test
