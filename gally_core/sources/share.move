@@ -96,6 +96,15 @@ public(package) fun set_share_count(share: &mut GallyShare, new_count: u64) {
     share.share_count = new_count;
 }
 
+/// Advances the cooldown clock during a merge (spec §8.1): the combined
+/// position inherits the MOST RECENT acquisition time, so a fresh share can't
+/// launder its `min_wrap_duration_ms` cooldown (§12) under an older one.
+/// Callers must only ever pass a value `≥` the current one (the spec
+/// invariant `merged.acquired_at_ms ≥ max` of the inputs).
+public(package) fun set_acquired_at_ms(share: &mut GallyShare, new_acquired_at_ms: u64) {
+    share.acquired_at_ms = new_acquired_at_ms;
+}
+
 // === Test Functions ===
 
 #[test_only]

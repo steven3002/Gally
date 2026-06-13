@@ -38,6 +38,12 @@ const BOB_SHARES: u64 = 40_000_000_000;
 
 const FUNDING_DEADLINE_MS: u64 = 10_000;
 
+/// Merge-cooldown fixture (spec §8.1): receipts convert at t=5_000 and the
+/// default cooldown is 1h, so a split piece may wrap at exactly 3_605_000;
+/// unwrapping it at FRESH_MS mints a share whose acquired_at == FRESH_MS.
+const WRAP_PIECE_MS: u64 = 3_605_000;
+const FRESH_MS: u64 = 4_000_000;
+
 /// 1,000 USDC gross deposit and its normative split at 1% fee / 50% split.
 const GROSS: u64 = 1_000_000_000;
 const FEE: u64 = 10_000_000; // 1%
@@ -624,6 +630,106 @@ fun test_merge_force_claims_both_then_sums() {
         s.return_to_sender(target);
         ts::return_shared(acc);
     };
+    s.end();
+}
+
+/// Leaves ALICE holding two same-asset shares with divergent cooldown clocks:
+/// an OLD 40k share (acquired_at == 5_000) and a FRESH 20k share
+/// (acquired_at == FRESH_MS, minted by an unwrap). This is the laundering
+/// setup — a fresh position alongside an old one.
+fun setup_old_and_fresh(s: &mut ts::Scenario) {
+    convert_receipt(s, ALICE); // ALICE: one 60k share @ acquired 5_000
+
+    s.next_tx(ALICE);
+    {
+        let mut acc = s.take_shared<GlobalYieldAccumulator<ACC_TOKEN>>();
+        let config = s.take_shared<ProtocolConfig>();
+        let mut old = s.take_from_sender<GallyShare>();
+
+        // Split off 20k, wrap it (legal at the exact cooldown boundary), then
+        // unwrap to mint a FRESH share dated FRESH_MS.
+        let piece = share::split_share(&mut old, 20_000_000_000, s.ctx());
+        let wrap_clock = make_clock(s, WRAP_PIECE_MS);
+        let (wrapped, dust) =
+            accumulator::wrap_shares(&mut acc, &config, piece, &wrap_clock, s.ctx());
+        dust.burn_for_testing();
+        wrap_clock.destroy_for_testing();
+
+        let unwrap_clock = make_clock(s, FRESH_MS);
+        let fresh = accumulator::unwrap_coins(&mut acc, wrapped, &unwrap_clock, s.ctx());
+        unwrap_clock.destroy_for_testing();
+
+        transfer::public_transfer(fresh, ALICE);
+        s.return_to_sender(old);
+        ts::return_shared(acc);
+        ts::return_shared(config);
+    };
+}
+
+/// Orients ALICE's two shares so the OLDER one is the merge target and the
+/// FRESH one the victim — the worst case for laundering (hiding a fresh
+/// acquisition under an older share).
+fun take_old_target_and_fresh_victim(s: &ts::Scenario): (GallyShare, GallyShare) {
+    let a = s.take_from_sender<GallyShare>();
+    let b = s.take_from_sender<GallyShare>();
+    if (share::acquired_at_ms(&a) <= share::acquired_at_ms(&b)) (a, b) else (b, a)
+}
+
+#[test]
+/// The merged position inherits the MAX acquired_at, even when the fresh
+/// share is merged into the older one (spec §8.1).
+fun test_merge_inherits_newest_acquired_at() {
+    let mut s = to_operational();
+    setup_old_and_fresh(&mut s);
+
+    s.next_tx(ALICE);
+    {
+        let mut acc = s.take_shared<GlobalYieldAccumulator<ACC_TOKEN>>();
+        let (mut target, victim) = take_old_target_and_fresh_victim(&s);
+
+        let claimed = accumulator::merge_shares(&mut acc, &mut target, victim, s.ctx());
+        claimed.burn_for_testing(); // no deposit occurred — nothing to settle
+
+        // Old target (5_000) absorbs the fresh victim (FRESH_MS): the cooldown
+        // clock moves FORWARD to the most recent, never back to the older one.
+        assert!(share::acquired_at_ms(&target) == FRESH_MS);
+        assert!(share::share_count(&target) == ALICE_SHARES);
+
+        s.return_to_sender(target);
+        ts::return_shared(acc);
+    };
+    s.end();
+}
+
+#[test]
+#[expected_failure(abort_code = accumulator::EWrapCooldown)]
+/// Closes the laundering vector: after merging a fresh victim into an old
+/// target, wrapping before the fresh cooldown elapses must abort — even
+/// though the old component cleared its cooldown long ago. Pre-fix (target
+/// keeps its own old timestamp), this very wrap would have SUCCEEDED.
+fun test_merge_cannot_launder_wrap_cooldown() {
+    let mut s = to_operational();
+    setup_old_and_fresh(&mut s);
+
+    s.next_tx(ALICE);
+    let mut acc = s.take_shared<GlobalYieldAccumulator<ACC_TOKEN>>();
+    let config = s.take_shared<ProtocolConfig>();
+    let (mut target, victim) = take_old_target_and_fresh_victim(&s);
+
+    let claimed = accumulator::merge_shares(&mut acc, &mut target, victim, s.ctx());
+    claimed.burn_for_testing();
+
+    // FRESH_MS + 1h-minus: under the fix the merged share is dated FRESH_MS,
+    // so its cooldown has NOT elapsed and this wrap aborts. (It clears the
+    // OLD component's cooldown — that is exactly what must not suffice.)
+    let clock = make_clock(&mut s, FRESH_MS + 1_000_000);
+    let (wrapped, dust) =
+        accumulator::wrap_shares(&mut acc, &config, target, &clock, s.ctx());
+    transfer::public_transfer(wrapped, ALICE);
+    dust.burn_for_testing();
+    clock.destroy_for_testing();
+    ts::return_shared(acc);
+    ts::return_shared(config);
     s.end();
 }
 

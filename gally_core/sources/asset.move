@@ -19,7 +19,7 @@ module gally_core::asset;
 // === Imports ===
 
 use gally_core::accumulator::{Self, GlobalYieldAccumulator};
-use gally_core::protocol::{Self, ProtocolConfig};
+use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share::{Self, GallyShare};
 use gally_core::usdc::USDC;
 use gally_core::validator::{Self, ValidatorCap, ValidatorPool};
@@ -74,6 +74,14 @@ const ENotVouchingValidator: u64 = 406;
 const EAlreadyApproved: u64 = 407;
 /// Tranche deadline not missed: default cannot be flagged (spec §14).
 const EDeadlineNotMissed: u64 = 701;
+/// Compensation grace window has not elapsed yet (close path b, decision D5).
+const EGraceNotElapsed: u64 = 702;
+/// Close-at-target attempted on a non-term-financing asset (spec §14a).
+const ENotTermFinancing: u64 = 704;
+/// Return target invalid at listing (< principal) or not yet reached at close (§14a).
+const EReturnTargetNotMet: u64 = 705;
+/// Compensation pool not yet emptied by `sweep_compensation` (close path b).
+const ECompensationNotSwept: u64 = 706;
 
 // === Constants ===
 
@@ -86,6 +94,14 @@ const STATE_CANCELLED: u8 = 3;
 const STATE_EXECUTING: u8 = 4;
 const STATE_OPERATIONAL: u8 = 5;
 const STATE_COMPENSATING: u8 = 6;
+/// Terminal absorbing state (spec §4, §14): claims/unwraps/redeem stay open;
+/// deposits and wraps abort.
+const STATE_CLOSED: u8 = 7;
+
+// Reasons recorded on `AssetClosedEvent` (spec §14 trigger paths).
+const CLOSE_REASON_RETURN_TARGET: u8 = 1;
+const CLOSE_REASON_COMPENSATION: u8 = 2;
+const CLOSE_REASON_WIND_DOWN: u8 = 3;
 
 const BPS_DENOMINATOR: u64 = 10_000;
 
@@ -138,6 +154,11 @@ public struct Asset has key {
     revenue_split_bps: u64,
     /// Set at finalize (spec §3.5 implementation note 1).
     accumulator_id: Option<ID>,
+    /// Trade-finance asset with a fixed return target (close trigger a, §14).
+    is_term_financing: bool,
+    /// USDC of cumulative investor distributions that ends the term. Zero for
+    /// non-term assets; `>= funding_goal` for term assets (principal floor).
+    return_target: u64,
     /// True while any dispute on this asset is open: tranche flow halts.
     disputed: bool,
     created_at_ms: u64,
@@ -263,6 +284,13 @@ public struct EntityDefaultedEvent has copy, drop {
     escrow_seized: u64,
 }
 
+/// Terminal settlement (spec §14, §18.3). `reason`: 1 = return target hit,
+/// 2 = compensation complete, 3 = admin/entity wind-down.
+public struct AssetClosedEvent has copy, drop {
+    asset_id: ID,
+    reason: u8,
+}
+
 /// One row per revenue drop. `index_after` and `unwrapped_supply` are the
 /// historical-APY reconstruction fields — unrecoverable any other way
 /// (spec §18.3, P3).
@@ -287,10 +315,9 @@ public fun new_walrus_ref(
     WalrusRef { blob_id, sha256, attested_by: ctx.sender() }
 }
 
-/// Lists a project (Flow C). Validations are spec §7 items 1–5; every
-/// escrowed dollar is assigned to exactly one tranche, so there is no
-/// discretionary residue. Shares the `Asset`; transfers the `EntityCap` to
-/// the sender (soulbound carve-out, §23.3). State: PENDING_VOUCH.
+/// Lists a standard (open-ended, revenue-share) project (Flow C). Thin
+/// wrapper over `create_asset_internal` with no return target. State:
+/// PENDING_VOUCH.
 public fun create_asset(
     config: &ProtocolConfig,
     funding_goal: u64,
@@ -299,6 +326,74 @@ public fun create_asset(
     tranche_descriptions: vector<vector<u8>>,
     tranche_deadlines_ms: vector<u64>,
     revenue_split_bps: u64,
+    collateral: Coin<USDC>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    create_asset_internal(
+        config,
+        funding_goal,
+        funding_deadline_ms,
+        tranche_amounts,
+        tranche_descriptions,
+        tranche_deadlines_ms,
+        revenue_split_bps,
+        false,
+        0,
+        collateral,
+        clock,
+        ctx,
+    );
+}
+
+/// Lists a trade-finance project with a fixed return target (spec §14a):
+/// once cumulative investor distributions reach `return_target`, anyone may
+/// `close_at_return_target`. The target must be at least the funding goal —
+/// investors are made whole on principal before any margin. State:
+/// PENDING_VOUCH.
+public fun create_term_asset(
+    config: &ProtocolConfig,
+    funding_goal: u64,
+    funding_deadline_ms: u64,
+    tranche_amounts: vector<u64>,
+    tranche_descriptions: vector<vector<u8>>,
+    tranche_deadlines_ms: vector<u64>,
+    revenue_split_bps: u64,
+    return_target: u64,
+    collateral: Coin<USDC>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    create_asset_internal(
+        config,
+        funding_goal,
+        funding_deadline_ms,
+        tranche_amounts,
+        tranche_descriptions,
+        tranche_deadlines_ms,
+        revenue_split_bps,
+        true,
+        return_target,
+        collateral,
+        clock,
+        ctx,
+    );
+}
+
+/// Shared listing builder (Flow C). Validations are spec §7 items 1–5; every
+/// escrowed dollar is assigned to exactly one tranche, so there is no
+/// discretionary residue. Shares the `Asset`; transfers the `EntityCap` to
+/// the sender (soulbound carve-out, §23.3). State: PENDING_VOUCH.
+fun create_asset_internal(
+    config: &ProtocolConfig,
+    funding_goal: u64,
+    funding_deadline_ms: u64,
+    tranche_amounts: vector<u64>,
+    tranche_descriptions: vector<vector<u8>>,
+    tranche_deadlines_ms: vector<u64>,
+    revenue_split_bps: u64,
+    is_term_financing: bool,
+    return_target: u64,
     collateral: Coin<USDC>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -321,6 +416,15 @@ public fun create_asset(
 
     // §7 validation 4.
     assert!(revenue_split_bps >= 1 && revenue_split_bps <= BPS_DENOMINATOR, EInvalidBps);
+
+    // Term assets must promise investors at least their principal back; the
+    // margin (if any) makes the target strictly larger. Non-term assets carry
+    // no target (the wrappers pass 0).
+    if (is_term_financing) {
+        assert!(return_target >= funding_goal, EReturnTargetNotMet);
+    } else {
+        assert!(return_target == 0, EReturnTargetNotMet);
+    };
 
     // §7 validation 5: entity skin-in-the-game floor.
     let required_collateral =
@@ -365,6 +469,8 @@ public fun create_asset(
         entity_collateral: collateral.into_balance(),
         revenue_split_bps,
         accumulator_id: option::none(),
+        is_term_financing,
+        return_target,
         disputed: false,
         created_at_ms: now,
     };
@@ -729,7 +835,9 @@ public fun release_funding_tranche(
 /// safely OPERATIONAL or dead-without-fault (FAILED handled in abort). Kept
 /// separate from the last tranche release so that call needs no pool object.
 public fun release_vouch_coverage(asset: &mut Asset, pool: &mut ValidatorPool) {
-    assert!(asset.state == STATE_OPERATIONAL, EWrongState);
+    // OPERATIONAL or CLOSED: the project succeeded; an early close must never
+    // strand the validator's locked coverage (it can be released either side).
+    assert!(asset.state == STATE_OPERATIONAL || asset.state == STATE_CLOSED, EWrongState);
     assert_vouching_pool(asset, pool);
     assert!(asset.coverage_locked > 0, EZeroAmount);
 
@@ -832,6 +940,67 @@ public fun deposit_revenue<T>(
     });
 }
 
+/// CLOSE trigger (a) — trade-finance term complete (spec §14a). PERMISSIONLESS:
+/// once cumulative investor distributions (`lifetime_investor_revenue`) reach
+/// the asset's return target, anyone may wind the term down. Terminal
+/// settlement is never pause-gated (D6, I-X1). State: OPERATIONAL → CLOSED.
+public fun close_at_return_target<T>(
+    asset: &mut Asset,
+    acc: &mut GlobalYieldAccumulator<T>,
+    config: &ProtocolConfig,
+    ctx: &mut TxContext,
+) {
+    protocol::assert_version(config);
+    assert_state(asset, STATE_OPERATIONAL);
+    accumulator::assert_asset(acc, object::id(asset));
+    assert!(asset.is_term_financing, ENotTermFinancing);
+    assert!(
+        accumulator::lifetime_investor_revenue(acc) >= asset.return_target,
+        EReturnTargetNotMet,
+    );
+    close(asset, acc, CLOSE_REASON_RETURN_TARGET, ctx);
+}
+
+/// CLOSE trigger (b) — compensation fully distributed after a default/slash
+/// (spec §14b). PERMISSIONLESS. The grace window must have elapsed and
+/// `sweep_compensation` must have emptied the pool. State: COMPENSATING → CLOSED.
+public fun close_after_compensation<T>(
+    asset: &mut Asset,
+    acc: &mut GlobalYieldAccumulator<T>,
+    config: &ProtocolConfig,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    protocol::assert_version(config);
+    assert_state(asset, STATE_COMPENSATING);
+    accumulator::assert_asset(acc, object::id(asset));
+    assert!(
+        clock.timestamp_ms() >= accumulator::compensation_unlock_ms(acc),
+        EGraceNotElapsed,
+    );
+    assert!(accumulator::compensation_pool_value(acc) == 0, ECompensationNotSwept);
+    close(asset, acc, CLOSE_REASON_COMPENSATION, ctx);
+}
+
+/// CLOSE trigger (c) — admin + entity co-signed wind-down for natural
+/// end-of-life (e.g. the building is sold: sale proceeds enter as a final
+/// `deposit_revenue`, then both parties co-sign the close in one transaction,
+/// spec §14c). State: OPERATIONAL → CLOSED.
+public fun close_wind_down<T>(
+    asset: &mut Asset,
+    acc: &mut GlobalYieldAccumulator<T>,
+    config: &ProtocolConfig,
+    _admin: &AdminCap,
+    entity_cap: &EntityCap,
+    ctx: &mut TxContext,
+) {
+    protocol::assert_version(config);
+    assert_state(asset, STATE_OPERATIONAL);
+    assert_entity_cap(asset, entity_cap);
+    accumulator::assert_asset(acc, object::id(asset));
+    close(asset, acc, CLOSE_REASON_WIND_DOWN, ctx);
+}
+
 // === View Functions ===
 
 public fun state(asset: &Asset): u8 { asset.state }
@@ -877,6 +1046,12 @@ public fun receipt_asset_id(receipt: &ContributionReceipt): ID { receipt.asset_i
 public fun is_executing(asset: &Asset): bool { asset.state == STATE_EXECUTING }
 
 public fun is_compensating(asset: &Asset): bool { asset.state == STATE_COMPENSATING }
+
+public fun is_closed(asset: &Asset): bool { asset.state == STATE_CLOSED }
+
+public fun is_term_financing(asset: &Asset): bool { asset.is_term_financing }
+
+public fun return_target(asset: &Asset): u64 { asset.return_target }
 
 public fun walrus_blob_id(r: &WalrusRef): vector<u8> { r.blob_id }
 
@@ -945,6 +1120,33 @@ fun set_state(asset: &mut Asset, new_state: u8) {
     });
 }
 
+/// Terminal transition shared by all three close triggers (§14): mirror the
+/// closed flag onto the accumulator (unlocking `redeem_share`), release the
+/// entity's skin-in-the-game bond (already seized to nothing on the
+/// compensation path), flip CLOSED, and emit. Deposits (`assert_state
+/// OPERATIONAL`) and wraps (`!acc.closed`) abort thereafter; claims, unwraps,
+/// and redemption stay open forever.
+fun close<T>(
+    asset: &mut Asset,
+    acc: &mut GlobalYieldAccumulator<T>,
+    reason: u8,
+    ctx: &mut TxContext,
+) {
+    accumulator::mark_closed(acc);
+
+    // Successful conclusion returns the entity's collateral; on the default
+    // path `flag_default` already drained it, so this withdraws zero.
+    let collateral = asset.entity_collateral.withdraw_all();
+    if (collateral.value() > 0) {
+        transfer::public_transfer(coin::from_balance(collateral, ctx), asset.entity);
+    } else {
+        collateral.destroy_zero();
+    };
+
+    event::emit(AssetClosedEvent { asset_id: object::id(asset), reason });
+    set_state(asset, STATE_CLOSED);
+}
+
 fun cancel_internal(asset: &mut Asset, ctx: &mut TxContext): Coin<USDC> {
     assert_state(asset, STATE_PENDING_VOUCH);
     event::emit(AssetCancelledEvent { asset_id: object::id(asset) });
@@ -984,3 +1186,6 @@ public fun state_operational(): u8 { STATE_OPERATIONAL }
 
 #[test_only]
 public fun state_compensating(): u8 { STATE_COMPENSATING }
+
+#[test_only]
+public fun state_closed(): u8 { STATE_CLOSED }

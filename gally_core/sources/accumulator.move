@@ -13,7 +13,7 @@ module gally_core::accumulator;
 
 // === Imports ===
 
-use gally_core::protocol::{Self, ProtocolConfig};
+use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share::{Self, GallyShare};
 use gally_core::usdc::USDC;
 use sui::balance::{Self, Balance};
@@ -40,6 +40,12 @@ const EWrapCooldown: u64 = 502;
 const EPayoutOverflow: u64 = 503;
 /// Compensation grace window has not elapsed yet (decision D5).
 const EGraceNotElapsed: u64 = 702;
+/// Accumulator not in the terminal CLOSED phase: redemption/dust sweep barred (§14).
+const ENotClosed: u64 = 703;
+/// Dust sweep attempted while shares are still minted or wrapped (spec §14).
+const ESharesOutstanding: u64 = 707;
+/// Swept residue exceeds the tracked truncation-dust bound (spec §15.4).
+const EDustBoundExceeded: u64 = 708;
 
 // === Constants ===
 
@@ -82,6 +88,17 @@ public struct GlobalYieldAccumulator<phantom T> has key {
     wrapping_frozen: bool,
     /// Sole mint/burn authority for `Coin<T>`. Custodied here forever.
     treasury_cap: TreasuryCap<T>,
+    /// Set once by `asset::close_*` (mirrors the asset's CLOSED state, §14):
+    /// gates `redeem_share` / `admin_sweep_dust` without needing the `Asset`.
+    closed: bool,
+    /// Σ of every investor portion ever routed in (Flow F). Close trigger (a)
+    /// ends a term-financing asset when this reaches the asset's return target.
+    lifetime_investor_revenue: u64,
+    /// Running UPPER bound on the truncation dust strandable in the pools
+    /// (each index advance floors `< unwrapped/SCALE`, each settled claim
+    /// `< 1`). `admin_sweep_dust` asserts the reclaimed residue is within it
+    /// — a belt-and-braces solvency check at closure (spec §15.4).
+    dust_bound: u64,
 }
 
 // === Events ===
@@ -130,6 +147,21 @@ public struct SharesUnwrappedEvent has copy, drop {
     total_wrapped_after: u64,
 }
 
+/// A deed burned for good at closure (Flow J, §14). `total_minted_after`
+/// drives the redemption-progress feed; reaching zero unlocks the dust sweep.
+public struct ShareRedeemedEvent has copy, drop {
+    asset_id: ID,
+    holder: address,
+    count: u64,
+    total_minted_after: u64,
+}
+
+/// Truncation residue reclaimed by the admin after full redemption (§15.4).
+public struct DustSweptEvent has copy, drop {
+    asset_id: ID,
+    amount: u64,
+}
+
 // === Public Functions ===
 
 /// Lazy pull claim (Flow G, math §15.3):
@@ -143,6 +175,13 @@ public fun claim_rewards<T>(
     ctx: &mut TxContext,
 ): Coin<USDC> {
     assert!(share::asset_id(share) == acc.asset_id, EShareAssetMismatch);
+
+    // A nonzero delta floors away < 1 raw unit into the pool; count it toward
+    // the closure-time dust bound (§15.4). Zero-delta no-op claims strand
+    // nothing, so they must not inflate the bound.
+    if (acc.cumulative_yield_index > share::yield_claimed_index(share)) {
+        acc.dust_bound = acc.dust_bound + 1;
+    };
 
     let payout = pending_payout(acc, share);
     share::set_yield_claimed_index(share, acc.cumulative_yield_index);
@@ -216,7 +255,10 @@ public fun wrap_shares<T>(
 ): (Coin<T>, Coin<USDC>) {
     protocol::assert_version(config);
     protocol::assert_not_paused(config);
-    assert!(!acc.wrapping_frozen, EWrappingFrozen);
+    // Wrapping halts during a compensation grace window AND permanently once
+    // the asset is CLOSED — both leave no legitimate reason to enter the
+    // wrapped form (spec §14: "deposits and wraps abort" on CLOSED).
+    assert!(!acc.wrapping_frozen && !acc.closed, EWrappingFrozen);
     assert!(
         clock.timestamp_ms()
             >= share::acquired_at_ms(&share) + protocol::min_wrap_duration_ms(config),
@@ -288,7 +330,10 @@ public fun unwrap_coins<T>(
 
 /// Merges `victim` into `target` (spec §8.1, v1 rule): force-claim BOTH so
 /// their snapshots equal the live index by construction, then sum counts.
-/// The combined pending yield comes back as one coin (purity §23.3).
+/// The combined pending yield comes back as one coin (purity §23.3). The
+/// merged share inherits the MORE RECENT `acquired_at_ms` of the two, so a
+/// freshly-acquired position cannot launder its wrap cooldown (§12) by
+/// merging under an older share (spec §8.1, §20 A5).
 public fun merge_shares<T>(
     acc: &mut GlobalYieldAccumulator<T>,
     target: &mut GallyShare,
@@ -299,13 +344,85 @@ public fun merge_shares<T>(
     let mut claimed = claim_rewards(acc, target, ctx);
     claimed.join(claim_rewards(acc, &mut victim, ctx));
 
+    // Capture the victim's cooldown clock before it is burned away.
+    let victim_acquired = share::acquired_at_ms(&victim);
     let (victim_asset, victim_count) = share::burn(victim);
     // Both claims passed the accumulator binding check; the IDs must agree.
     assert!(victim_asset == share::asset_id(target), EShareAssetMismatch);
     let combined_count = share::share_count(target) + victim_count;
     share::set_share_count(target, combined_count);
 
+    // Inherit the MOST RECENT acquisition time: a merge must never reduce a
+    // share's cooldown clock, or a fresh position could launder its
+    // min_wrap_duration_ms (§12) by hiding under an older share (spec §8.1).
+    if (victim_acquired > share::acquired_at_ms(target)) {
+        share::set_acquired_at_ms(target, victim_acquired);
+    };
+
     claimed
+}
+
+/// Burns a deed for good once the asset is CLOSED (Flow J, §14). EXIT PATH:
+/// no pause check, no config — a closed asset's holders must always be able
+/// to settle and exit (D6, I-X1). Force-claims the final yield, burns the
+/// share, and decrements `total_minted_shares`; when it (and the wrapped
+/// counter) reach zero the dust sweep unlocks. Returns the force-claimed
+/// yield (purity §23.3).
+public fun redeem_share<T>(
+    acc: &mut GlobalYieldAccumulator<T>,
+    share: GallyShare,
+    ctx: &mut TxContext,
+): Coin<USDC> {
+    assert!(acc.closed, ENotClosed);
+
+    let mut share = share;
+    // Settle history first — this also enforces the share↔accumulator binding.
+    let proceeds = claim_rewards(acc, &mut share, ctx);
+
+    let (asset, count) = share::burn(share);
+    assert!(asset == acc.asset_id, EShareAssetMismatch);
+    acc.total_minted_shares = acc.total_minted_shares - count;
+
+    event::emit(ShareRedeemedEvent {
+        asset_id: acc.asset_id,
+        holder: ctx.sender(),
+        count,
+        total_minted_after: acc.total_minted_shares,
+    });
+
+    proceeds
+}
+
+/// Reclaims the truncation residue after the asset is fully wound down
+/// (§14, §15.4). Admin housekeeping, NOT an exit: gated on the upgrade
+/// kill-switch like every other governance entry. Three guards make this the
+/// only safe moment: the asset is CLOSED, no shares remain minted or wrapped
+/// (so every entitlement is zero by I-M2 — there is nothing to take from a
+/// holder), and the residue is within the dust bound accumulated over the
+/// asset's life. Sweeps the reward pool and any unswept rollover; leaves the
+/// compensation pool untouched (restitution, never the admin's to take).
+public fun admin_sweep_dust<T>(
+    acc: &mut GlobalYieldAccumulator<T>,
+    config: &ProtocolConfig,
+    _: &AdminCap,
+    ctx: &mut TxContext,
+): Coin<USDC> {
+    protocol::assert_version(config);
+    assert!(acc.closed, ENotClosed);
+    assert!(
+        acc.total_minted_shares == 0 && acc.total_wrapped_shares == 0,
+        ESharesOutstanding,
+    );
+
+    let residue = acc.reward_pool.value() + acc.rollover_reserve.value();
+    assert!(residue <= acc.dust_bound, EDustBoundExceeded);
+
+    let mut dust = acc.reward_pool.withdraw_all();
+    dust.join(acc.rollover_reserve.withdraw_all());
+
+    event::emit(DustSweptEvent { asset_id: acc.asset_id, amount: residue });
+
+    coin::from_balance(dust, ctx)
 }
 
 // === View Functions ===
@@ -367,6 +484,15 @@ public fun is_wrapping_frozen<T>(acc: &GlobalYieldAccumulator<T>): bool {
     acc.wrapping_frozen
 }
 
+public fun is_closed<T>(acc: &GlobalYieldAccumulator<T>): bool { acc.closed }
+
+/// Σ investor revenue ever routed in — the close-at-target denominator (§14).
+public fun lifetime_investor_revenue<T>(acc: &GlobalYieldAccumulator<T>): u64 {
+    acc.lifetime_investor_revenue
+}
+
+public fun dust_bound<T>(acc: &GlobalYieldAccumulator<T>): u64 { acc.dust_bound }
+
 /// Aborts unless `acc` is the accumulator of `asset_id`. Sibling modules call
 /// this before any cross-object operation.
 public fun assert_asset<T>(acc: &GlobalYieldAccumulator<T>, asset_id: ID) {
@@ -398,6 +524,9 @@ public(package) fun new_accumulator<T>(
         compensation_unlock_ms: 0,
         wrapping_frozen: false,
         treasury_cap,
+        closed: false,
+        lifetime_investor_revenue: 0,
+        dust_bound: 0,
     };
     let acc_id = object::id(&acc);
     transfer::share_object(acc);
@@ -427,6 +556,9 @@ public(package) fun add_revenue<T>(
     acc: &mut GlobalYieldAccumulator<T>,
     funds: Balance<USDC>,
 ): u128 {
+    // Count investor inflow once, here at intake — the later rollover sweep
+    // routes the SAME funds through the index, so it must not re-count (§14).
+    acc.lifetime_investor_revenue = acc.lifetime_investor_revenue + funds.value();
     if (unwrapped_supply(acc) == 0) {
         // No division — route to the reserve, rescued by sweep_rollover.
         acc.rollover_reserve.join(funds);
@@ -436,6 +568,14 @@ public(package) fun add_revenue<T>(
     acc.cumulative_yield_index
 }
 
+/// Mirrors the asset's terminal CLOSED transition onto the accumulator
+/// (§14): from here `redeem_share` / `admin_sweep_dust` are unlocked and no
+/// further revenue can be deposited (the asset gates that). Idempotent intent
+/// — only `asset::close_*` calls it, exactly once.
+public(package) fun mark_closed<T>(acc: &mut GlobalYieldAccumulator<T>) {
+    acc.closed = true;
+}
+
 // === Private Functions ===
 
 /// The index scaler (spec §15.2). u128 throughout; multiply by SCALE before
@@ -443,8 +583,12 @@ public(package) fun add_revenue<T>(
 /// buffer that keeps I-M2 an inequality in the safe direction.
 fun advance_index<T>(acc: &mut GlobalYieldAccumulator<T>, funds: Balance<USDC>) {
     let amount = funds.value();
-    let delta = (amount as u128) * SCALE / (unwrapped_supply(acc) as u128);
+    let unwrapped = unwrapped_supply(acc);
+    let delta = (amount as u128) * SCALE / (unwrapped as u128);
     acc.cumulative_yield_index = acc.cumulative_yield_index + delta; // I-M1: only ever grows
+    // The floor strands `< unwrapped/SCALE` raw units in the pool as dust
+    // (§15.2); record a safe integer upper bound for the closure sweep check.
+    acc.dust_bound = acc.dust_bound + unwrapped / (SCALE as u64) + 1;
     acc.reward_pool.join(funds);
 }
 
