@@ -242,6 +242,13 @@ public(package) fun release_coverage(pool: &mut ValidatorPool, amount: u64) {
     pool.active_vouches = pool.active_vouches - 1;
 }
 
+/// Credits a balance into a pool's free stake without the registration
+/// guard — used to return the target pool's half of a rejected challenger's
+/// bond (M6 REJECTED path), compensating it for the freeze.
+public(package) fun restitute_stake(pool: &mut ValidatorPool, funds: Balance<USDC>) {
+    pool.stake.join(funds);
+}
+
 /// Halts all of this pool's powers the moment a dispute opens (spec §13).
 /// (`freeze` itself is a reserved word in Move, hence the `_pool` suffix.)
 public(package) fun freeze_pool(pool: &mut ValidatorPool, dispute_id: Option<ID>) {

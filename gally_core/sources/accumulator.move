@@ -38,6 +38,8 @@ const EWrappingFrozen: u64 = 501;
 const EWrapCooldown: u64 = 502;
 /// Computed payout exceeds u64 — beyond the stated capacity limit (§15.1).
 const EPayoutOverflow: u64 = 503;
+/// Compensation grace window has not elapsed yet (decision D5).
+const EGraceNotElapsed: u64 = 702;
 
 // === Constants ===
 
@@ -101,6 +103,17 @@ public struct YieldClaimedEvent has copy, drop {
     index_at_claim: u128,
 }
 
+/// Restitution distributed after a grace window (Flow I, decision D5).
+public struct CompensationSweptEvent has copy, drop {
+    asset_id: ID,
+    amount: u64,
+    index_after: u128,
+    /// Required for historical reconstruction (spec P3).
+    unwrapped_supply: u64,
+    /// True when no unwrapped supply existed and funds went to rollover.
+    routed_to_rollover: bool,
+}
+
 /// Wrap-ratio time series (Flow H, spec P3).
 public struct SharesWrappedEvent has copy, drop {
     asset_id: ID,
@@ -152,6 +165,37 @@ public fun sweep_rollover<T>(acc: &mut GlobalYieldAccumulator<T>) {
     assert!(acc.rollover_reserve.value() > 0, EZeroAmount);
     assert!(unwrapped_supply(acc) > 0, EZeroAmount);
     sweep_rollover_internal(acc);
+}
+
+/// PERMISSIONLESS distribution of slashed/seized restitution after the
+/// grace window (Flow I, decision D5). The window let wrapped holders
+/// unwrap and join the unwrapped denominator; this divides the pool across
+/// them through the index exactly like a revenue deposit (SCALE included —
+/// omitting it would strand the pool as dust). Fallback: if NObody is
+/// unwrapped even now, the funds route to the rollover reserve (rescued by
+/// the first unwrap) instead of dividing by zero. Either way wrapping
+/// unfreezes. NEVER pause-gated (D6, exit path).
+public fun sweep_compensation<T>(acc: &mut GlobalYieldAccumulator<T>, clock: &Clock) {
+    assert!(clock.timestamp_ms() >= acc.compensation_unlock_ms, EGraceNotElapsed);
+    assert!(acc.compensation_pool.value() > 0, EZeroAmount);
+
+    let amount = acc.compensation_pool.value();
+    let funds = acc.compensation_pool.withdraw_all();
+    let routed_to_rollover = unwrapped_supply(acc) == 0;
+    if (routed_to_rollover) {
+        acc.rollover_reserve.join(funds);
+    } else {
+        advance_index(acc, funds);
+    };
+    acc.wrapping_frozen = false;
+
+    event::emit(CompensationSweptEvent {
+        asset_id: acc.asset_id,
+        amount,
+        index_after: acc.cumulative_yield_index,
+        unwrapped_supply: unwrapped_supply(acc),
+        routed_to_rollover,
+    });
 }
 
 /// Wraps a deed into vanilla `Coin<T>` (Flow H, decision D2: burn-and-

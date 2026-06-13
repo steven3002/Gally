@@ -874,11 +874,39 @@ public fun receipt_amount(receipt: &ContributionReceipt): u64 { receipt.amount }
 
 public fun receipt_asset_id(receipt: &ContributionReceipt): ID { receipt.asset_id }
 
+public fun is_executing(asset: &Asset): bool { asset.state == STATE_EXECUTING }
+
+public fun is_compensating(asset: &Asset): bool { asset.state == STATE_COMPENSATING }
+
+public fun walrus_blob_id(r: &WalrusRef): vector<u8> { r.blob_id }
+
+public fun walrus_sha256(r: &WalrusRef): vector<u8> { r.sha256 }
+
 // === Package Functions ===
 
 /// Dispute lifecycle hook (M6): freezes / unfreezes the tranche flow.
 public(package) fun set_disputed(asset: &mut Asset, disputed: bool) {
     asset.disputed = disputed;
+}
+
+/// Zeroes the recorded coverage after a slash consumes it (M6 UPHELD path).
+/// The pool-side `locked` reduction happens inside `validator::slash`; this
+/// keeps the asset's own record consistent (it must not be released again).
+public(package) fun clear_coverage(asset: &mut Asset) {
+    asset.coverage_locked = 0;
+}
+
+/// Seizes the remaining escrow AND the entity collateral of an EXECUTING
+/// asset into one balance and transitions the asset to COMPENSATING (M6
+/// UPHELD on a pre-operational asset — the three-layer compensation stack).
+/// Returns the seized funds for the caller to route into the compensation
+/// pool alongside the slash remainder.
+public(package) fun seize_into_compensation(asset: &mut Asset): Balance<USDC> {
+    assert_state(asset, STATE_EXECUTING);
+    let mut seized = asset.entity_collateral.withdraw_all();
+    seized.join(asset.escrow.withdraw_all());
+    set_state(asset, STATE_COMPENSATING);
+    seized
 }
 
 // === Private Functions ===
