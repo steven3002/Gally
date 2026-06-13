@@ -95,3 +95,19 @@ public(package) fun set_yield_claimed_index(share: &mut GallyShare, new_index: u
 public(package) fun set_share_count(share: &mut GallyShare, new_count: u64) {
     share.share_count = new_count;
 }
+
+// === Test Functions ===
+
+#[test_only]
+/// Forges a share with an arbitrary asset binding, to exercise the
+/// accumulator's EShareAssetMismatch assert deterministically (a real
+/// foreign share cannot be fabricated outside this package — which is
+/// itself the property that makes the assert sufficient).
+public fun mint_for_testing(
+    asset_id: ID,
+    share_count: u64,
+    yield_claimed_index: u128,
+    ctx: &mut TxContext,
+): GallyShare {
+    mint(asset_id, share_count, yield_claimed_index, 0, ctx)
+}

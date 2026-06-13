@@ -263,6 +263,19 @@ public struct EntityDefaultedEvent has copy, drop {
     escrow_seized: u64,
 }
 
+/// One row per revenue drop. `index_after` and `unwrapped_supply` are the
+/// historical-APY reconstruction fields — unrecoverable any other way
+/// (spec §18.3, P3).
+public struct RevenueDepositedEvent has copy, drop {
+    asset_id: ID,
+    gross: u64,
+    fee: u64,
+    investor_portion: u64,
+    entity_portion: u64,
+    index_after: u128,
+    unwrapped_supply: u64,
+}
+
 // === Public Functions ===
 
 /// Builds a content-addressed evidence reference, attested by the sender.
@@ -765,6 +778,58 @@ public fun flag_default<T>(
         escrow_seized,
     });
     set_state(asset, STATE_COMPENSATING);
+}
+
+/// Revenue ingestion (Flow F). PERMISSIONLESS on purpose: tenants, market-
+/// place contracts, or the entity itself may deposit — the three-way split
+/// protects all parties regardless of who calls. Split order is normative
+/// (spec §10, D9):
+///   fee     = gross × protocol_fee_bps / 10_000            → treasury
+///   investor = (gross − fee) × revenue_split_bps / 10_000  → index
+///   remainder                                              → entity
+/// Trusting the entity to deposit "the investors' cut" would reintroduce
+/// trust; the entity deposits gross and the contract routes, atomically.
+public fun deposit_revenue<T>(
+    asset: &Asset,
+    acc: &mut GlobalYieldAccumulator<T>,
+    config: &ProtocolConfig,
+    mut payment: Coin<USDC>,
+    ctx: &mut TxContext,
+) {
+    protocol::assert_version(config);
+    protocol::assert_not_paused(config);
+    assert_state(asset, STATE_OPERATIONAL);
+    accumulator::assert_asset(acc, object::id(asset));
+
+    let gross = payment.value();
+    assert!(gross > 0, EZeroAmount);
+
+    let fee = mul_bps(gross, protocol::protocol_fee_bps(config));
+    let investor_portion = mul_bps(gross - fee, asset.revenue_split_bps);
+    let entity_portion = gross - fee - investor_portion;
+
+    if (fee > 0) {
+        transfer::public_transfer(payment.split(fee, ctx), protocol::treasury(config));
+    };
+    let index_after =
+        accumulator::add_revenue(acc, payment.split(investor_portion, ctx).into_balance());
+
+    // Whatever remains is the entity's operational cut.
+    if (payment.value() > 0) {
+        transfer::public_transfer(payment, asset.entity);
+    } else {
+        payment.destroy_zero();
+    };
+
+    event::emit(RevenueDepositedEvent {
+        asset_id: object::id(asset),
+        gross,
+        fee,
+        investor_portion,
+        entity_portion,
+        index_after,
+        unwrapped_supply: accumulator::unwrapped_supply(acc),
+    });
 }
 
 // === View Functions ===
