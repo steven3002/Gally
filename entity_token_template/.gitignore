@@ -3,3 +3,5 @@ traces/*
 .trace
 .coverage*
 Pub.*.toml
+# Per-entity packages emitted by scripts/instantiate.sh (ET-M3).
+generated/
