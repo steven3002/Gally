@@ -87,6 +87,7 @@ export interface Asset {
   // safety
   disputed: boolean;
   validatorPoolId: string;
+  coverageLocked: number; // real USDC coverage the validator locked at vouch (§3.5); 0 if unvouched
 
   // explorer-only derived series (reconstructed from events)
   raiseSeries: Point[]; // raised_after over time
@@ -161,9 +162,17 @@ export type EventType =
   | "CompensationSwept"
   | "ValidatorRegistered"
   | "StakeAdded"
+  | "StakeWithdrawn"
+  | "ValidatorStatusChanged"
   | "DisputeOpened"
   | "JurorVoted"
-  | "DisputeResolved";
+  | "DisputeResolved"
+  | "AssetCancelled"
+  | "ProtocolInitialized"
+  | "ProtocolParamChanged"
+  | "ProtocolTreasuryChanged"
+  | "EmergencyStopTriggered"
+  | "ProtocolResumed";
 
 export type EventFeed =
   | "lifecycle"
@@ -217,4 +226,102 @@ export interface Position {
 
 export interface Watch {
   assetId: string;
+}
+
+/* ===========================================================================
+ * Explorer graph types (FE-M1) — the persistent object/account model that
+ * turns the dashboard into a navigable block-explorer.
+ * ======================================================================== */
+
+/** Every role an address can play in the protocol (§2 Actor Model). */
+export type AccountRole =
+  | "investor"
+  | "entity"
+  | "validator"
+  | "challenger"
+  | "admin"
+  | "treasury";
+
+/** Any address, resolved to a labelled account (the `/address/:addr` subject). */
+export interface Account {
+  address: string;
+  label?: string; // display name when known (entity/validator name, "Treasury", …)
+  roles: AccountRole[]; // every role this address plays
+  known: boolean; // true = in the explicit roster; false = anonymous (auto-resolved)
+}
+
+/**
+ * One holder's stake in one asset (a `GallyShare` deed position + any wrapped
+ * `Coin<T>`), reconstructed per §18.4 query #2. `shareCount` = unwrapped deeds
+ * (yield-bearing); `wrapped` = Coin<T> balance (no yield until unwrapped, D2/D5).
+ */
+export interface HolderEntry {
+  address: string;
+  shareCount: number; // deeds (unwrapped) — yield-bearing
+  wrapped: number; // Coin<T> balance — earns no yield
+  acquiredAtMs: number;
+  yieldClaimedIndex: number; // personal index snapshot (scaled human value)
+}
+
+/** A holder entry joined to its asset context — powers address pages. */
+export interface Holding extends HolderEntry {
+  assetId: string;
+  assetName: string;
+  ticker: string;
+  tokenSymbol?: string;
+  category: Category;
+  state: AssetState;
+  apy: number;
+  pendingYield: number; // claimable yield on the deeds only
+}
+
+export type DocKind = "legal" | "proof" | "evidence";
+
+/**
+ * Content-addressed off-chain document (`WalrusRef`, §3.5). The chain stores
+ * only `blobId` + `sha256` + `attestedBy`; the bytes live on Walrus. The
+ * sha256 pins CONTENT so a blob-swap is detectable (attack A13).
+ */
+export interface WalrusDoc {
+  blobId: string;
+  sha256: string;
+  attestedBy: string; // address that signed/submitted it
+  kind: DocKind;
+  label: string;
+  trancheIndex?: number; // set for milestone proofs
+}
+
+/** One `ProtocolParamChanged`/treasury/pause governance entry (event-only history, §18.3). */
+export interface GovParamChange {
+  name: string;
+  oldValue: string;
+  newValue: string;
+  tsMs: number;
+  txDigest: string;
+}
+
+/** Kinds the universal `/objects/:id` resolver can route to. */
+export type ObjectKind =
+  | "asset"
+  | "token"
+  | "validator"
+  | "dispute"
+  | "account"
+  | "tx"
+  | "config";
+
+/** Resolution of any id to its canonical explorer route. */
+export interface ObjectRef {
+  id: string;
+  kind: ObjectKind;
+  route: string;
+  label?: string;
+}
+
+/** A transaction = a group of events sharing one digest (atomic protocol call). */
+export interface TxRow {
+  digest: string;
+  tsMs: number;
+  events: ProtocolEvent[];
+  kind: string; // the headline action (e.g. "finalize", "release_funding_tranche")
 }

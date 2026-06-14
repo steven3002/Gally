@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { CommandPalette } from "@/components/search/CommandPalette";
 import { cn } from "@/lib/format";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -53,6 +54,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mx-auto w-full max-w-[1400px]">{children}</div>
         </main>
       </div>
+
+      {/* Global ⌘K command palette */}
+      <CommandPalette />
     </div>
   );
 }

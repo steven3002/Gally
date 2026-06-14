@@ -18,7 +18,7 @@ import {
 import { Bar, KV } from "@/components/ui/bits";
 import { RingGauge, Sparkline } from "@/components/ui/charts";
 import { Tabs } from "@/components/ui/Tabs";
-import { AddressChip } from "@/components/ui/AddressChip";
+import { IdLink } from "@/components/ui/IdLink";
 import { ValidatorStatusPill } from "@/components/validator/ValidatorCard";
 import { AssetTable } from "@/components/asset/AssetTable";
 import { DisputeCard } from "@/components/dispute/DisputeCard";
@@ -204,11 +204,11 @@ export default async function ValidatorDetailPage({
             <div className="mt-3 flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs text-muted">Validator pool</span>
-                <AddressChip address={v.poolId} />
+                <IdLink id={v.poolId} />
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs text-muted">Operator</span>
-                <AddressChip address={v.address} />
+                <IdLink id={v.address} />
               </div>
             </div>
           </Card>

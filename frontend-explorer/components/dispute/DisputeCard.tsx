@@ -4,7 +4,7 @@ import { cn, relTime, usd } from "@/lib/format";
 import { Card } from "@/components/ui/primitives";
 import { Avatar } from "@/components/ui/primitives";
 import { DisputeStatusPill } from "@/components/ui/bits";
-import { AddressChip } from "@/components/ui/AddressChip";
+import { IdLink } from "@/components/ui/IdLink";
 import { Scale, Clock, Check, Close } from "@/components/ui/icons";
 
 export function VoteBar({ dispute }: { dispute: Dispute }) {
@@ -99,9 +99,9 @@ export function DisputeCard({ dispute }: { dispute: Dispute }) {
         )}
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <AddressChip address={dispute.challenger} label="Challenger" />
-        <AddressChip address={dispute.id} label="Dispute" />
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-2">
+        <span className="flex items-center gap-1">Challenger <IdLink id={dispute.challenger} /></span>
+        <span className="flex items-center gap-1">Dispute <IdLink id={dispute.id} /></span>
       </div>
     </Card>
   );

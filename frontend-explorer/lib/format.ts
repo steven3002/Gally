@@ -61,6 +61,15 @@ export function shortDigest(d: string): string {
   return d.length > 10 ? `${d.slice(0, 6)}…${d.slice(-4)}` : d;
 }
 
+/** External Sui explorer deep-link (real once the package is deployed). */
+export function suiscanUrl(
+  id: string,
+  kind: "object" | "account" | "tx" = "object",
+): string {
+  const seg = kind === "tx" ? "tx" : kind === "account" ? "account" : "object";
+  return `https://suiscan.xyz/testnet/${seg}/${id}`;
+}
+
 /** Relative time vs the fixed NOW. */
 export function relTime(ms: number): string {
   const diff = ms - NOW;

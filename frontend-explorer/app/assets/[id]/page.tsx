@@ -15,6 +15,7 @@ import {
   pctOf,
   relTime,
   shortDate,
+  suiscanUrl,
   usd,
   usdCompact,
 } from "@/lib/format";
@@ -29,7 +30,7 @@ import {
 import { Bar, KV, Pill, StatePill } from "@/components/ui/bits";
 import { AreaChart, RingGauge } from "@/components/ui/charts";
 import { Tabs } from "@/components/ui/Tabs";
-import { AddressChip } from "@/components/ui/AddressChip";
+import { IdLink } from "@/components/ui/IdLink";
 import { WatchButton } from "@/components/WatchButton";
 import { StageStepper, LifecycleTimeline } from "@/components/asset/Lifecycle";
 import { TrancheList } from "@/components/asset/TrancheList";
@@ -66,7 +67,7 @@ export default async function AssetDetailPage({
   const progress = pctOf(asset.raised, asset.fundingGoal);
   const funding = asset.state === "FUNDING";
   const operational = asset.state === "OPERATIONAL";
-  const coverageLocked = Math.round((asset.fundingGoal * 2000) / 10000);
+  const coverageLocked = asset.coverageLocked;
   const releasedTranches = asset.tranches.filter((t) => t.released).length;
   const wrapRatio = acc && acc.totalMintedShares ? (acc.totalWrappedShares / acc.totalMintedShares) * 100 : 0;
 
@@ -229,9 +230,14 @@ export default async function AssetDetailPage({
           <div className="rounded-xl border border-border bg-surface p-1">
             <WatchButton assetId={asset.id} size="h-5 w-5" />
           </div>
-          <button className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-muted transition-colors hover:text-foreground">
+          <a
+            href={suiscanUrl(asset.id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-muted transition-colors hover:text-foreground"
+          >
             <ExternalLink className="h-4 w-4" /> View on Sui
-          </button>
+          </a>
           {funding && (
             <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary transition-colors hover:bg-primary-strong">
               <Coins className="h-4 w-4" /> Contribute
@@ -439,7 +445,7 @@ function RefRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-xs text-muted">{label}</span>
-      <AddressChip address={value} />
+      <IdLink id={value} />
     </div>
   );
 }

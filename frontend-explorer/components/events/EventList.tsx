@@ -93,7 +93,12 @@ export function EventList({
 
             <div className="shrink-0 text-right">
               <div className="text-xs text-muted">{relTime(e.tsMs)}</div>
-              <div className="mt-0.5 font-mono text-[10px] text-muted-2">{shortDigest(e.txDigest)}</div>
+              <Link
+                href={`/tx/${e.txDigest}`}
+                className="mt-0.5 block font-mono text-[10px] text-muted-2 transition-colors hover:text-primary hover:underline"
+              >
+                {shortDigest(e.txDigest)}
+              </Link>
             </div>
           </li>
         );
