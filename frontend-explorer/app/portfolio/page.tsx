@@ -6,19 +6,18 @@ import {
   portfolioReceipts,
 } from "@/lib/mock/data";
 import { portfolioActivity } from "@/lib/mock/activity";
-import { num, pct, pctSigned, usd, usdCompact } from "@/lib/format";
+import { num, pct, usd, usdCompact } from "@/lib/format";
 import {
   Avatar,
   Card,
   CardHeader,
   SectionHeader,
-  Stat,
 } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/bits";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { Donut, Sparkline } from "@/components/ui/charts";
 import { EventList } from "@/components/events/EventList";
-import { Coins, TrendUp, Wallet, ArrowRight, Lock } from "@/components/ui/icons";
+import { Coins, Wallet, ArrowRight, Lock } from "@/components/ui/icons";
 
 const CATEGORY_COLOR: Record<Category, string> = {
   Housing: "#6c5cf6",
@@ -45,17 +44,20 @@ function normalizedAverage(series: number[][]): number[] {
 }
 
 export default function PortfolioPage() {
-  const totalValue = portfolio.reduce((s, p) => s + p.currentValue, 0);
-  const totalCost = portfolio.reduce((s, p) => s + p.costBasis, 0);
+  // 1 share == 1 USDC of principal; deeds and wrapped are both valued at par.
+  const deedsValue = portfolio.reduce((s, p) => s + p.deeds, 0);
+  const wrappedValue = portfolio.reduce((s, p) => s + p.wrapped, 0);
+  const principal = deedsValue + wrappedValue;
+  const invested = portfolio.reduce((s, p) => s + p.costBasis, 0);
   const totalYield = portfolio.reduce((s, p) => s + p.yieldEarned, 0);
   const totalClaimable = portfolio.reduce((s, p) => s + p.yieldClaimable, 0);
-  const pnl = totalValue - totalCost;
-  const pnlPct = totalCost ? (pnl / totalCost) * 100 : 0;
+  const lifetimeYieldPct = invested ? (totalYield / invested) * 100 : 0;
+  const claimablePositions = portfolio.filter((p) => p.yieldClaimable > 0).length;
   const spark = normalizedAverage(portfolio.map((p) => p.spark));
 
   const allocation = Object.entries(
     portfolio.reduce<Record<string, number>>((acc, p) => {
-      acc[p.category] = (acc[p.category] ?? 0) + p.currentValue;
+      acc[p.category] = (acc[p.category] ?? 0) + p.deeds + p.wrapped;
       return acc;
     }, {}),
   ).map(([category, value]) => ({
@@ -90,37 +92,47 @@ export default function PortfolioPage() {
           <div className="bg-grid pointer-events-none absolute inset-0 opacity-50" />
           <div className="relative">
             <div className="flex items-center gap-2 text-xs font-medium text-white/70">
-              <Wallet className="h-4 w-4" /> Total position value
+              <Wallet className="h-4 w-4" /> Total holdings value
             </div>
-            <div className="tnum mt-1 text-4xl font-bold tracking-tight">{usd(totalValue)}</div>
+            <div className="tnum mt-1 text-4xl font-bold tracking-tight">{usd(principal)}</div>
             <div className="mt-1 flex items-center gap-2 text-sm">
-              <span className={pnl >= 0 ? "text-emerald-200" : "text-rose-200"}>
-                {pnl >= 0 ? "▲" : "▼"} {usd(Math.abs(pnl))} ({pctSigned(pnlPct)})
-              </span>
-              <span className="text-white/60">all-time</span>
+              <span className="text-emerald-200">+{usd(totalYield)} yield earned</span>
+              <span className="text-white/60">· {pct(lifetimeYieldPct)} lifetime on {usdCompact(invested)}</span>
             </div>
             <div className="-mx-1 mt-4">
               <Sparkline data={spark} color="#ffffff" width={520} height={56} className="w-full" />
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-4 border-t border-white/15 pt-4 text-sm">
+            <div className="mt-4 grid grid-cols-2 gap-4 border-t border-white/15 pt-4 text-sm sm:grid-cols-4">
               <div>
-                <div className="text-white/60">Invested</div>
-                <div className="tnum font-semibold">{usd(totalCost)}</div>
+                <div className="flex items-center gap-1 text-white/60">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" /> Deeds
+                </div>
+                <div className="tnum font-semibold">{usd(deedsValue)}</div>
+                <div className="text-[11px] text-white/55">yield-bearing</div>
+              </div>
+              <div>
+                <div className="flex items-center gap-1 text-white/60">
+                  <Lock className="h-3 w-3" /> Wrapped
+                </div>
+                <div className="tnum font-semibold">{usd(wrappedValue)}</div>
+                <div className="text-[11px] text-white/55">no yield</div>
               </div>
               <div>
                 <div className="text-white/60">Yield earned</div>
                 <div className="tnum font-semibold">{usd(totalYield)}</div>
+                <div className="text-[11px] text-white/55">lifetime</div>
               </div>
               <div>
-                <div className="text-white/60">Positions</div>
-                <div className="tnum font-semibold">{portfolio.length}</div>
+                <div className="text-white/60">Claimable</div>
+                <div className="tnum font-semibold">{usd(totalClaimable)}</div>
+                <div className="text-[11px] text-white/55">on deeds</div>
               </div>
             </div>
           </div>
         </Card>
 
         <Card className="flex flex-col p-5">
-          <CardHeader title="Allocation" subtitle="By sector" className="px-0 pt-0" />
+          <CardHeader title="Allocation" subtitle="By sector (principal)" className="px-0 pt-0" />
           <div className="mt-2 flex flex-1 flex-col items-center justify-center gap-4 sm:flex-row">
             <Donut
               segments={allocation}
@@ -128,8 +140,8 @@ export default function PortfolioPage() {
               thickness={18}
               center={
                 <div className="text-center">
-                  <div className="tnum text-lg font-bold text-foreground">{usdCompact(totalValue)}</div>
-                  <div className="text-[10px] text-muted">total</div>
+                  <div className="tnum text-lg font-bold text-foreground">{usdCompact(principal)}</div>
+                  <div className="text-[10px] text-muted">principal</div>
                 </div>
               }
             />
@@ -139,7 +151,7 @@ export default function PortfolioPage() {
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: a.color }} />
                   <span className="text-muted">{a.label}</span>
                   <span className="tnum ml-auto font-medium text-foreground">
-                    {pct((a.value / totalValue) * 100, 0)}
+                    {pct((a.value / principal) * 100, 0)}
                   </span>
                 </div>
               ))}
@@ -160,7 +172,8 @@ export default function PortfolioPage() {
                 {usd(totalClaimable)} in yield ready to claim
               </div>
               <div className="text-xs text-muted">
-                Accrued via the lazy index across {portfolio.filter((p) => p.yieldClaimable > 0).length} positions.
+                Accrued via the lazy index on your GallyShare deeds across {claimablePositions}{" "}
+                position{claimablePositions === 1 ? "" : "s"}. Wrapped tokens are not included.
               </div>
             </div>
           </div>
@@ -170,61 +183,71 @@ export default function PortfolioPage() {
         </Card>
       )}
 
-      {/* Positions */}
+      {/* Holdings */}
       <section>
-        <SectionHeader title="Holdings" subtitle="GallyShare deeds & wrapped tokens" />
+        <SectionHeader title="Holdings" subtitle="Deeds accrue yield; wrapped tokens are composable but earn none until unwrapped" />
+
+        {/* legend */}
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-border bg-surface-2 px-4 py-3 text-xs text-muted sm:flex-row sm:items-center sm:gap-6">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-positive" />
+            <span className="font-medium text-foreground">Deeds (GallyShare)</span> — owned objects,
+            accrue yield, claimable
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Lock className="h-3.5 w-3.5 text-muted-2" />
+            <span className="font-medium text-foreground">Wrapped (Coin&lt;T&gt;)</span> — coin
+            balance, composable, no yield until unwrapped
+          </span>
+        </div>
+
         <Card>
-          <div className="hidden grid-cols-[1.6fr_0.9fr_0.9fr_0.9fr_0.8fr] gap-3 border-b border-border px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-2 md:grid">
-            <div>Asset</div>
-            <div className="text-right">Shares</div>
-            <div className="text-right">Value</div>
-            <div className="text-right">Yield earned</div>
-            <div className="text-right">APY</div>
-          </div>
           <div className="divide-y divide-border">
             {portfolio.map((p) => {
-              const ret = p.costBasis ? ((p.currentValue - p.costBasis) / p.costBasis) * 100 : 0;
+              const positionPrincipal = p.deeds + p.wrapped;
               return (
-                <Link
+                <div
                   key={p.assetId}
-                  href={`/assets/${p.assetId}`}
-                  className="grid grid-cols-2 items-center gap-3 px-5 py-3.5 transition-colors hover:bg-surface-2 md:grid-cols-[1.6fr_0.9fr_0.9fr_0.9fr_0.8fr]"
+                  className="flex flex-col gap-4 px-5 py-4 transition-colors hover:bg-surface-2 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="flex items-center gap-3">
-                    <Avatar seed={p.assetId} label={p.ticker} size={36} rounded="rounded-lg" />
+                  {/* asset + balances */}
+                  <Link href={`/assets/${p.assetId}`} className="flex min-w-0 flex-1 items-start gap-3">
+                    <Avatar seed={p.assetId} label={p.ticker} size={40} rounded="rounded-lg" />
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-foreground">{p.assetName}</div>
-                      <div className="mt-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium text-foreground">{p.assetName}</span>
                         <StatePill state={p.state} />
                       </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="tnum text-sm font-medium text-foreground">{num(p.shares + p.wrapped)}</div>
-                    {p.wrapped > 0 && (
-                      <div className="flex items-center justify-end gap-1 text-[11px] text-muted">
-                        <Lock className="h-3 w-3" /> {num(p.wrapped)} wrapped
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-positive-soft px-2 py-1 text-[11px] font-medium text-positive">
+                          <Coins className="h-3 w-3" />
+                          {num(p.deeds)} deeds · earning
+                        </span>
+                        {p.wrapped > 0 ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-surface-3 px-2 py-1 text-[11px] font-medium text-muted">
+                            <Lock className="h-3 w-3" />
+                            {num(p.wrapped)} {p.tokenSymbol} · no yield
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-2">fully unwrapped</span>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <div className="tnum text-sm font-medium text-foreground">{usd(p.currentValue)}</div>
-                    <div className={`tnum text-[11px] ${ret >= 0 ? "text-positive" : "text-danger"}`}>
-                      {pctSigned(ret)}
                     </div>
+                  </Link>
+
+                  {/* stats */}
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:items-center sm:gap-8 sm:text-right">
+                    <Cell label="Principal" value={usd(positionPrincipal)} sub={`${num(positionPrincipal)} shares`} />
+                    <Cell label="Yield earned" value={usd(p.yieldEarned)} sub="lifetime" />
+                    <Cell
+                      label="Claimable"
+                      value={p.yieldClaimable > 0 ? `+${usd(p.yieldClaimable)}` : "—"}
+                      valueClass={p.yieldClaimable > 0 ? "text-positive" : "text-muted-2"}
+                      sub={p.yieldClaimable > 0 ? `on ${num(p.deeds)} deeds` : "—"}
+                    />
+                    <Cell label="APY" value={pct(p.apy)} valueClass="text-positive" sub="on deeds" />
                   </div>
-                  <div className="hidden text-right md:block">
-                    <div className="tnum text-sm font-medium text-foreground">{usd(p.yieldEarned)}</div>
-                    {p.yieldClaimable > 0 && (
-                      <div className="tnum text-[11px] text-positive">+{usd(p.yieldClaimable)} claimable</div>
-                    )}
-                  </div>
-                  <div className="hidden text-right md:block">
-                    <span className="tnum text-sm font-semibold text-positive">
-                      {p.apy > 0 ? pct(p.apy) : "—"}
-                    </span>
-                  </div>
-                </Link>
+                </div>
               );
             })}
           </div>
@@ -234,7 +257,10 @@ export default function PortfolioPage() {
       {/* Pending receipts */}
       {portfolioReceipts.length > 0 && (
         <section>
-          <SectionHeader title="Contribution receipts" subtitle="Soulbound — convert to shares when the raise finalizes, or refund if it fails" />
+          <SectionHeader
+            title="Contribution receipts"
+            subtitle="Soulbound — convert to GallyShare deeds when the raise finalizes, or refund if it fails. Receipts do not earn yield."
+          />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {portfolioReceipts.map((r) => (
               <Card key={r.assetId} className="flex items-center justify-between gap-3 p-4">
@@ -249,7 +275,7 @@ export default function PortfolioPage() {
                 </div>
                 <div className="text-right">
                   <div className="tnum text-sm font-semibold text-foreground">{usd(r.amount)}</div>
-                  <div className="text-[11px] text-muted">{num(r.amount)} future shares</div>
+                  <div className="text-[11px] text-muted">{num(r.amount)} future deeds</div>
                 </div>
               </Card>
             ))}
@@ -264,6 +290,26 @@ export default function PortfolioPage() {
           <EventList events={portfolioActivity} limit={10} emptyHint="No activity for this wallet yet." />
         </Card>
       </section>
+    </div>
+  );
+}
+
+function Cell({
+  label,
+  value,
+  sub,
+  valueClass = "text-foreground",
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="text-left sm:text-right">
+      <div className="text-[11px] text-muted-2">{label}</div>
+      <div className={`tnum text-sm font-semibold ${valueClass}`}>{value}</div>
+      {sub && <div className="text-[11px] text-muted">{sub}</div>}
     </div>
   );
 }

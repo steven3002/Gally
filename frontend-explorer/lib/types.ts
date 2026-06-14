@@ -189,20 +189,29 @@ export interface ProtocolEvent {
   meta?: string;
 }
 
-/** Demo portfolio position (reconstructed per §18.4 query #2). */
+/**
+ * Demo portfolio position (reconstructed per §18.4 query #2).
+ *
+ * A holding is two *distinct* on-chain things in the wallet:
+ *  - `deeds`   — GallyShare owned objects. These accrue yield via the lazy index
+ *                and are the ONLY thing `claim_rewards` can be called against (§11).
+ *  - `wrapped` — a vanilla `Coin<T>` balance. Composable/tradeable, but earns
+ *                ZERO yield while wrapped, by construction (D2/D5, wrap theorem §12).
+ * 1 share == 1 USDC of principal, so both sub-balances are valued at par.
+ */
 export interface Position {
   assetId: string;
   assetName: string;
   ticker: string;
+  tokenSymbol: string; // wrapped Coin<T> symbol, e.g. "gVCC"
   category: Category;
   state: AssetState;
-  shares: number; // GallyShare.share_count held (unwrapped)
-  wrapped: number; // Coin<T> held
-  costBasis: number;
-  currentValue: number;
-  yieldEarned: number; // lifetime claimed
-  yieldClaimable: number; // accrued, unclaimed
-  apy: number;
+  deeds: number; // GallyShare share_count held UNWRAPPED — yield-bearing
+  wrapped: number; // Coin<T> balance held — earns NO yield until unwrapped
+  costBasis: number; // USDC originally contributed / paid
+  yieldEarned: number; // lifetime yield claimed (against deeds)
+  yieldClaimable: number; // accrued, unclaimed yield on the deeds only
+  apy: number; // asset effective APY (applies to deeds)
   spark: number[];
 }
 

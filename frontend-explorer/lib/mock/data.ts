@@ -651,19 +651,22 @@ export const disputesForPool = (poolId: string) =>
 export const DEMO_WALLET =
   "0xde1207a4b6c8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0";
 
+// Holdings = operational deed positions only. FUNDING-phase contributions are
+// soulbound ContributionReceipts (see `portfolioReceipts`), not deeds — they are
+// not listed here, so nothing is double-counted.
 export const portfolio: Position[] = [
   {
     assetId: "asset01",
     assetName: "Lagos Coastal Residences",
     ticker: "LCR",
+    tokenSymbol: "gLCR",
     category: "Housing",
     state: "OPERATIONAL",
-    shares: 18_000,
-    wrapped: 6_000,
+    deeds: 18_000, // GallyShare deeds — earning
+    wrapped: 6_000, // gLCR coins — no yield until unwrapped
     costBasis: 24_000,
-    currentValue: 25_980,
     yieldEarned: 3_158,
-    yieldClaimable: 412,
+    yieldClaimable: 412, // accrues on the 18,000 deeds only
     apy: 14.2,
     spark: assetById["asset01"].spark,
   },
@@ -671,12 +674,12 @@ export const portfolio: Position[] = [
     assetId: "asset02",
     assetName: "Kano Solar Microgrid",
     ticker: "KSM",
+    tokenSymbol: "gKSM",
     category: "Energy",
     state: "OPERATIONAL",
-    shares: 12_500,
+    deeds: 12_500,
     wrapped: 0,
     costBasis: 12_500,
-    currentValue: 13_010,
     yieldEarned: 1_301,
     yieldClaimable: 188,
     apy: 11.4,
@@ -686,31 +689,16 @@ export const portfolio: Position[] = [
     assetId: "asset06",
     assetName: "Volta Cocoa Cooperative",
     ticker: "VCC",
+    tokenSymbol: "gVCC",
     category: "Agriculture",
     state: "OPERATIONAL",
-    shares: 8_000,
-    wrapped: 2_000,
+    deeds: 8_000, // earning
+    wrapped: 2_000, // gVCC coins — no yield until unwrapped
     costBasis: 10_000,
-    currentValue: 10_640,
     yieldEarned: 1_989,
-    yieldClaimable: 96,
+    yieldClaimable: 96, // accrues on the 8,000 deeds only
     apy: 9.3,
     spark: assetById["asset06"].spark,
-  },
-  {
-    assetId: "asset04",
-    assetName: "Sahel Cotton Trade Facility",
-    ticker: "SCT",
-    category: "Trade Finance",
-    state: "FUNDING",
-    shares: 0, // still a ContributionReceipt during FUNDING
-    wrapped: 0,
-    costBasis: 15_000,
-    currentValue: 15_000,
-    yieldEarned: 0,
-    yieldClaimable: 0,
-    apy: 0,
-    spark: assetById["asset04"].spark,
   },
 ];
 
