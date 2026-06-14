@@ -1,26 +1,189 @@
 @import "tailwindcss";
 
+/* Class-based dark mode (toggled by adding `.dark` to <html>) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ----------------------------------------------------------------------------
+   Gally Explorer — design tokens
+   Light is the default (matches the fintech-explorer reference); dark mirrors it.
+---------------------------------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f5f6f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f8;
+  --surface-3: #e9ecf3;
+  --border: #e6e8f0;
+  --border-strong: #d6dae6;
+  --foreground: #0f1320;
+  --muted: #646b7d;
+  --muted-2: #99a0b2;
+
+  --primary: #6c5cf6;
+  --primary-strong: #5847f0;
+  --primary-soft: #efedfe;
+  --on-primary: #ffffff;
+
+  --positive: #0fb39a;
+  --positive-soft: #def5f0;
+  --warning: #e89110;
+  --warning-soft: #fbeed4;
+  --danger: #e5484d;
+  --danger-soft: #fbe3e4;
+  --info: #4593e6;
+  --info-soft: #e2eefb;
+
+  --ring: rgba(108, 92, 246, 0.35);
+  --shadow-sm: 0 1px 2px rgba(16, 20, 40, 0.05);
+  --shadow-md: 0 6px 22px -8px rgba(16, 20, 40, 0.18);
+  --shadow-lg: 0 18px 48px -16px rgba(16, 20, 40, 0.28);
+
+  --radius-card: 18px;
+}
+
+.dark {
+  --background: #0a0c12;
+  --surface: #12151e;
+  --surface-2: #181c27;
+  --surface-3: #20252f;
+  --border: #242a36;
+  --border-strong: #313845;
+  --foreground: #e8eaf1;
+  --muted: #9aa1b2;
+  --muted-2: #6b7383;
+
+  --primary: #7d6dff;
+  --primary-strong: #6c5cf6;
+  --primary-soft: #211f3a;
+  --on-primary: #ffffff;
+
+  --positive: #2bd3b6;
+  --positive-soft: #11302c;
+  --warning: #f0a838;
+  --warning-soft: #332512;
+  --danger: #f06a6e;
+  --danger-soft: #361b1d;
+  --info: #5ea3ef;
+  --info-soft: #122433;
+
+  --ring: rgba(125, 109, 255, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 26px -10px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 22px 54px -18px rgba(0, 0, 0, 0.7);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
+
+  --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-soft: var(--primary-soft);
+  --color-on-primary: var(--on-primary);
+
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-card: 18px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Thin, themed scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid var(--background);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-2);
+}
+
+/* Number tabular alignment for tables/stats */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle entrance used by cards / rows */
+@keyframes gally-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-rise {
+  animation: gally-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes gally-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.animate-livedot {
+  animation: gally-pulse 1.8s ease-in-out infinite;
+}
+
+/* Brand gradient text + surfaces */
+.text-gradient {
+  background: linear-gradient(95deg, var(--primary) 0%, var(--positive) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.bg-brand-gradient {
+  background: linear-gradient(135deg, #6c5cf6 0%, #8b5cf6 42%, #0fb39a 100%);
+}
+.bg-grid {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.16) 1px,
+    transparent 0
+  );
+  background-size: 22px 22px;
 }
