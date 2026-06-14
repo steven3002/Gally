@@ -43,7 +43,7 @@ $$\text{claimable} = (\text{global\_index} - \text{global\_index}) \times \text{
 
 **Zero retroactive yield for time spent wrapped** — by construction, regardless of timing, flash loans, or sandwiching.
 
-### Edge Cases the Spec Handles
+### Edge Cases the Spec Handles 
 
 | Scenario | What Happens |
 |---|---|
