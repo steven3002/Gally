@@ -1,0 +1,14 @@
+[package]
+name = "gally_mock_faucet"
+edition = "2024"
+
+[dependencies]
+# Depends on gally_core ONLY to name the settlement coin type
+# `gally_core::usdc::USDC` (protocol_flow.md §2). The Sui framework is an
+# implicit system dependency in edition 2024.
+gally_core = { local = "../gally_core" }
+
+# Local-sim only: chain id of the current `--force-regenesis` node (see the
+# gally_core Move.toml note). Regenerated each run; not a durable pin.
+[environments]
+localnet = "38ef1a6a"

@@ -45,11 +45,11 @@ export const INTENT_ENTRY: Record<IntentKind, string> = {
 export function intentVerb(intent: TxIntent): string {
   switch (intent.kind) {
     case "contribute":
-      return "Contribute";
+      return "Buy Shares";
     case "claim_shares":
       return "Claim deeds";
     case "refund":
-      return "Refund";
+      return "Sell Shares";
     case "claim_rewards":
       return "Claim yield";
     case "wrap":
@@ -69,11 +69,11 @@ export function intentVerb(intent: TxIntent): string {
 export function intentSummary(intent: TxIntent): string {
   switch (intent.kind) {
     case "contribute":
-      return `Contribute ${usd(intent.amount)} USDC to ${intent.assetName}. You receive a soulbound ContributionReceipt.`;
+      return `Invest ${usd(intent.amount)} USDC in ${intent.assetName}. You receive a soulbound receipt redeemable for GallyShare deeds once the raise closes.`;
     case "claim_shares":
       return `Convert your receipt for ${intent.assetName} into ${intent.amount.toLocaleString()} GallyShare deeds.`;
     case "refund":
-      return `Refund your ${usd(intent.amount)} contribution to ${intent.assetName} (the raise failed).`;
+      return `Recover your ${usd(intent.amount)} investment in ${intent.assetName} — the raise did not meet its goal.`;
     case "claim_rewards":
       return `Claim ${usd(intent.amount)} of accrued yield from your ${intent.assetName} deeds.`;
     case "wrap":
@@ -126,7 +126,7 @@ export function intentTone(intent: TxIntent): Tone {
 export function validateIntent(intent: TxIntent): string | null {
   switch (intent.kind) {
     case "contribute":
-      if (intent.amount <= 0) return "Enter a contribution amount.";
+      if (intent.amount <= 0) return "Enter an investment amount.";
       return null;
     case "claim_rewards":
       if (intent.amount <= 0) return "No yield is currently claimable.";

@@ -13,20 +13,20 @@ test.describe("transactions & notifications (FE-M7.2)", () => {
     await expect(panel.getByText(/ready to claim|claim your deeds|refund available/i).first()).toBeVisible();
   });
 
-  test("contribute runs the full lifecycle and lands a toast + bell entry", async ({ page }) => {
+  test("buy shares runs the full lifecycle and lands a toast + bell entry", async ({ page }) => {
     await page.goto("/assets/asset04"); // a FUNDING asset
-    await page.getByRole("button", { name: "Contribute" }).click();
+    await page.getByRole("button", { name: "Buy Shares" }).click();
 
-    const dialog = page.getByRole("dialog", { name: "Contribute" });
+    const dialog = page.getByRole("dialog", { name: "Buy Shares" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText("asset::contribute_capital")).toBeVisible();
 
-    await dialog.getByRole("button", { name: /Confirm contribute/i }).click();
-    await expect(dialog.getByText("Contribute confirmed")).toBeVisible({ timeout: 10_000 });
+    await dialog.getByRole("button", { name: /Confirm buy shares/i }).click();
+    await expect(dialog.getByText("Buy Shares confirmed")).toBeVisible({ timeout: 10_000 });
 
     // archived as a toast (region) ...
     await expect(
-      page.getByRole("region", { name: "Notifications" }).getByText("Contribute confirmed"),
+      page.getByRole("region", { name: "Notifications" }).getByText("Buy Shares confirmed"),
     ).toBeVisible();
     // ... and in the bell, with the unread count bumped
     await dialog.getByRole("link", { name: /View details/ }).click();
@@ -43,7 +43,7 @@ test.describe("transactions & notifications (FE-M7.2)", () => {
 
   test("disconnecting gates actions behind Connect wallet", async ({ page }) => {
     await page.goto("/assets/asset04");
-    await expect(page.getByRole("button", { name: "Contribute" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Buy Shares" })).toBeVisible();
 
     await page.getByRole("button", { name: "Account menu" }).click();
     await page.getByRole("menuitem", { name: "Disconnect" }).click();

@@ -268,7 +268,7 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
       {/* Pending receipts (demo only — soulbound contribution receipts) */}
       {receipts.length > 0 && (
         <section>
-          <SectionHeader title="Contribution receipts" subtitle="Soulbound — convert to GallyShare deeds when the raise finalizes, or refund if it fails. Receipts do not earn yield." />
+          <SectionHeader title="Investment receipts" subtitle="Soulbound — convert to GallyShare deeds when the raise finalizes, or liquidate your position if it fails. Receipts do not earn yield." />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {receipts.map((r) => (
               <Card key={r.assetId} className="flex items-center justify-between gap-3 p-4">

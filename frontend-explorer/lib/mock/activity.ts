@@ -253,7 +253,7 @@ for (const a of assets) {
         actor: address,
         actorRole: "investor",
         amount: Math.round(a.raised * (0.06 + rnd() * 0.05)),
-        summary: `Capital contributed to ${a.name}`,
+        summary: `Shares purchased in ${a.name}`,
         meta: `Raised ${usd(Math.round(a.raised * frac))} of ${usd(a.fundingGoal)}`,
       });
     });
@@ -286,7 +286,7 @@ for (const a of assets) {
       actor: DEMO_WALLET === a.entity ? a.entity : "0x1a02investor00000000000000000000000000000000000000000000sahel002",
       actorRole: "investor",
       amount: Math.round(a.raised * 0.18),
-      summary: `Contribution refunded — ${a.name}`,
+      summary: `Position liquidated — ${a.name}`,
       meta: "Receipt burned, principal returned",
     });
     continue;

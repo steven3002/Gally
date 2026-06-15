@@ -36,10 +36,10 @@ test.describe("responsive hardening @ 375px (FE-M7)", () => {
 
   test("an action modal is usable on mobile", async ({ page }) => {
     await page.goto("/assets/asset04");
-    await page.getByRole("button", { name: "Contribute" }).click();
-    const dialog = page.getByRole("dialog", { name: "Contribute" });
+    await page.getByRole("button", { name: "Buy Shares" }).click();
+    const dialog = page.getByRole("dialog", { name: "Buy Shares" });
     await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: /Confirm contribute/i }).click();
-    await expect(dialog.getByText("Contribute confirmed")).toBeVisible({ timeout: 10_000 });
+    await dialog.getByRole("button", { name: /Confirm buy shares/i }).click();
+    await expect(dialog.getByText("Buy Shares confirmed")).toBeVisible({ timeout: 10_000 });
   });
 });

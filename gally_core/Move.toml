@@ -3,3 +3,8 @@ name = "gally_core"
 edition = "2024"
 
 [dependencies]
+
+# Local-sim only: chain id of the current `--force-regenesis` node. Regenerated
+# each run; not a durable pin. Lets `sui client publish` target the local node.
+[environments]
+localnet = "38ef1a6a"

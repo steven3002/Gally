@@ -57,7 +57,7 @@ export function PauseBanner() {
         <Alert className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
         <p className="text-xs text-foreground">
           <span className="font-semibold text-danger">Protocol paused.</span>{" "}
-          Capital entry is halted (new contributions, wraps) — but every exit stays open: refunds,
+          Capital entry is halted (new share purchases, wraps) — but every exit stays open: refunds,
           claims, unwraps, redemptions and dispute resolution are never pause-gated.{" "}
           <Link href="/governance" className="font-medium text-danger underline">
             Governance

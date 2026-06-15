@@ -28,7 +28,7 @@ export function ReceiptActions({
       <ActionButton
         size="sm"
         tone="warning"
-        label="Refund"
+        label="Sell Shares"
         getIntent={() => ({ kind: "refund", assetId, assetName, amount })}
       />
     );

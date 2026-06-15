@@ -88,7 +88,7 @@ function seed(): AppNotification[] {
         kind: "alert",
         tone: "warning",
         title: "Refund available",
-        body: `${r.assetName} did not reach its goal. Refund your ${usd(r.amount)} contribution.`,
+        body: `${r.assetName} did not reach its goal. Liquidate your ${usd(r.amount)} position.`,
         route: `/assets/${r.assetId}`,
         tsMs: NOW - 6 * HOUR,
         read: false,

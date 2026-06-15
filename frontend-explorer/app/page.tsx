@@ -106,12 +106,12 @@ export default function ExplorePage() {
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card className="p-5">
           <Stat
-            label="Total raised"
+            label="Total Value Locked (TVL)"
             value={usdCompact(protocolStats.totalRaised)}
             delta="+8.2%"
             deltaTone="positive"
             icon={<Coins className="h-4 w-4" />}
-            sub={`${protocolStats.contributors.toLocaleString()} contributors`}
+            sub={`${protocolStats.contributors.toLocaleString()} investors`}
           />
         </Card>
         <Card className="p-5">

@@ -416,7 +416,7 @@ export default async function AssetDetailPage({
                 value={usdCompact(asset.raised)}
                 delta={pct(progress, 0)}
                 deltaTone={progress >= 100 ? "positive" : "muted"}
-                sub={funding ? `${daysLeft(asset.fundingDeadlineMs)} days left` : `${num(asset.contributors)} contributors`}
+                sub={funding ? `${daysLeft(asset.fundingDeadlineMs)} days left` : `${num(asset.contributors)} investors`}
               />
             </Card>
             <Card className="p-5">
@@ -436,7 +436,7 @@ export default async function AssetDetailPage({
           <Card className="p-5">
             {funding ? (
               <>
-                <CardHeader title="Raise progress" subtitle="Cumulative capital contributed" className="px-0 pt-0" />
+                <CardHeader title="Investment progress" subtitle="Cumulative capital invested" className="px-0 pt-0" />
                 <div className="mt-4 flex items-end justify-between gap-4">
                   <div>
                     <div className="tnum text-3xl font-bold tracking-tight text-foreground">

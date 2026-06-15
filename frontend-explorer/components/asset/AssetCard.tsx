@@ -92,7 +92,7 @@ export function AssetCard({ asset }: { asset: Asset }) {
           <span className="tnum">
             {operational
               ? `${asset.holders.toLocaleString()} holders`
-              : `${asset.contributors.toLocaleString()} contributors`}
+              : `${asset.contributors.toLocaleString()} investors`}
           </span>
         </div>
       )}

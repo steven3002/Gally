@@ -22,7 +22,7 @@ export function ContributeAction({
     <ActionButton
       tone="primary"
       icon={<Coins className="h-4 w-4" />}
-      amount={{ label: "Contribution amount", max: remaining, min: 1, default: def, suffix: "USDC" }}
+      amount={{ label: "Investment amount", max: remaining, min: 1, default: def, suffix: "USDC" }}
       getIntent={(amount) => ({ kind: "contribute", assetId, assetName, amount })}
     />
   );
