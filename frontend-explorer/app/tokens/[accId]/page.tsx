@@ -47,7 +47,7 @@ export default async function TokenPage({ params }: { params: Promise<{ accId: s
         <Card>
           <CardHeader title="Holder ledger" subtitle="Deeds (yield-bearing) + wrapped Coin<T>" />
           <div className="mt-2">
-            <HolderTable holders={holders} tokenSymbol={acc.tokenSymbol} demoAddress={DEMO_WALLET} />
+            <HolderTable holders={holders} tokenSymbol={acc.tokenSymbol} demoAddress={DEMO_WALLET} pageSize={20} />
           </div>
         </Card>
       </div>
@@ -60,6 +60,7 @@ export default async function TokenPage({ params }: { params: Promise<{ accId: s
       <EventList
         events={events.filter((e) => e.feed === "revenue" || e.feed === "position")}
         showAsset={false}
+        pageSize={20}
         emptyHint="No wrap/unwrap or revenue activity yet."
       />
     </Card>
@@ -170,7 +171,7 @@ export default async function TokenPage({ params }: { params: Promise<{ accId: s
               <RingGauge value={wrapRatio} size={72} thickness={8} label={<span className="tnum text-xs font-semibold">{pct(wrapRatio, 0)}</span>} />
             </div>
             <p className="mt-3 text-[11px] text-muted-2">
-              Wrapped tokens earn no yield while wrapped (D2/D5) — the index denominator is unwrapped
+              Wrapped tokens earn no yield while wrapped — the index denominator is unwrapped
               supply only, so unwrapped holders earn the wrapped holders&apos; share.
             </p>
           </Card>
@@ -210,7 +211,7 @@ export default async function TokenPage({ params }: { params: Promise<{ accId: s
             </div>
             <p className="mt-3 text-[11px] text-muted-2">
               The <code>TreasuryCap&lt;{acc.tokenSymbol}&gt;</code> is custodied inside the accumulator
-              forever — only the wrap machine can mint/burn, so supply always equals wrapped shares (I-W1).
+              forever — only the wrap machine can mint/burn, so supply always equals wrapped shares.
             </p>
           </Card>
         </div>

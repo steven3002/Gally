@@ -132,7 +132,7 @@ export function governanceHistory(): GovHistoryEntry[] {
       tsMs: ph.tsMs,
       txDigest: ph.txDigest,
       title: ph.paused ? "Emergency stop triggered" : "Protocol resumed",
-      detail: ph.paused ? "Capital entry halted — exits stayed open (D6)" : "Normal operation restored",
+      detail: ph.paused ? "Capital entry halted — exits stayed open" : "Normal operation restored",
     });
   }
   return out.sort((a, b) => b.tsMs - a.tsMs);

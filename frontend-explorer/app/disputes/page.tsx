@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Card, SectionHeader, Stat } from "@/components/ui/primitives";
+import { Paginated } from "@/components/ui/Pager";
 import { DisputeCard } from "@/components/dispute/DisputeCard";
 import { disputes, protocolConfig } from "@/lib/mock/data";
 import { usd, usdCompact } from "@/lib/format";
@@ -72,11 +73,11 @@ export default function DisputesPage() {
 
       <section>
         <SectionHeader title="Resolved" subtitle="Historical verdicts" />
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Paginated pageSize={10} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {resolved.map((d) => (
             <DisputeCard key={d.id} dispute={d} />
           ))}
-        </div>
+        </Paginated>
       </section>
     </div>
   );

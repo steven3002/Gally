@@ -41,7 +41,7 @@ export function SolvencyMeter({ solvency }: { solvency: Solvency }) {
       </div>
       <p className="mt-2 text-[11px] text-muted-2">
         {solvency.hasYield
-          ? `Buffer ${usd(solvency.buffer)} — the §15.4 truncation dust that keeps the pool solvent (I-M2). 1 share = 1 USDC.`
+          ? `Buffer ${usd(solvency.buffer)} — truncation dust that keeps the pool solvent. 1 share = 1 USDC.`
           : "No yield distributed yet, so nothing is owed against the pool."}
       </p>
       {solvency.owed > 0 && (

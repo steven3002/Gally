@@ -90,11 +90,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </div>
 
-      {/* Network footer */}
+      {/* Explorer footer (network now lives on the wallet control in the topbar) */}
       <div className="border-t border-border px-5 py-3">
         <div className="flex items-center gap-2 text-[11px] text-muted">
           <span className="h-1.5 w-1.5 rounded-full bg-positive" />
-          {protocolConfig.network}
+          Read-only explorer
           <span className="ml-auto rounded-md bg-surface-2 px-1.5 py-0.5 font-medium text-muted-2">
             v{protocolConfig.version}
           </span>

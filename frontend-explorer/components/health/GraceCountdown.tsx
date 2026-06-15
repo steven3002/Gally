@@ -19,7 +19,7 @@ export function GraceCountdown({ grace, tokenSymbol }: { grace: Grace; tokenSymb
           </div>
           <div className="mt-0.5 text-warning/80">
             Compensation grace window closes {relTime(grace.unlockMs)}. After it, slashed/seized funds
-            sweep into the index and only unwrapped deeds are eligible (§13).
+            sweep into the index and only unwrapped deeds are eligible.
           </div>
         </div>
       </div>

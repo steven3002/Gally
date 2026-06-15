@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Card, Stat } from "@/components/ui/primitives";
+import { Paginated } from "@/components/ui/Pager";
 import { ValidatorCard } from "@/components/validator/ValidatorCard";
 import { validators, protocolConfig } from "@/lib/mock/data";
 import { usdCompact, usd } from "@/lib/format";
@@ -44,11 +45,11 @@ export default function ValidatorsPage() {
         locks {protocolConfig.vouchCoverageBps / 100}% of the asset&apos;s funding goal as coverage.
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <Paginated pageSize={12} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sorted.map((v) => (
           <ValidatorCard key={v.poolId} validator={v} />
         ))}
-      </div>
+      </Paginated>
     </div>
   );
 }

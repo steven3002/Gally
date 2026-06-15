@@ -55,7 +55,8 @@ export function ActivityFeed() {
         })}
       </div>
       <Card>
-        <EventList events={events} />
+        {/* key={feed} remounts on filter change so paging resets to page 1 */}
+        <EventList key={feed} events={events} pageSize={20} />
       </Card>
     </div>
   );

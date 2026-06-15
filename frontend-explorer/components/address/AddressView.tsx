@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { AccountRole, Category } from "@/lib/types";
-import { CATEGORY_COLOR, num, pct, usd, usdCompact, suiscanUrl, type Tone } from "@/lib/format";
+import { CATEGORY_COLOR, cn, num, pct, usd, usdCompact, suiscanUrl, type Tone } from "@/lib/format";
 import { accountByAddr } from "@/lib/mock/accounts";
 import { holdingsOf } from "@/lib/mock/holders";
 import { eventsForActor } from "@/lib/mock/activity";
@@ -27,6 +27,9 @@ import {
   Lock,
   Wallet,
 } from "@/components/ui/icons";
+
+// Shared column template so Principal / Claimable / APY line up across holdings.
+const HOLD_COLS = "sm:grid sm:grid-cols-[minmax(0,2.6fr)_1fr_1fr_0.8fr] sm:items-center sm:gap-4";
 
 const ROLE_TONE: Record<AccountRole, Tone> = {
   investor: "primary",
@@ -174,10 +177,17 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
           <section className="lg:col-span-2">
             <SectionHeader title="Holdings" subtitle="Deeds accrue yield; wrapped tokens are composable but earn none until unwrapped" />
             <Card>
+              {/* Column header (sm+); rows stack with inline labels on mobile */}
+              <div className={cn("hidden border-b border-border px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-2", HOLD_COLS)}>
+                <span>Asset</span>
+                <span className="text-right">Principal</span>
+                <span className="text-right">Claimable</span>
+                <span className="text-right">APY</span>
+              </div>
               <div className="divide-y divide-border">
                 {holdings.map((h) => (
-                  <div key={h.assetId} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-surface-2 sm:flex-row sm:items-center sm:justify-between">
-                    <Link href={`/assets/${h.assetId}`} className="flex min-w-0 flex-1 items-center gap-3">
+                  <div key={h.assetId} className={cn("flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-surface-2", HOLD_COLS)}>
+                    <Link href={`/assets/${h.assetId}`} className="flex min-w-0 items-center gap-3">
                       <Avatar seed={h.assetId} label={h.ticker} size={40} rounded="rounded-lg" />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -196,7 +206,7 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
                         </div>
                       </div>
                     </Link>
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-2 sm:flex sm:items-center sm:gap-8 sm:text-right">
+                    <div className="grid grid-cols-3 gap-x-6 gap-y-2 sm:contents">
                       <Cell label="Principal" value={usd(h.shareCount + h.wrapped)} />
                       <Cell label="Claimable" value={h.pendingYield > 0 ? `+${usd(h.pendingYield)}` : "—"} cls={h.pendingYield > 0 ? "text-positive" : "text-muted-2"} />
                       <Cell label="APY" value={h.apy > 0 ? pct(h.apy) : "—"} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
@@ -266,7 +276,7 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
           {events.length === 0 ? (
             <Empty icon={<Activity className="h-8 w-8" />} title="No activity" hint="This address has not acted in any indexed transaction." />
           ) : (
-            <EventList events={events} limit={25} />
+            <EventList events={events} pageSize={20} />
           )}
         </Card>
       </section>
@@ -277,7 +287,8 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
 function Cell({ label, value, cls = "text-foreground" }: { label: string; value: string; cls?: string }) {
   return (
     <div className="text-left sm:text-right">
-      <div className="text-[11px] text-muted-2">{label}</div>
+      {/* label repeats per-row on mobile; on sm+ the table header carries it */}
+      <div className="text-[11px] text-muted-2 sm:hidden">{label}</div>
       <div className={`tnum text-sm font-semibold ${cls}`}>{value}</div>
     </div>
   );

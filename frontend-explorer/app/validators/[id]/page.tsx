@@ -53,7 +53,7 @@ export default async function ValidatorDetailPage({
       content:
         vouched.length > 0 ? (
           <Card>
-            <AssetTable assets={vouched} />
+            <AssetTable assets={vouched} pageSize={20} />
           </Card>
         ) : (
           <Card className="py-12 text-center text-sm text-muted">No assets vouched.</Card>
@@ -82,7 +82,7 @@ export default async function ValidatorDetailPage({
       count: events.length,
       content: (
         <Card>
-          <EventList events={events} emptyHint="No on-chain activity for this validator yet." />
+          <EventList events={events} pageSize={20} emptyHint="No on-chain activity for this validator yet." />
         </Card>
       ),
     },

@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import type { Asset } from "@/lib/types";
 import {
@@ -12,6 +14,7 @@ import { CategoryIcon } from "@/components/ui/primitives";
 import { Sparkline } from "@/components/ui/charts";
 import { WatchButton } from "@/components/WatchButton";
 import { ChevronRight } from "@/components/ui/icons";
+import { Pager, usePaged } from "@/components/ui/Pager";
 
 function accent(a: Asset): string {
   if (a.state === "OPERATIONAL") return "var(--positive)";
@@ -20,7 +23,12 @@ function accent(a: Asset): string {
   return "var(--muted-2)";
 }
 
-export function AssetTable({ assets }: { assets: Asset[] }) {
+export function AssetTable({ assets, pageSize }: { assets: Asset[]; pageSize?: number }) {
+  const paginate = !!pageSize && pageSize > 0;
+  const { page, setPage, pageItems, pageCount, total } = usePaged(
+    assets,
+    paginate ? pageSize! : Math.max(1, assets.length),
+  );
   return (
     <div className="overflow-hidden">
       {/* header */}
@@ -34,7 +42,7 @@ export function AssetTable({ assets }: { assets: Asset[] }) {
       </div>
 
       <div className="divide-y divide-border">
-        {assets.map((a) => {
+        {pageItems.map((a) => {
           const progress = pctOf(a.raised, a.fundingGoal);
           const funding = a.state === "FUNDING";
           const operational = a.state === "OPERATIONAL";
@@ -113,6 +121,15 @@ export function AssetTable({ assets }: { assets: Asset[] }) {
           );
         })}
       </div>
+      {paginate && (
+        <Pager
+          page={page}
+          pageCount={pageCount}
+          total={total}
+          pageSize={pageSize!}
+          onPage={setPage}
+        />
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { cn, STATE_LABEL } from "@/lib/format";
 import { AssetCard } from "./AssetCard";
 import { AssetTable } from "./AssetTable";
 import { Card } from "@/components/ui/primitives";
+import { Pager, usePaged } from "@/components/ui/Pager";
 import { Search, Filter, Layers } from "@/components/ui/icons";
 
 const CATEGORIES: (Category | "All")[] = [
@@ -80,6 +81,16 @@ export function AssetsExplorer({ initialCategory }: { initialCategory?: string }
     });
     return list;
   }, [q, cat, state, sort]);
+
+  // Page the filtered list (cards are large, so ~12/page = 4 grid rows). Reset to
+  // the first page whenever the filter/sort signature changes (adjust-during-render).
+  const { page, setPage, pageItems, pageCount, total } = usePaged(filtered, 12);
+  const sig = `${q}|${cat}|${state}|${sort}`;
+  const [prevSig, setPrevSig] = useState(sig);
+  if (sig !== prevSig) {
+    setPrevSig(sig);
+    setPage(0);
+  }
 
   return (
     <div className="space-y-5">
@@ -162,16 +173,28 @@ export function AssetsExplorer({ initialCategory }: { initialCategory?: string }
           <p className="text-sm font-medium text-foreground">No assets match your filters</p>
           <p className="text-xs text-muted">Try clearing the search or selecting another sector.</p>
         </Card>
-      ) : view === "grid" ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((a: Asset) => (
-            <AssetCard key={a.id} asset={a} />
-          ))}
-        </div>
       ) : (
-        <Card>
-          <AssetTable assets={filtered} />
-        </Card>
+        <div className="space-y-5">
+          {view === "grid" ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {pageItems.map((a: Asset) => (
+                <AssetCard key={a.id} asset={a} />
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <AssetTable assets={pageItems} />
+            </Card>
+          )}
+          <Pager
+            page={page}
+            pageCount={pageCount}
+            total={total}
+            pageSize={12}
+            onPage={setPage}
+            className="rounded-[var(--radius-card)] border border-border bg-surface"
+          />
+        </div>
       )}
     </div>
   );

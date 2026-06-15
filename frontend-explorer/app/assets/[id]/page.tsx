@@ -176,7 +176,7 @@ export default async function AssetDetailPage({
         <Card className="p-5">
           <CardHeader
             title="Revenue distribution"
-            subtitle={`Three-way split on every deposit (D9) — across ${split.deposits} deposit${split.deposits === 1 ? "" : "s"}`}
+            subtitle={`Three-way split on every deposit — across ${split.deposits} deposit${split.deposits === 1 ? "" : "s"}`}
             className="px-0 pt-0"
           />
           <div className="mt-4 flex items-end justify-between gap-4">
@@ -206,6 +206,7 @@ export default async function AssetDetailPage({
           <EventList
             events={events.filter((e) => e.feed === "revenue" || e.type === "YieldClaimed")}
             showAsset={false}
+            pageSize={20}
             emptyHint="No revenue deposited yet."
           />
         </div>
@@ -223,7 +224,7 @@ export default async function AssetDetailPage({
 
   const activityPanel = (
     <Card>
-      <EventList events={events} showAsset={false} />
+      <EventList events={events} showAsset={false} pageSize={20} />
     </Card>
   );
 
@@ -355,7 +356,7 @@ export default async function AssetDetailPage({
                 <p className="mt-0.5 text-muted">
                   Seized collateral, undeployed escrow{asset.disputed ? " and slashed validator coverage" : ""}{" "}
                   back a pro-rata payout to holders. <strong>Wrapped tokens are not eligible</strong> — unwrap
-                  to GallyShare deeds before the grace deadline below to be made whole (§13, D5).
+                  to GallyShare deeds before the grace deadline below to be made whole.
                 </p>
               </div>
             </div>
@@ -514,7 +515,7 @@ export default async function AssetDetailPage({
 
           {/* Legal documents (validator-attested at vouch) */}
           <Card className="p-5">
-            <CardHeader title="Legal documents" subtitle="What the validator staked its coverage on (§7)" className="px-0 pt-0" />
+            <CardHeader title="Legal documents" subtitle="What the validator staked its coverage on" className="px-0 pt-0" />
             {legal.length === 0 ? (
               <p className="mt-3 rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted">
                 Not vouched yet — no legal documents are pinned on-chain for this asset.

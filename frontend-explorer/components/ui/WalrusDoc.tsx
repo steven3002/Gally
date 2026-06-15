@@ -21,7 +21,7 @@ const KIND_TONE: Record<DocKind, Tone> = {
 
 /** The protocol's A13 story, shown wherever a content hash is rendered. */
 export const SHA_EXPLAINER =
-  "Content-pinned by sha256: the chain stores this hash, so re-uploading a different file to the same Walrus blob changes the hash and is detectable (attack A13).";
+  "Content-pinned by sha256: the chain stores this hash, so re-uploading a different file to the same Walrus blob changes the hash and is detectable.";
 
 /**
  * A content-addressed off-chain document (`WalrusRef`, §3.5): an open/download

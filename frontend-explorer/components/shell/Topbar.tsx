@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Bell, Menu, Moon, Search, Sun, Wallet } from "@/components/ui/icons";
 import { Avatar } from "@/components/ui/primitives";
 import { OPEN_PALETTE_EVENT } from "@/components/search/CommandPalette";
-import { DEMO_WALLET } from "@/lib/mock/data";
+import { DEMO_WALLET, protocolConfig } from "@/lib/mock/data";
 import { shortAddr } from "@/lib/format";
 
 function openPalette() {
@@ -45,10 +45,22 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
           <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-danger" />
         </button>
 
+        {/* Network indicator — sits with the wallet control so the connected
+            network is always visible, even before a wallet is connected. */}
+        <span
+          className="ml-1 flex items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 py-2"
+          title={`Connected network: ${protocolConfig.network}`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-positive" />
+          <span className="hidden text-[11px] font-semibold capitalize text-muted-2 sm:inline">
+            {protocolConfig.network}
+          </span>
+        </span>
+
         {/* Demo wallet chip → its account page */}
         <Link
           href={`/address/${DEMO_WALLET}`}
-          className="ml-1 flex items-center gap-2.5 rounded-xl border border-border bg-surface py-1.5 pl-2 pr-3 transition-colors hover:border-border-strong"
+          className="flex items-center gap-2.5 rounded-xl border border-border bg-surface py-1.5 pl-2 pr-3 transition-colors hover:border-border-strong"
         >
           <Avatar seed={DEMO_WALLET} size={28} rounded="rounded-lg" />
           <div className="hidden leading-none sm:block">

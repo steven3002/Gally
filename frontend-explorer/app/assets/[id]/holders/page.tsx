@@ -71,7 +71,7 @@ export default async function AssetHoldersPage({ params }: { params: Promise<{ i
           <Card>
             <CardHeader title="Holder ledger" subtitle="Ranked by total holding — deeds (yield-bearing) + wrapped Coin<T>" />
             <div className="mt-2">
-              <HolderTable holders={holders} tokenSymbol={tokenSymbol} demoAddress={DEMO_WALLET} />
+              <HolderTable holders={holders} tokenSymbol={tokenSymbol} demoAddress={DEMO_WALLET} pageSize={20} />
             </div>
           </Card>
         </>

@@ -52,7 +52,7 @@ export function UnwrapAlert({ holdings }: { holdings: Holding[] }) {
               You hold wrapped tokens in {atRisk.length === 1 ? "an asset" : `${atRisk.length} assets`} with an
               open compensation grace window. Wrapped <code>Coin&lt;T&gt;</code> is <strong>not eligible</strong>{" "}
               for the slashed/seized restitution — unwrap to GallyShare deeds before the deadline or you
-              permanently miss it (§13).
+              permanently miss it.
             </p>
             <div className="mt-3 space-y-2">
               {atRisk.map((r) => (

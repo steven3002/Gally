@@ -14,7 +14,7 @@ export function CompensationStack({ stack }: { stack: Stack }) {
     <Card className="p-5">
       <CardHeader
         title="Compensation stack"
-        subtitle="Three restitution layers, seized in order (§13)"
+        subtitle="Three restitution layers, seized in order"
         className="px-0 pt-0"
       />
       <ol className="mt-4 space-y-3">
@@ -41,7 +41,7 @@ export function CompensationStack({ stack }: { stack: Stack }) {
       </div>
       <p className="mt-2 text-[11px] text-muted-2">
         The pool is distributed pro-rata to holders through the index on sweep — no push loop,
-        no snapshot. Wrapped holders must unwrap before the grace deadline to be eligible (D5).
+        no snapshot. Wrapped holders must unwrap before the grace deadline to be eligible.
       </p>
     </Card>
   );

@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { protocolConfig } from "@/lib/mock/data";
 import { governanceHistory, type GovEventKind } from "@/lib/mock/governance";
-import { bpsToPct, DAY, HOUR, num, relTime, shortDate, usd, type Tone } from "@/lib/format";
+import { bpsToPct, cn, DAY, HOUR, num, relTime, shortDate, usd, type Tone } from "@/lib/format";
 import { Avatar, Card, CardHeader, Stat } from "@/components/ui/primitives";
 import { Bar, KV, Pill } from "@/components/ui/bits";
 import { IdLink } from "@/components/ui/IdLink";
+import { Paginated } from "@/components/ui/Pager";
 import { PausePreviewToggle } from "@/components/shell/PauseBanner";
 import { Check, ChevronRight, Lock, Scale, Settings, Shield } from "@/components/ui/icons";
+
+// Shared column template so Type / Change / Time / Transaction line up down the log.
+const GOV_COLS = "sm:grid sm:grid-cols-[110px_minmax(0,1fr)_100px_150px] sm:items-center sm:gap-4";
 
 function durationLabel(ms: number): string {
   const d = ms / DAY;
@@ -50,7 +54,7 @@ export default function GovernancePage() {
               parameter-change history. All values shown are read-only.
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-2">
-              Config <IdLink id={c.configId} /> · v{c.version} · {c.network}
+              Config <IdLink id={c.configId} /> · v{c.version}
             </div>
           </div>
         </div>
@@ -71,7 +75,7 @@ export default function GovernancePage() {
                 <Pill tone={paused ? "danger" : "positive"} dot>{paused ? "Paused" : "Live"}</Pill>
               </div>
               <p className="mt-0.5 text-xs text-muted">
-                D6: the pause switch halts capital <em>entry</em> only. Exits — refunds, claims, unwraps,
+                The pause switch halts capital <em>entry</em> only. Exits — refunds, claims, unwraps,
                 redemptions, dispute resolution — are never pause-gated.
               </p>
             </div>
@@ -99,7 +103,7 @@ export default function GovernancePage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* All tunables */}
         <Card className="p-5">
-          <CardHeader title="Parameters" subtitle="Every ProtocolConfig tunable (§3.1)" className="px-0 pt-0" />
+          <CardHeader title="Parameters" subtitle="Every ProtocolConfig tunable" className="px-0 pt-0" />
           <div className="mt-2">
             <Bar>
               <KV label="Protocol fee">{bpsToPct(c.protocolFeeBps)}</KV>
@@ -138,26 +142,43 @@ export default function GovernancePage() {
 
       {/* Parameter-change history */}
       <Card>
-        <CardHeader title="Parameter-change history" subtitle="Governance is event-only on chain (§18.3) — newest first" />
-        <div className="mt-2 divide-y divide-border">
-          {history.map((h) => {
-            const m = KIND_META[h.kind];
-            return (
-              <div key={h.txDigest + h.tsMs} className="flex flex-col gap-2 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex min-w-0 items-start gap-3">
-                  <Pill tone={m.tone}>{m.label}</Pill>
+        <CardHeader title="Parameter-change history" subtitle="Governance is event-only on chain — newest first" />
+        <div className="mt-2">
+          {/* Column header (sm+); rows stack with inline labels on mobile */}
+          <div
+            className={cn(
+              "hidden border-b border-border px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-2",
+              GOV_COLS,
+            )}
+          >
+            <span>Type</span>
+            <span>Change</span>
+            <span>Time</span>
+            <span>Transaction</span>
+          </div>
+          <Paginated pageSize={20} className="divide-y divide-border">
+            {history.map((h) => {
+              const m = KIND_META[h.kind];
+              return (
+                <div key={h.txDigest + h.tsMs} className={cn("flex flex-col gap-2 px-5 py-3.5", GOV_COLS)}>
+                  <div>
+                    <Pill tone={m.tone}>{m.label}</Pill>
+                  </div>
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-foreground">{h.title}</div>
                     <div className="mt-0.5 font-mono text-[11px] text-muted-2">{h.detail}</div>
                   </div>
+                  <div className="text-xs text-muted" title={shortDate(h.tsMs)}>
+                    <span className="font-medium text-muted-2 sm:hidden">When: </span>
+                    {relTime(h.tsMs)}
+                  </div>
+                  <div className="sm:text-right">
+                    <IdLink id={h.txDigest} />
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-3 pl-12 sm:pl-0">
-                  <span className="text-xs text-muted" title={shortDate(h.tsMs)}>{relTime(h.tsMs)}</span>
-                  <IdLink id={h.txDigest} />
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </Paginated>
         </div>
       </Card>
     </div>

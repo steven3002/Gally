@@ -98,7 +98,7 @@ export default async function DisputeDetailPage({ params }: { params: Promise<{ 
         <div className="space-y-6 xl:col-span-8">
           {/* Evidence — the on-chain primary artifact */}
           <Card className="p-5">
-            <CardHeader title="On-chain evidence" subtitle="The challenger's sha256-pinned counter-evidence (§13)" className="px-0 pt-0" />
+            <CardHeader title="On-chain evidence" subtitle="The challenger's sha256-pinned counter-evidence" className="px-0 pt-0" />
             <div className="mt-4">
               {evidence ? (
                 <WalrusDoc doc={evidence} />

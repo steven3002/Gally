@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import type { EventFeed, ProtocolEvent } from "@/lib/types";
 import { cn, relTime, shortDigest, usd } from "@/lib/format";
@@ -12,6 +14,7 @@ import {
   TrendUp,
 } from "@/components/ui/icons";
 import { Empty } from "@/components/ui/primitives";
+import { Pager, usePaged } from "@/components/ui/Pager";
 
 const FEED_META: Record<EventFeed, { tone: Tone; icon: (p: { className?: string }) => React.ReactNode }> = {
   lifecycle: { tone: "primary", icon: Layers },
@@ -35,21 +38,32 @@ export function EventList({
   events,
   showAsset = true,
   limit,
+  pageSize,
   emptyHint,
 }: {
   events: ProtocolEvent[];
   showAsset?: boolean;
+  /** Hard cap — show at most N rows, no pager (teaser lists). */
   limit?: number;
+  /** Paginate at N rows per page (long feeds). Ignored when `limit` is set. */
+  pageSize?: number;
   emptyHint?: string;
 }) {
-  const list = limit ? events.slice(0, limit) : events;
-  if (list.length === 0) {
+  const capped = limit ? events.slice(0, limit) : events;
+  const paginate = !limit && !!pageSize && pageSize > 0;
+  const { page, setPage, pageItems, pageCount, total } = usePaged(
+    capped,
+    paginate ? pageSize! : Math.max(1, capped.length),
+  );
+
+  if (capped.length === 0) {
     return <Empty icon={<Activity className="h-8 w-8" />} title="No activity yet" hint={emptyHint} />;
   }
 
   return (
-    <ul className="divide-y divide-border">
-      {list.map((e) => {
+    <>
+      <ul className="divide-y divide-border">
+      {pageItems.map((e) => {
         const meta = FEED_META[e.feed];
         const Icon = meta.icon;
         return (
@@ -103,6 +117,16 @@ export function EventList({
           </li>
         );
       })}
-    </ul>
+      </ul>
+      {paginate && (
+        <Pager
+          page={page}
+          pageCount={pageCount}
+          total={total}
+          pageSize={pageSize!}
+          onPage={setPage}
+        />
+      )}
+    </>
   );
 }

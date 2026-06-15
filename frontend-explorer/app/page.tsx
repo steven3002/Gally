@@ -3,7 +3,6 @@ import {
   assets,
   categoryStats,
   disputes,
-  protocolConfig,
   protocolStats,
 } from "@/lib/mock/data";
 import { recentEvents } from "@/lib/mock/activity";
@@ -44,7 +43,7 @@ export default function ExplorePage() {
           <div className="max-w-xl">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur">
               <span className="h-1.5 w-1.5 animate-livedot rounded-full bg-white" />
-              {protocolConfig.network} · Capital Explorer
+              Capital Explorer
             </span>
             <h1 className="mt-4 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
               Real-world assets,
