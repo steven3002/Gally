@@ -170,3 +170,22 @@ export function holdingsOf(address: string): Holding[] {
 
 /** Count of distinct holders of an asset (== ledger length). */
 export const holderCount = (assetId: string): number => (holderLedger[assetId] ?? []).length;
+
+/** A holder joined with its total holding and share of total minted supply. */
+export interface RankedHolder extends HolderEntry {
+  total: number; // deeds + wrapped
+  pctOfSupply: number; // total / total_minted_shares * 100
+}
+
+/**
+ * Ranked holder distribution of an asset: each holder's total and % of supply.
+ * Because Σ total == total_minted_shares (MI-1), Σ pctOfSupply == 100 (±float dust).
+ * Powers the holders ledger + distribution visuals (FE-M3).
+ */
+export function holderDistribution(assetId: string): RankedHolder[] {
+  const minted = supplyOf(assetId).minted || 1;
+  return holdersOf(assetId).map((h) => {
+    const total = h.shareCount + h.wrapped;
+    return { ...h, total, pctOfSupply: (total / minted) * 100 };
+  });
+}

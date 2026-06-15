@@ -5,8 +5,11 @@ import {
   assets,
   disputesForAsset,
   validatorForAsset,
+  DEMO_WALLET,
 } from "@/lib/mock/data";
 import { eventsForAsset } from "@/lib/mock/activity";
+import { holderDistribution, supplyOf } from "@/lib/mock/holders";
+import { legalDocsOf } from "@/lib/mock/documents";
 import {
   bpsToPct,
   daysLeft,
@@ -35,6 +38,9 @@ import { StageStepper, LifecycleTimeline } from "@/components/asset/Lifecycle";
 import { TrancheList } from "@/components/asset/TrancheList";
 import { EventList } from "@/components/events/EventList";
 import { DisputeCard } from "@/components/dispute/DisputeCard";
+import { Distribution } from "@/components/holders/Distribution";
+import { HolderTable } from "@/components/holders/HolderTable";
+import { WalrusDoc } from "@/components/ui/WalrusDoc";
 import {
   Alert,
   ChevronRight,
@@ -42,6 +48,7 @@ import {
   ExternalLink,
   Lock,
   MapPin,
+  Shield,
   Users,
 } from "@/components/ui/icons";
 
@@ -61,6 +68,9 @@ export default async function AssetDetailPage({
   const validator = validatorForAsset(asset);
   const events = eventsForAsset(asset.id);
   const disputes = disputesForAsset(asset.id);
+  const holders = holderDistribution(asset.id);
+  const supply = supplyOf(asset.id);
+  const legal = legalDocsOf(asset.id);
   const acc = asset.accumulator;
   const progress = pctOf(asset.raised, asset.fundingGoal);
   const funding = asset.state === "FUNDING";
@@ -78,7 +88,11 @@ export default async function AssetDetailPage({
         <Card className="p-5">
           <h4 className="mb-1 text-sm font-semibold text-foreground">Project details</h4>
           <Bar>
-            <KV label="Entity">{asset.entityName}</KV>
+            <KV label="Entity">
+              <Link href={`/address/${asset.entity}`} className="text-foreground transition-colors hover:text-primary">
+                {asset.entityName}
+              </Link>
+            </KV>
             <KV label="Category">{asset.category}</KV>
             <KV label="Location">{asset.location}</KV>
             <KV label="Funding goal">{usd(asset.fundingGoal)}</KV>
@@ -165,10 +179,38 @@ export default async function AssetDetailPage({
     </Card>
   );
 
+  const holdersPanel = (
+    <div className="space-y-6">
+      <Card className="p-5">
+        <CardHeader title="Distribution" subtitle="Holder concentration & supply breakdown" className="px-0 pt-0" />
+        <div className="mt-4">
+          <Distribution holders={holders} supply={supply} tokenSymbol={acc?.tokenSymbol} />
+        </div>
+      </Card>
+      <Card>
+        <CardHeader
+          title="Top holders"
+          subtitle="Deeds (yield-bearing) + wrapped Coin<T>"
+          action={
+            <Link href={`/assets/${asset.id}/holders`} className="shrink-0 text-xs font-semibold text-primary transition-colors hover:text-primary-strong">
+              View all {holders.length} →
+            </Link>
+          }
+        />
+        <div className="mt-2">
+          <HolderTable holders={holders.slice(0, 8)} tokenSymbol={acc?.tokenSymbol} demoAddress={DEMO_WALLET} />
+        </div>
+      </Card>
+    </div>
+  );
+
   const tabs = [
     { id: "overview", label: "Overview", content: overview },
     { id: "tranches", label: "Tranches", count: asset.tranches.length, content: tranchesPanel },
     { id: "yield", label: "Yield & revenue", content: yieldPanel },
+    ...(holders.length > 0
+      ? [{ id: "holders", label: "Holders", count: holders.length, content: holdersPanel }]
+      : []),
     { id: "activity", label: "Activity", count: events.length, content: activityPanel },
     ...(disputes.length > 0
       ? [
@@ -211,7 +253,9 @@ export default async function AssetDetailPage({
               </span>
             </div>
             <p className="mt-1 flex items-center gap-1.5 text-sm text-muted">
-              {asset.entityName}
+              <Link href={`/address/${asset.entity}`} className="font-medium text-muted transition-colors hover:text-primary hover:underline">
+                {asset.entityName}
+              </Link>
               <span className="text-muted-2">·</span>
               <MapPin className="h-3.5 w-3.5" />
               {asset.location}
@@ -393,6 +437,26 @@ export default async function AssetDetailPage({
               </div>
             </Card>
           )}
+
+          {/* Legal documents (validator-attested at vouch) */}
+          <Card className="p-5">
+            <CardHeader title="Legal documents" subtitle="What the validator staked its coverage on (§7)" className="px-0 pt-0" />
+            {legal.length === 0 ? (
+              <p className="mt-3 rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted">
+                Not vouched yet — no legal documents are pinned on-chain for this asset.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2.5">
+                {legal.map((d) => (
+                  <WalrusDoc key={d.blobId} doc={d} />
+                ))}
+                <p className="flex items-start gap-1.5 text-[11px] text-muted-2">
+                  <Shield className="mt-0.5 h-3 w-3 shrink-0 text-positive" />
+                  Each document is content-pinned by sha256 — re-uploading a different file is detectable.
+                </p>
+              </div>
+            )}
+          </Card>
 
           {/* Accumulator / token */}
           {acc && (

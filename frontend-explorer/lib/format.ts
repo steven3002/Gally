@@ -61,6 +61,12 @@ export function shortDigest(d: string): string {
   return d.length > 10 ? `${d.slice(0, 6)}…${d.slice(-4)}` : d;
 }
 
+/** Truncate a content hash (sha256, `0x`+64 hex) for display: 0x1a2b3c4d…9f8e7d6c */
+export function shortHash(h: string, lead = 10, tail = 8): string {
+  if (h.length <= lead + tail + 1) return h;
+  return `${h.slice(0, lead)}…${h.slice(-tail)}`;
+}
+
 /** External Sui explorer deep-link (real once the package is deployed). */
 export function suiscanUrl(
   id: string,
@@ -160,4 +166,14 @@ export const CATEGORY_TONE: Record<Category, Tone> = {
   Agriculture: "positive",
   Energy: "danger",
   Infrastructure: "neutral",
+};
+
+/** Fixed category hex colours for charts/donuts (allocation, distribution). */
+export const CATEGORY_COLOR: Record<Category, string> = {
+  Housing: "#6c5cf6",
+  Energy: "#e5484d",
+  "Trade Finance": "#e89110",
+  Agriculture: "#0fb39a",
+  Machinery: "#4593e6",
+  Infrastructure: "#8b8f9e",
 };

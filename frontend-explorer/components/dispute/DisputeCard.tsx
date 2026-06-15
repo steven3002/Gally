@@ -1,10 +1,12 @@
 import Link from "next/link";
 import type { Dispute } from "@/lib/types";
 import { cn, relTime, usd } from "@/lib/format";
+import { evidenceOf } from "@/lib/mock/documents";
 import { Card } from "@/components/ui/primitives";
 import { Avatar } from "@/components/ui/primitives";
 import { DisputeStatusPill } from "@/components/ui/bits";
 import { IdLink } from "@/components/ui/IdLink";
+import { WalrusDoc } from "@/components/ui/WalrusDoc";
 import { Scale, Clock, Check, Close } from "@/components/ui/icons";
 
 export function VoteBar({ dispute }: { dispute: Dispute }) {
@@ -39,6 +41,7 @@ export function VoteBar({ dispute }: { dispute: Dispute }) {
 
 export function DisputeCard({ dispute }: { dispute: Dispute }) {
   const open = dispute.status === "OPEN";
+  const evidence = evidenceOf(dispute.id);
   return (
     <Card className={cn("p-5", open && "border-warning/30")}>
       <div className="flex items-start justify-between gap-3">
@@ -49,7 +52,9 @@ export function DisputeCard({ dispute }: { dispute: Dispute }) {
           <div>
             <div className="flex items-center gap-2">
               <Avatar seed={dispute.targetPoolId} label={dispute.targetValidatorName} size={20} rounded="rounded-md" />
-              <h3 className="text-sm font-semibold text-foreground">{dispute.targetValidatorName}</h3>
+              <Link href={`/validators/${dispute.targetPoolId}`} className="text-sm font-semibold text-foreground hover:text-primary">
+                {dispute.targetValidatorName}
+              </Link>
             </div>
             <Link
               href={`/assets/${dispute.assetId}`}
@@ -62,7 +67,15 @@ export function DisputeCard({ dispute }: { dispute: Dispute }) {
         <DisputeStatusPill status={dispute.status} />
       </div>
 
-      <p className="mt-3 text-sm text-muted">{dispute.reason}</p>
+      {/* On-chain evidence is primary; the stated claim is a secondary off-chain label. */}
+      {evidence && (
+        <div className="mt-3 rounded-lg border border-border bg-surface-2 px-3 py-2">
+          <WalrusDoc doc={evidence} compact />
+        </div>
+      )}
+      <p className="mt-2 text-xs text-muted-2">
+        <span className="font-medium text-muted">Stated claim:</span> {dispute.reason}
+      </p>
 
       <div className="mt-4">
         <VoteBar dispute={dispute} />
@@ -102,6 +115,9 @@ export function DisputeCard({ dispute }: { dispute: Dispute }) {
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-2">
         <span className="flex items-center gap-1">Challenger <IdLink id={dispute.challenger} /></span>
         <span className="flex items-center gap-1">Dispute <IdLink id={dispute.id} /></span>
+        <Link href={`/disputes/${dispute.id}`} className="ml-auto font-medium text-primary hover:underline">
+          View dispute →
+        </Link>
       </div>
     </Card>
   );

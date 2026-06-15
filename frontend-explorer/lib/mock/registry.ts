@@ -2,10 +2,10 @@
 // explorer route — the routing brain behind `/objects/:id`, the clickable graph,
 // and global search. Guarantees MI-6: every id referenced anywhere resolves.
 //
-// Routing note: `token` currently points at the parent asset page and `dispute`
-// at the disputes list / `config` at home — those dedicated pages (/tokens/:id,
-// /disputes/:id, /governance) land in later milestones; this is the single place
-// to repoint them. Nothing 404s.
+// Routing note: `token` currently points at the parent asset page and `config`
+// at home — those dedicated pages (/tokens/:id, /governance) land in later
+// milestones; this is the single place to repoint them. `dispute` resolves to
+// its detail page (/disputes/:id, FE-M4). Nothing 404s.
 
 import type { ObjectKind, ObjectRef } from "../types";
 import { assets, assetById, validators, validatorByPool, disputes, disputeById, protocolConfig } from "./data";
@@ -27,7 +27,7 @@ export function resolveObject(id: string): ObjectRef | null {
     return { id, kind: "token", route: `/assets/${aid}`, label: `${assetById[aid].accumulator!.tokenSymbol} token` };
   }
   if (validatorByPool[id]) return { id, kind: "validator", route: `/validators/${id}`, label: validatorByPool[id].name };
-  if (disputeById[id]) return { id, kind: "dispute", route: `/disputes`, label: `Dispute · ${disputeById[id].assetName}` };
+  if (disputeById[id]) return { id, kind: "dispute", route: `/disputes/${id}`, label: `Dispute · ${disputeById[id].assetName}` };
   if (id === protocolConfig.configId) return { id, kind: "config", route: `/`, label: "Protocol config" };
   if (txDigests.has(id)) return { id, kind: "tx", route: `/tx/${id}`, label: "Transaction" };
   if (id.startsWith("0x")) {
@@ -84,7 +84,7 @@ export function searchAll(query: string, limit = 24): SearchResult[] {
   }
   for (const d of disputes) {
     if (has(d.id, d.assetName, d.targetValidatorName)) {
-      out.push({ kind: "dispute", id: d.id, route: `/disputes`, title: `Dispute · ${d.assetName}`, subtitle: `vs ${d.targetValidatorName} · ${d.status}` });
+      out.push({ kind: "dispute", id: d.id, route: `/disputes/${d.id}`, title: `Dispute · ${d.assetName}`, subtitle: `vs ${d.targetValidatorName} · ${d.status}` });
     }
   }
 

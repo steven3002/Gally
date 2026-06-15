@@ -1,6 +1,8 @@
 import type { Asset, Tranche } from "@/lib/types";
-import { cn, shortDate, usd } from "@/lib/format";
+import { cn, NOW, shortDate, usd } from "@/lib/format";
+import { proofOf } from "@/lib/mock/documents";
 import { Pill } from "@/components/ui/primitives";
+import { WalrusDoc } from "@/components/ui/WalrusDoc";
 import { Check, Clock, Doc, Lock } from "@/components/ui/icons";
 
 function status(t: Tranche, prevReleased: boolean) {
@@ -17,7 +19,8 @@ export function TrancheList({ asset }: { asset: Asset }) {
         const prevReleased = i === 0 || asset.tranches[i - 1].released;
         const s = status(t, prevReleased);
         const Icon = s.icon;
-        const overdue = !t.released && t.deadlineMs < Date.parse("2026-06-14T12:00:00Z");
+        const overdue = !t.released && t.deadlineMs < NOW;
+        const proof = proofOf(asset.id, t.index);
         return (
           <div
             key={t.index}
@@ -59,12 +62,12 @@ export function TrancheList({ asset }: { asset: Asset }) {
                   >
                     {overdue ? "Deadline missed" : t.released ? "Deadline" : "Due"} {shortDate(t.deadlineMs)}
                   </span>
-                  {t.proofBlobId && (
-                    <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-2">
-                      <Doc className="h-3 w-3" /> {t.proofBlobId}
-                    </span>
-                  )}
                 </div>
+                {proof && (
+                  <div className="mt-3">
+                    <WalrusDoc doc={proof} />
+                  </div>
+                )}
               </div>
             </div>
           </div>
