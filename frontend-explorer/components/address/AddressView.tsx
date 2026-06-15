@@ -17,6 +17,7 @@ import { StatePill } from "@/components/ui/bits";
 import { Donut } from "@/components/ui/charts";
 import { IdLink } from "@/components/ui/IdLink";
 import { EventList } from "@/components/events/EventList";
+import { UnwrapAlert } from "@/components/health/UnwrapAlert";
 import {
   Activity,
   ArrowRight,
@@ -135,6 +136,9 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
           <Stat label={yieldEarned > 0 ? "Yield earned" : "Claimable yield"} value={usd(yieldEarned > 0 ? yieldEarned : claimable)} sub={yieldEarned > 0 ? `+${usd(claimable)} claimable` : `across ${holdings.length} position${holdings.length === 1 ? "" : "s"}`} />
         </Card>
       </div>
+
+      {/* Holder-protection alert (§13) — unmissable unwrap-before-deadline warning */}
+      <UnwrapAlert holdings={holdings} />
 
       {/* Claimable banner (observer affordance — non-functional) */}
       {demo && claimable > 0 && (

@@ -77,3 +77,63 @@ export const pauseHistory = [
   { paused: true, tsMs: NOW - 150 * DAY, txDigest: govDigest("pause:stop") },
   { paused: false, tsMs: NOW - 150 * DAY + 8 * 3_600_000, txDigest: govDigest("pause:resume") },
 ];
+
+/* --------------------------------------------------------------------------
+   Unified governance history (FE-M6 /governance feed)
+-------------------------------------------------------------------------- */
+
+export type GovEventKind = "init" | "param" | "treasury" | "pause" | "resume";
+
+export interface GovHistoryEntry {
+  kind: GovEventKind;
+  tsMs: number;
+  txDigest: string;
+  title: string;
+  detail: string;
+}
+
+/**
+ * The full parameter-change history (FE-M6). On chain this is event-only — there
+ * is no historical object read (§18.3 P3) — so the indexer/mock archives it.
+ * Genesis + param tunings + treasury rotation + pause incidents, newest first;
+ * mirrors the `governance` event feed so the page and the feed agree.
+ */
+export function governanceHistory(): GovHistoryEntry[] {
+  const out: GovHistoryEntry[] = [
+    {
+      kind: "init",
+      tsMs: GENESIS_TS,
+      txDigest: genesisTxDigest,
+      title: "Protocol initialized",
+      detail: `Config created with v${protocolConfig.version} safe defaults`,
+    },
+  ];
+  for (const p of paramHistory) {
+    out.push({
+      kind: "param",
+      tsMs: p.tsMs,
+      txDigest: p.txDigest,
+      title: `Parameter changed — ${p.name}`,
+      detail: `${p.oldValue} → ${p.newValue}`,
+    });
+  }
+  for (const t of treasuryHistory) {
+    out.push({
+      kind: "treasury",
+      tsMs: t.tsMs,
+      txDigest: t.txDigest,
+      title: "Treasury rotated",
+      detail: `${t.oldTreasury.slice(0, 10)}… → ${t.newTreasury.slice(0, 10)}…`,
+    });
+  }
+  for (const ph of pauseHistory) {
+    out.push({
+      kind: ph.paused ? "pause" : "resume",
+      tsMs: ph.tsMs,
+      txDigest: ph.txDigest,
+      title: ph.paused ? "Emergency stop triggered" : "Protocol resumed",
+      detail: ph.paused ? "Capital entry halted — exits stayed open (D6)" : "Normal operation restored",
+    });
+  }
+  return out.sort((a, b) => b.tsMs - a.tsMs);
+}

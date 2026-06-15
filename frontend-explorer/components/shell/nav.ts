@@ -4,6 +4,7 @@ import {
   Compass,
   Layers,
   Scale,
+  Settings,
   Shield,
 } from "@/components/ui/icons";
 
@@ -27,6 +28,7 @@ export const NAV: NavGroup[] = [
       { label: "Assets", href: "/assets", icon: Layers, match: "/assets" },
       { label: "Validators", href: "/validators", icon: Shield, match: "/validators" },
       { label: "Disputes", href: "/disputes", icon: Scale, match: "/disputes" },
+      { label: "Governance", href: "/governance", icon: Settings, match: "/governance" },
     ],
   },
   {

@@ -124,6 +124,26 @@ function buildLedger(a: Asset): HolderEntry[] {
       yieldClaimedIndex: Math.round(cumIndex * rnd() * 1e6) / 1e6,
     });
   }
+
+  // Solvency clamp (I-M2, §15.4): the reward pool must cover all unclaimed
+  // entitlements (`owed = Σ (index − share.index)·count`). The reward pool is a
+  // fixed fixture value, so we scale every holder's *unclaimed gap* down until
+  // owed sits at ~80% of the pool — leaving the dust buffer the protocol's
+  // flooring math guarantees. With this, FE-M5's solvency badge derives from
+  // real ledger+index data and `reward_pool ≥ owed` holds for the whole fixture.
+  const rewardPool = a.accumulator?.rewardPool ?? 0;
+  if (cumIndex > 0) {
+    const owed = entries.reduce((s, e) => s + (cumIndex - e.yieldClaimedIndex) * e.shareCount, 0);
+    const target = rewardPool * 0.8;
+    if (owed > target) {
+      const factor = owed > 0 ? target / owed : 0;
+      for (const e of entries) {
+        const gap = (cumIndex - e.yieldClaimedIndex) * factor;
+        e.yieldClaimedIndex = Math.round((cumIndex - gap) * 1e6) / 1e6;
+      }
+    }
+  }
+
   // ranked by total holding, desc
   entries.sort((x, y) => y.shareCount + y.wrapped - (x.shareCount + x.wrapped));
   return entries;

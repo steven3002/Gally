@@ -170,7 +170,7 @@ export const CATEGORY_TONE: Record<Category, Tone> = {
 
 /** Fixed category hex colours for charts/donuts (allocation, distribution). */
 export const CATEGORY_COLOR: Record<Category, string> = {
-  Housing: "#6c5cf6",
+  Housing: "#5e7e2a",
   Energy: "#e5484d",
   "Trade Finance": "#e89110",
   Agriculture: "#0fb39a",

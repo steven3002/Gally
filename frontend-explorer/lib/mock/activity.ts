@@ -10,7 +10,7 @@
 
 import type { EventFeed, EventType, ProtocolEvent, TxRow } from "../types";
 import { DAY, HOUR, NOW, usd } from "../format";
-import { assets, disputes, validators, DEMO_WALLET, validatorByPool } from "./data";
+import { assets, assetById, disputes, validators, DEMO_WALLET, validatorByPool } from "./data";
 import { holdersOf } from "./holders";
 import { paramHistory, treasuryHistory, pauseHistory, GENESIS_TS, protocolConfig } from "./governance";
 import { seeded } from "./series";
@@ -652,3 +652,28 @@ export const txByDigest = (digest: string): TxRow | undefined => {
   if (!evs.length) return undefined;
   return { digest, tsMs: Math.max(...evs.map((e) => e.tsMs)), events: evs, kind: evs[0].type };
 };
+
+/** The complete three-way revenue split for an asset (§10, D9), summed over its
+ *  `RevenueDeposited` events: protocol fee → treasury, investor split → index,
+ *  remainder → entity. `fee + investor + entity == gross` by construction. */
+export interface RevenueSplit {
+  gross: number;
+  fee: number; // protocol_fee_bps → treasury
+  investor: number; // revenue_split_bps of net → lazy index
+  entity: number; // remainder → entity address
+  feeBps: number;
+  splitBps: number;
+  deposits: number; // number of RevenueDeposited events
+}
+
+export function revenueSplitOf(assetId: string): RevenueSplit {
+  const a = assetById[assetId];
+  const evs = events.filter((e) => e.assetId === assetId && e.type === "RevenueDeposited");
+  const gross = evs.reduce((s, e) => s + (e.amount ?? 0), 0);
+  const feeBps = protocolConfig.protocolFeeBps;
+  const splitBps = a?.revenueSplitBps ?? 0;
+  const fee = Math.round((gross * feeBps) / 10_000);
+  const investor = Math.round(((gross - fee) * splitBps) / 10_000);
+  const entity = gross - fee - investor; // remainder absorbs rounding so the legs sum to gross
+  return { gross, fee, investor, entity, feeBps, splitBps, deposits: evs.length };
+}

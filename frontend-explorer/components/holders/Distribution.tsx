@@ -3,8 +3,8 @@ import { accountLabel } from "@/lib/mock/accounts";
 import { num, pct, shortAddr } from "@/lib/format";
 import { Donut } from "@/components/ui/charts";
 
-/** Distinct hues for the top holders in the concentration donut. */
-const PALETTE = ["#6c5cf6", "#0fb39a", "#4593e6", "#e89110", "#8b5cf6"];
+/** Distinct hues for the top holders in the concentration donut (brand green first). */
+const PALETTE = ["#5e7e2a", "#4593e6", "#e89110", "#0fb39a", "#e5484d"];
 const OTHERS = "#8b8f9e";
 
 /**

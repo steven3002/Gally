@@ -7,9 +7,16 @@ import {
   validatorForAsset,
   DEMO_WALLET,
 } from "@/lib/mock/data";
-import { eventsForAsset } from "@/lib/mock/activity";
+import { eventsForAsset, revenueSplitOf } from "@/lib/mock/activity";
 import { holderDistribution, supplyOf } from "@/lib/mock/holders";
 import { legalDocsOf } from "@/lib/mock/documents";
+import {
+  solvencyOf,
+  nextTrancheOf,
+  graceOf,
+  compensationLayersOf,
+  isCompensating,
+} from "@/lib/mock/health";
 import {
   bpsToPct,
   daysLeft,
@@ -41,6 +48,10 @@ import { DisputeCard } from "@/components/dispute/DisputeCard";
 import { Distribution } from "@/components/holders/Distribution";
 import { HolderTable } from "@/components/holders/HolderTable";
 import { WalrusDoc } from "@/components/ui/WalrusDoc";
+import { SolvencyBadge, SolvencyMeter } from "@/components/health/SolvencyBadge";
+import { GraceCountdown } from "@/components/health/GraceCountdown";
+import { DefaultRiskClock } from "@/components/health/DefaultRiskClock";
+import { CompensationStack } from "@/components/health/CompensationStack";
 import {
   Alert,
   ChevronRight,
@@ -78,6 +89,15 @@ export default async function AssetDetailPage({
   const coverageLocked = asset.coverageLocked;
   const releasedTranches = asset.tranches.filter((t) => t.released).length;
   const wrapRatio = acc && acc.totalMintedShares ? (acc.totalWrappedShares / acc.totalMintedShares) * 100 : 0;
+
+  // FE-M5 — health, default-risk & holder-protection
+  const solvency = solvencyOf(asset.id);
+  const grace = graceOf(asset);
+  const compensating = isCompensating(asset);
+  const compStack = compensating ? compensationLayersOf(asset) : null;
+  const nextDeadline = asset.state === "EXECUTING" ? nextTrancheOf(asset) : undefined;
+  // FE-M6 — full three-way revenue split (fee → treasury, investor → index, entity remainder)
+  const split = acc && acc.lifetimeInvestorRevenue > 0 ? revenueSplitOf(asset.id) : null;
 
   /* ----------------------------------------------------------- panels */
 
@@ -152,6 +172,34 @@ export default async function AssetDetailPage({
           </div>
         </Card>
       </div>
+      {split && (
+        <Card className="p-5">
+          <CardHeader
+            title="Revenue distribution"
+            subtitle={`Three-way split on every deposit (D9) — across ${split.deposits} deposit${split.deposits === 1 ? "" : "s"}`}
+            className="px-0 pt-0"
+          />
+          <div className="mt-4 flex items-end justify-between gap-4">
+            <div>
+              <div className="text-xs text-muted">Gross revenue deposited</div>
+              <div className="tnum text-2xl font-bold tracking-tight text-foreground">{usd(split.gross)}</div>
+            </div>
+            <div className="text-right text-xs text-muted">
+              Protocol fee {bpsToPct(split.feeBps)} · investor split {bpsToPct(split.splitBps)}
+            </div>
+          </div>
+          <div className="mt-4 flex h-3 w-full overflow-hidden rounded-full bg-surface-3">
+            <div className="bg-warning" style={{ width: `${(split.fee / split.gross) * 100}%` }} title="Protocol fee" />
+            <div className="bg-positive" style={{ width: `${(split.investor / split.gross) * 100}%` }} title="Investor split" />
+            <div className="bg-info" style={{ width: `${(split.entity / split.gross) * 100}%` }} title="Entity remainder" />
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <SplitLeg dot="bg-warning" label="Protocol fee" value={split.fee} sub={`${bpsToPct(split.feeBps)} → treasury`} />
+            <SplitLeg dot="bg-positive" label="Investor split" value={split.investor} sub={`${bpsToPct(split.splitBps)} of net → index`} />
+            <SplitLeg dot="bg-info" label="Entity remainder" value={split.entity} sub="→ entity address" />
+          </div>
+        </Card>
+      )}
       <Card>
         <CardHeader title="Revenue & distribution events" />
         <div className="mt-2">
@@ -263,6 +311,7 @@ export default async function AssetDetailPage({
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <StatePill state={asset.state} />
               <CategoryBadge category={asset.category} />
+              {operational && solvency.hasYield && <SolvencyBadge solvency={solvency} />}
               {asset.isTermFinancing && <Pill tone="warning">Term financing</Pill>}
               {asset.disputed && <Pill tone="danger" dot>Disputed</Pill>}
             </div>
@@ -293,8 +342,30 @@ export default async function AssetDetailPage({
         <StageStepper asset={asset} />
       </Card>
 
-      {/* Disputed banner */}
-      {asset.disputed && (
+      {/* Compensation banner (default / upheld dispute) — the holder-protection surface */}
+      {compensating && (
+        <Card className="border-danger/40">
+          <div className="space-y-3 bg-danger-soft p-4">
+            <div className="flex items-start gap-3">
+              <Alert className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
+              <div className="text-sm">
+                <p className="font-semibold text-foreground">
+                  This asset is in compensation{asset.disputed ? " (dispute open)" : " after a default"}.
+                </p>
+                <p className="mt-0.5 text-muted">
+                  Seized collateral, undeployed escrow{asset.disputed ? " and slashed validator coverage" : ""}{" "}
+                  back a pro-rata payout to holders. <strong>Wrapped tokens are not eligible</strong> — unwrap
+                  to GallyShare deeds before the grace deadline below to be made whole (§13, D5).
+                </p>
+              </div>
+            </div>
+            {grace && <GraceCountdown grace={grace} tokenSymbol={acc?.tokenSymbol} />}
+          </div>
+        </Card>
+      )}
+
+      {/* Open-dispute banner (when not already shown via compensation) */}
+      {asset.disputed && !compensating && (
         <Card className="border-danger/30">
           <div className="flex items-start gap-3 bg-danger-soft p-4">
             <Alert className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
@@ -309,6 +380,9 @@ export default async function AssetDetailPage({
           </div>
         </Card>
       )}
+
+      {/* Forward-looking default-risk clock (EXECUTING) */}
+      {nextDeadline && <DefaultRiskClock next={nextDeadline} />}
 
       {/* Summary stat cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -461,7 +535,16 @@ export default async function AssetDetailPage({
           {/* Accumulator / token */}
           {acc && (
             <Card className="p-5">
-              <CardHeader title="Yield accumulator" subtitle={`Token ${acc.tokenSymbol} · 6 decimals`} className="px-0 pt-0" />
+              <CardHeader
+                title="Yield accumulator"
+                subtitle={`Token ${acc.tokenSymbol} · 6 decimals`}
+                className="px-0 pt-0"
+                action={
+                  <Link href={`/tokens/${acc.id}`} className="shrink-0 text-xs font-semibold text-primary transition-colors hover:text-primary-strong">
+                    View token →
+                  </Link>
+                }
+              />
               <div className="mt-3 flex items-center justify-between">
                 <Stat label="Wrap ratio" value={pct(wrapRatio, 0)} sub="of supply wrapped" />
                 <RingGauge value={wrapRatio} size={64} thickness={7} label={<span className="tnum text-xs font-semibold">{pct(wrapRatio, 0)}</span>} />
@@ -479,13 +562,27 @@ export default async function AssetDetailPage({
                   )}
                 </Bar>
               </div>
-              {acc.wrappingFrozen && (
-                <div className="mt-3 flex items-center gap-2 rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
-                  <Lock className="h-3.5 w-3.5" /> Wrapping frozen — compensation grace window active
+              {solvency.hasYield && (
+                <div className="mt-3">
+                  <SolvencyMeter solvency={solvency} />
                 </div>
+              )}
+              {grace ? (
+                <div className="mt-3">
+                  <GraceCountdown grace={grace} tokenSymbol={acc.tokenSymbol} />
+                </div>
+              ) : (
+                acc.wrappingFrozen && (
+                  <div className="mt-3 flex items-center gap-2 rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
+                    <Lock className="h-3.5 w-3.5" /> Wrapping frozen — compensation grace window active
+                  </div>
+                )
               )}
             </Card>
           )}
+
+          {/* Compensation stack (default / upheld dispute) */}
+          {compStack && <CompensationStack stack={compStack} />}
 
           {/* On-chain refs */}
           <Card className="p-5">
@@ -508,6 +605,19 @@ function RefRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-2">
       <span className="text-xs text-muted">{label}</span>
       <IdLink id={value} />
+    </div>
+  );
+}
+
+function SplitLeg({ dot, label, value, sub }: { dot: string; label: string; value: number; sub: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface-2 p-3">
+      <div className="flex items-center gap-2">
+        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />
+        <span className="text-[11px] font-medium text-muted">{label}</span>
+      </div>
+      <div className="tnum mt-1 text-base font-semibold text-foreground">{usd(value)}</div>
+      <div className="text-[11px] text-muted-2">{sub}</div>
     </div>
   );
 }

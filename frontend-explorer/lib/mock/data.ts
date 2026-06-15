@@ -139,6 +139,7 @@ interface AssetSeed {
     rolloverReserve: number;
     compensationPool?: number;
     wrappingFrozen?: boolean;
+    compensationUnlockMs?: number;
     tokenSymbol: string;
   };
   seed: number;
@@ -171,6 +172,7 @@ function build(s: AssetSeed): Asset {
       rolloverReserve: s.acc.rolloverReserve,
       compensationPool: s.acc.compensationPool ?? 0,
       wrappingFrozen: s.acc.wrappingFrozen ?? false,
+      compensationUnlockMs: s.acc.compensationUnlockMs,
       lifetimeInvestorRevenue: s.acc.lifetimeInvestorRevenue,
       apy: s.acc.apy,
     };
@@ -509,6 +511,7 @@ export const assets: Asset[] = [
       rolloverReserve: 0,
       compensationPool: 690_000,
       wrappingFrozen: true,
+      compensationUnlockMs: NOW + 4 * DAY, // grace window still open — holders must unwrap before this
       tokenSymbol: "gMPE",
     },
   }),
@@ -645,6 +648,7 @@ export const assets: Asset[] = [
       rolloverReserve: 0,
       compensationPool: 367_500,
       wrappingFrozen: true,
+      compensationUnlockMs: NOW + 2 * DAY, // grace window still open
       tokenSymbol: "gLMS",
     },
   }),
@@ -678,6 +682,11 @@ export const assets: Asset[] = [
 
 export const assetById = Object.fromEntries(assets.map((a) => [a.id, a]));
 export const validatorByPool = valByPool;
+
+/** accumulator id → owning asset (the `/tokens/:accId` lookup). */
+export const assetByAccId = Object.fromEntries(
+  assets.filter((a) => a.accumulator).map((a) => [a.accumulator!.id, a]),
+);
 
 export function validatorForAsset(a: Asset): Validator | undefined {
   return valByPool[a.validatorPoolId];
@@ -756,9 +765,11 @@ export const disputesForPool = (poolId: string) =>
 export const DEMO_WALLET =
   "0xde1207a4b6c8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0";
 
-// Holdings = operational deed positions only. FUNDING-phase contributions are
+// Holdings = post-finalize deed/coin positions. FUNDING-phase contributions are
 // soulbound ContributionReceipts (see `portfolioReceipts`), not deeds — they are
-// not listed here, so nothing is double-counted.
+// not listed here, so nothing is double-counted. The asset08 position is in a
+// COMPENSATING (wrapping-frozen) asset on purpose: it exercises the §13
+// holder-protection unwrap-before-deadline alert (FE-M5).
 export const portfolio: Position[] = [
   {
     assetId: "asset01",
@@ -804,6 +815,24 @@ export const portfolio: Position[] = [
     yieldClaimable: 96, // accrues on the 8,000 deeds only
     apy: 9.3,
     spark: assetById["asset06"].spark,
+  },
+  {
+    // COMPENSATING asset — the wrapped balance is at risk: it must be unwrapped
+    // before the accumulator's compensation_unlock_ms or it forfeits restitution
+    // (§13). This drives the FE-M5 holder-protection alert on /portfolio.
+    assetId: "asset08",
+    assetName: "Mombasa Port Equipment",
+    ticker: "MPE",
+    tokenSymbol: "gMPE",
+    category: "Machinery",
+    state: "COMPENSATING",
+    deeds: 6_000,
+    wrapped: 4_000, // gMPE — frozen; unwrap before the grace deadline to be made whole
+    costBasis: 10_000,
+    yieldEarned: 0,
+    yieldClaimable: 0,
+    apy: 0,
+    spark: assetById["asset08"].spark,
   },
 ];
 

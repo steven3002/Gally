@@ -53,6 +53,7 @@ export interface Accumulator {
   rolloverReserve: number;
   compensationPool: number;
   wrappingFrozen: boolean;
+  compensationUnlockMs?: number; // grace deadline: unwrap before this to keep restitution (§13, D5)
   lifetimeInvestorRevenue: number;
   apy: number; // trailing effective APY, %
 }

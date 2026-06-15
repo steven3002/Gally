@@ -20,29 +20,9 @@ function Svg({ children, className = "h-5 w-5", ...rest }: P & { children: React
   );
 }
 
-/* Brand mark — interlocking "G" coin / growth ring */
-export function Logo({ className = "h-7 w-7" }: P) {
-  return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id="gally-logo" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#6c5cf6" />
-          <stop offset="55%" stopColor="#8b5cf6" />
-          <stop offset="100%" stopColor="#0fb39a" />
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="28" height="28" rx="9" fill="url(#gally-logo)" />
-      <path
-        d="M21.5 12.2A6 6 0 1 0 22 17h-5"
-        fill="none"
-        stroke="#fff"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
+/* Brand marks live in ./brand (the real vectorised logo). Re-exported here so
+   existing `Logo` imports keep resolving to the compact app-mark. */
+export { GallyMark as Logo, GallyWordmark, GallyGlyph } from "./brand";
 
 export const Compass = (p: P) => (
   <Svg {...p}>

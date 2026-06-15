@@ -58,7 +58,7 @@ export default function ExplorePage() {
             <div className="mt-5 flex flex-wrap gap-3">
               <Link
                 href="/assets"
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#3a2fb0] transition-transform hover:scale-[1.02]"
+                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#1c2226] transition-transform hover:scale-[1.02]"
               >
                 Browse assets <ArrowRight className="h-4 w-4" />
               </Link>

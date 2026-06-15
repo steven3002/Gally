@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV, isActive } from "./nav";
-import { Logo, Close } from "@/components/ui/icons";
+import { GallyWordmark, Close } from "@/components/ui/icons";
 import { cn } from "@/lib/format";
 import { protocolStats, protocolConfig } from "@/lib/mock/data";
 import { usdCompact } from "@/lib/format";
@@ -15,14 +15,13 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     <div className="flex h-full flex-col">
       {/* Brand */}
       <div className="flex items-center justify-between px-5 py-5">
-        <Link href="/" className="flex items-center gap-2.5" onClick={onNavigate}>
-          <Logo className="h-8 w-8" />
-          <div className="leading-none">
-            <div className="text-[15px] font-bold tracking-tight text-foreground">Gally</div>
-            <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-2">
-              Capital Explorer
-            </div>
-          </div>
+        <Link
+          href="/"
+          className="block text-foreground transition-opacity hover:opacity-80"
+          onClick={onNavigate}
+          aria-label="Gally Capital Protocol — home"
+        >
+          <GallyWordmark className="h-auto w-[176px]" />
         </Link>
         {onNavigate && (
           <button

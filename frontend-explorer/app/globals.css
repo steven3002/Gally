@@ -18,9 +18,10 @@
   --muted: #646b7d;
   --muted-2: #99a0b2;
 
-  --primary: #6c5cf6;
-  --primary-strong: #5847f0;
-  --primary-soft: #efedfe;
+  /* Brand: forest-olive green from the Gally logo (the "A" triangle + rules). */
+  --primary: #54741f;
+  --primary-strong: #41591a;
+  --primary-soft: #ebf1de;
   --on-primary: #ffffff;
 
   --positive: #0fb39a;
@@ -32,7 +33,7 @@
   --info: #4593e6;
   --info-soft: #e2eefb;
 
-  --ring: rgba(108, 92, 246, 0.35);
+  --ring: rgba(84, 116, 31, 0.32);
   --shadow-sm: 0 1px 2px rgba(16, 20, 40, 0.05);
   --shadow-md: 0 6px 22px -8px rgba(16, 20, 40, 0.18);
   --shadow-lg: 0 18px 48px -16px rgba(16, 20, 40, 0.28);
@@ -51,10 +52,11 @@
   --muted: #9aa1b2;
   --muted-2: #6b7383;
 
-  --primary: #7d6dff;
-  --primary-strong: #6c5cf6;
-  --primary-soft: #211f3a;
-  --on-primary: #ffffff;
+  /* Brand green lifted for contrast on dark surfaces. */
+  --primary: #9dc85c;
+  --primary-strong: #88b546;
+  --primary-soft: #1e2714;
+  --on-primary: #11160a;
 
   --positive: #2bd3b6;
   --positive-soft: #11302c;
@@ -65,7 +67,7 @@
   --info: #5ea3ef;
   --info-soft: #122433;
 
-  --ring: rgba(125, 109, 255, 0.4);
+  --ring: rgba(157, 200, 92, 0.4);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 8px 26px -10px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 22px 54px -18px rgba(0, 0, 0, 0.7);
@@ -177,7 +179,8 @@ body {
   color: transparent;
 }
 .bg-brand-gradient {
-  background: linear-gradient(135deg, #6c5cf6 0%, #8b5cf6 42%, #0fb39a 100%);
+  /* Logo ink → forest green, matching the wordmark. */
+  background: linear-gradient(135deg, #1c2226 0%, #2c3a22 48%, #54741f 100%);
 }
 .bg-grid {
   background-image: radial-gradient(

@@ -2,10 +2,9 @@
 // explorer route — the routing brain behind `/objects/:id`, the clickable graph,
 // and global search. Guarantees MI-6: every id referenced anywhere resolves.
 //
-// Routing note: `token` currently points at the parent asset page and `config`
-// at home — those dedicated pages (/tokens/:id, /governance) land in later
-// milestones; this is the single place to repoint them. `dispute` resolves to
-// its detail page (/disputes/:id, FE-M4). Nothing 404s.
+// Routing note: `token` resolves to its dedicated `/tokens/:accId` page (FE-M6)
+// and `config` to `/governance` (FE-M6). `dispute` resolves to `/disputes/:id`
+// (FE-M4). This is the single place to repoint any kind. Nothing 404s.
 
 import type { ObjectKind, ObjectRef } from "../types";
 import { assets, assetById, validators, validatorByPool, disputes, disputeById, protocolConfig } from "./data";
@@ -24,11 +23,11 @@ export function resolveObject(id: string): ObjectRef | null {
   if (assetById[id]) return { id, kind: "asset", route: `/assets/${id}`, label: assetById[id].name };
   if (accToAsset[id]) {
     const aid = accToAsset[id];
-    return { id, kind: "token", route: `/assets/${aid}`, label: `${assetById[aid].accumulator!.tokenSymbol} token` };
+    return { id, kind: "token", route: `/tokens/${id}`, label: `${assetById[aid].accumulator!.tokenSymbol} token` };
   }
   if (validatorByPool[id]) return { id, kind: "validator", route: `/validators/${id}`, label: validatorByPool[id].name };
   if (disputeById[id]) return { id, kind: "dispute", route: `/disputes/${id}`, label: `Dispute · ${disputeById[id].assetName}` };
-  if (id === protocolConfig.configId) return { id, kind: "config", route: `/`, label: "Protocol config" };
+  if (id === protocolConfig.configId) return { id, kind: "config", route: `/governance`, label: "Protocol config" };
   if (txDigests.has(id)) return { id, kind: "tx", route: `/tx/${id}`, label: "Transaction" };
   if (id.startsWith("0x")) {
     const acc = accountByAddr(id);
