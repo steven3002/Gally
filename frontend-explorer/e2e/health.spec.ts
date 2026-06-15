@@ -27,7 +27,7 @@ test.describe("health, risk & holder-protection (FE-M5)", () => {
     await expect(page.getByText(/grace window/i).first()).toBeVisible();
     // three-layer restitution stack
     await expect(page.getByText("Compensation stack")).toBeVisible();
-    await expect(page.getByText("Undeployed escrow")).toBeVisible();
+    await expect(page.getByText("Undeployed escrow", { exact: true })).toBeVisible();
   });
 
   test("an EXECUTING asset shows the next-tranche default-risk countdown", async ({ page }) => {
