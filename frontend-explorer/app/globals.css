@@ -143,6 +143,14 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Consistent, visible keyboard focus ring across all interactive elements (a11y,
+   FE-M7). Mouse clicks don't trigger it (`:focus-visible`). */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 /* Subtle entrance used by cards / rows */
 @keyframes gally-rise {
   from {
@@ -169,6 +177,56 @@ body {
 }
 .animate-livedot {
   animation: gally-pulse 1.8s ease-in-out infinite;
+}
+
+/* ----------------------------------------------------------------------------
+   Motion & loading (FE-M7)
+---------------------------------------------------------------------------- */
+
+/* Skeleton placeholder — a gentle pulse (theme-agnostic; reduced-motion safe). */
+@keyframes gally-skeleton {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+.skeleton {
+  background: var(--surface-2);
+  border-radius: 10px;
+  animation: gally-skeleton 1.4s ease-in-out infinite;
+}
+
+/* Chart line draw-in. `pathLength=1` normalizes the dash so any path animates. */
+@keyframes gally-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.chart-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: gally-draw 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Honor the OS "reduce motion" setting everywhere — animations resolve instantly
+   (fill-mode forwards still lands on the final frame; nothing is left hidden). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 /* Brand gradient text + surfaces */

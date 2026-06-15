@@ -24,8 +24,9 @@ test.describe("/objects/:id universal resolver (FE-M2)", () => {
     await page.goto(`/objects/${idFromHref(txHref)}`);
     await expect(page).toHaveURL(endsWithPath(txHref));
 
-    // 0x address → /address/:addr
-    await page.goto("/");
+    // 0x address → /address/:addr (sourced from a page that renders an address link;
+    // the topbar wallet chip is now an account menu, not a bare link — FE-M7.2)
+    await page.goto("/portfolio");
     const addrHref = await firstHref(page, "/address/");
     await page.goto(`/objects/${idFromHref(addrHref)}`);
     await expect(page).toHaveURL(endsWithPath(addrHref));
@@ -79,7 +80,7 @@ test.describe("global ⌘K command palette (FE-M2)", () => {
     const assetHref = await firstHref(page, "/assets/");
     await page.goto("/validators");
     const valHref = await firstHref(page, "/validators/");
-    await page.goto("/");
+    await page.goto("/portfolio");
     const addrHref = await firstHref(page, "/address/");
 
     const cases = [

@@ -48,6 +48,7 @@ import { DisputeCard } from "@/components/dispute/DisputeCard";
 import { Distribution } from "@/components/holders/Distribution";
 import { HolderTable } from "@/components/holders/HolderTable";
 import { WalrusDoc } from "@/components/ui/WalrusDoc";
+import { ContributeAction } from "@/components/tx/ContributeAction";
 import { SolvencyBadge, SolvencyMeter } from "@/components/health/SolvencyBadge";
 import { GraceCountdown } from "@/components/health/GraceCountdown";
 import { DefaultRiskClock } from "@/components/health/DefaultRiskClock";
@@ -331,9 +332,11 @@ export default async function AssetDetailPage({
             <ExternalLink className="h-4 w-4" /> View on Sui
           </a>
           {funding && (
-            <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary transition-colors hover:bg-primary-strong">
-              <Coins className="h-4 w-4" /> Contribute
-            </button>
+            <ContributeAction
+              assetId={asset.id}
+              assetName={asset.name}
+              remaining={Math.max(1, asset.fundingGoal - asset.raised)}
+            />
           )}
         </div>
       </div>

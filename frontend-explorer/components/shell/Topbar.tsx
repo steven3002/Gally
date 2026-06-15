@@ -1,12 +1,11 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import Link from "next/link";
-import { Bell, Menu, Moon, Search, Sun, Wallet } from "@/components/ui/icons";
-import { Avatar } from "@/components/ui/primitives";
+import { Menu, Moon, Search, Sun } from "@/components/ui/icons";
 import { OPEN_PALETTE_EVENT } from "@/components/search/CommandPalette";
-import { DEMO_WALLET, protocolConfig } from "@/lib/mock/data";
-import { shortAddr } from "@/lib/format";
+import { NotificationBell } from "@/components/notifications/NotificationCenter";
+import { ConnectButton } from "@/components/tx/ConnectButton";
+import { protocolConfig } from "@/lib/mock/data";
 
 function openPalette() {
   window.dispatchEvent(new Event(OPEN_PALETTE_EVENT));
@@ -26,7 +25,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
       {/* Search — opens the global ⌘K command palette */}
       <button
         onClick={openPalette}
-        className="flex w-full max-w-md items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-left transition-colors hover:border-border-strong"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-left transition-colors hover:border-border-strong sm:max-w-md"
         aria-label="Search the protocol"
       >
         <Search className="h-4 w-4 shrink-0 text-muted-2" />
@@ -40,10 +39,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
       <div className="ml-auto flex items-center gap-1.5">
         <ThemeToggle />
-        <button className="relative rounded-xl p-2 text-muted transition-colors hover:bg-surface-2 hover:text-foreground" aria-label="Notifications">
-          <Bell className="h-5 w-5" />
-          <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-danger" />
-        </button>
+        <NotificationBell />
 
         {/* Network indicator — sits with the wallet control so the connected
             network is always visible, even before a wallet is connected. */}
@@ -57,24 +53,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
           </span>
         </span>
 
-        {/* Demo wallet chip → its account page */}
-        <Link
-          href={`/address/${DEMO_WALLET}`}
-          className="flex items-center gap-2.5 rounded-xl border border-border bg-surface py-1.5 pl-2 pr-3 transition-colors hover:border-border-strong"
-        >
-          <Avatar seed={DEMO_WALLET} size={28} rounded="rounded-lg" />
-          <div className="hidden leading-none sm:block">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold text-foreground">{shortAddr(DEMO_WALLET)}</span>
-              <span className="rounded bg-warning-soft px-1 py-0.5 text-[9px] font-bold uppercase text-warning">
-                Demo
-              </span>
-            </div>
-            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted">
-              <Wallet className="h-3 w-3" /> connected
-            </div>
-          </div>
-        </Link>
+        <ConnectButton />
       </div>
     </header>
   );

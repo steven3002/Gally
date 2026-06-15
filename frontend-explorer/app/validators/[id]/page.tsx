@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   assets,
   disputesForPool,
+  protocolConfig,
   validatorByPool,
   validators,
 } from "@/lib/mock/data";
@@ -23,6 +24,7 @@ import { ValidatorStatusPill } from "@/components/validator/ValidatorCard";
 import { AssetTable } from "@/components/asset/AssetTable";
 import { DisputeCard } from "@/components/dispute/DisputeCard";
 import { EventList } from "@/components/events/EventList";
+import { DisputeAction } from "@/components/tx/DisputeAction";
 import { ChevronRight, Lock, Coins, Shield } from "@/components/ui/icons";
 
 export function generateStaticParams() {
@@ -113,6 +115,14 @@ export default async function ValidatorDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-4">
+          {vouched.length > 0 && (
+            <DisputeAction
+              poolId={v.poolId}
+              validatorName={v.name}
+              assetId={vouched[0].id}
+              bond={protocolConfig.challengerBond}
+            />
+          )}
           <div className="text-right">
             <div className="text-xs text-muted">Reputation</div>
             <div className="text-xs text-muted-2">{v.assetsVouched} lifetime vouches</div>

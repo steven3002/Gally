@@ -4,7 +4,7 @@ import { CATEGORY_COLOR, cn, num, pct, usd, usdCompact, suiscanUrl, type Tone } 
 import { accountByAddr } from "@/lib/mock/accounts";
 import { holdingsOf } from "@/lib/mock/holders";
 import { eventsForActor } from "@/lib/mock/activity";
-import { portfolioReceipts } from "@/lib/mock/data";
+import { assetById, portfolioReceipts } from "@/lib/mock/data";
 import {
   Avatar,
   Card,
@@ -18,9 +18,11 @@ import { Donut } from "@/components/ui/charts";
 import { IdLink } from "@/components/ui/IdLink";
 import { EventList } from "@/components/events/EventList";
 import { UnwrapAlert } from "@/components/health/UnwrapAlert";
+import { ClaimAllAction } from "@/components/tx/ClaimAllAction";
+import { HoldingActions } from "@/components/tx/HoldingActions";
+import { ReceiptActions } from "@/components/tx/ReceiptActions";
 import {
   Activity,
-  ArrowRight,
   ChevronRight,
   Coins,
   ExternalLink,
@@ -70,6 +72,7 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
     .filter((e) => e.type === "YieldClaimed")
     .reduce((s, e) => s + (e.amount ?? 0), 0);
   const claimablePositions = holdings.filter((h) => h.pendingYield > 0).length;
+  const firstClaimable = holdings.find((h) => h.pendingYield > 0);
 
   const allocation = Object.entries(
     holdings.reduce<Record<string, number>>((acc, h) => {
@@ -158,9 +161,14 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
               </div>
             </div>
           </div>
-          <button disabled className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-positive px-4 py-2 text-sm font-semibold text-white opacity-90" title="Available in-wallet">
-            Claim all <ArrowRight className="h-4 w-4" />
-          </button>
+          {firstClaimable && (
+            <ClaimAllAction
+              total={claimable}
+              positions={claimablePositions}
+              primaryAssetId={firstClaimable.assetId}
+              primaryAssetName={firstClaimable.assetName}
+            />
+          )}
         </Card>
       )}
 
@@ -186,31 +194,43 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
               </div>
               <div className="divide-y divide-border">
                 {holdings.map((h) => (
-                  <div key={h.assetId} className={cn("flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-surface-2", HOLD_COLS)}>
-                    <Link href={`/assets/${h.assetId}`} className="flex min-w-0 items-center gap-3">
-                      <Avatar seed={h.assetId} label={h.ticker} size={40} rounded="rounded-lg" />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-medium text-foreground">{h.assetName}</span>
-                          <StatePill state={h.state} />
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-                          <span className="inline-flex items-center gap-1 rounded-md bg-positive-soft px-2 py-0.5 font-medium text-positive">
-                            <Coins className="h-3 w-3" /> {num(h.shareCount)} deeds
-                          </span>
-                          {h.wrapped > 0 && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-surface-3 px-2 py-0.5 font-medium text-muted">
-                              <Lock className="h-3 w-3" /> {num(h.wrapped)} {h.tokenSymbol ?? "wrapped"}
+                  <div key={h.assetId} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-surface-2">
+                    <div className={cn("flex flex-col gap-3", HOLD_COLS)}>
+                      <Link href={`/assets/${h.assetId}`} className="flex min-w-0 items-center gap-3">
+                        <Avatar seed={h.assetId} label={h.ticker} size={40} rounded="rounded-lg" />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium text-foreground">{h.assetName}</span>
+                            <StatePill state={h.state} />
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-positive-soft px-2 py-0.5 font-medium text-positive">
+                              <Coins className="h-3 w-3" /> {num(h.shareCount)} deeds
                             </span>
-                          )}
+                            {h.wrapped > 0 && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-surface-3 px-2 py-0.5 font-medium text-muted">
+                                <Lock className="h-3 w-3" /> {num(h.wrapped)} {h.tokenSymbol ?? "wrapped"}
+                              </span>
+                            )}
+                          </div>
                         </div>
+                      </Link>
+                      <div className="grid grid-cols-3 gap-x-6 gap-y-2 sm:contents">
+                        <Cell label="Principal" value={usd(h.shareCount + h.wrapped)} />
+                        <Cell label="Claimable" value={h.pendingYield > 0 ? `+${usd(h.pendingYield)}` : "—"} cls={h.pendingYield > 0 ? "text-positive" : "text-muted-2"} />
+                        <Cell label="APY" value={h.apy > 0 ? pct(h.apy) : "—"} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
                       </div>
-                    </Link>
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-2 sm:contents">
-                      <Cell label="Principal" value={usd(h.shareCount + h.wrapped)} />
-                      <Cell label="Claimable" value={h.pendingYield > 0 ? `+${usd(h.pendingYield)}` : "—"} cls={h.pendingYield > 0 ? "text-positive" : "text-muted-2"} />
-                      <Cell label="APY" value={h.apy > 0 ? pct(h.apy) : "—"} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
                     </div>
+                    <HoldingActions
+                      owner={address}
+                      assetId={h.assetId}
+                      assetName={h.assetName}
+                      tokenSymbol={h.tokenSymbol}
+                      shareCount={h.shareCount}
+                      wrapped={h.wrapped}
+                      pendingYield={h.pendingYield}
+                      frozen={assetById[h.assetId]?.accumulator?.wrappingFrozen ?? false}
+                    />
                   </div>
                 ))}
               </div>
@@ -259,9 +279,12 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
                     <div className="mt-0.5"><StatePill state={r.state} /></div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="tnum text-sm font-semibold text-foreground">{usd(r.amount)}</div>
-                  <div className="text-[11px] text-muted">{num(r.amount)} future deeds</div>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="text-right">
+                    <div className="tnum text-sm font-semibold text-foreground">{usd(r.amount)}</div>
+                    <div className="text-[11px] text-muted">{num(r.amount)} future deeds</div>
+                  </div>
+                  <ReceiptActions assetId={r.assetId} assetName={r.assetName} amount={r.amount} state={r.state} />
                 </div>
               </Card>
             ))}

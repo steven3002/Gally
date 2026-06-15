@@ -1,5 +1,7 @@
-import type { Point } from "@/lib/types";
 import { cn } from "@/lib/format";
+
+// Interactive area chart lives in its own client module (hover crosshair/tooltip).
+export { AreaChart } from "./AreaChart";
 
 function toXY(values: number[], w: number, h: number, pad = 2) {
   const min = Math.min(...values);
@@ -61,99 +63,6 @@ export function Sparkline({
         </>
       )}
       <path d={line} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/* ---------------------------------------------------------- AreaChart */
-
-export function AreaChart({
-  data,
-  color = "var(--primary)",
-  height = 220,
-  className,
-  showDots = false,
-  valueLabel,
-}: {
-  data: Point[];
-  color?: string;
-  height?: number;
-  className?: string;
-  showDots?: boolean;
-  valueLabel?: (p: Point) => string;
-}) {
-  const W = 600;
-  const H = height;
-  if (!data || data.length < 2) {
-    return (
-      <div
-        className={cn("flex items-center justify-center text-xs text-muted-2", className)}
-        style={{ height }}
-      >
-        No series yet
-      </div>
-    );
-  }
-  const vals = data.map((d) => d.v);
-  const pts = toXY(vals, W, H, 8);
-  const id = `area-${color.replace(/[^a-z]/gi, "")}-${vals.length}`;
-  const line = pathFrom(pts);
-  const area = `${line} L${pts[pts.length - 1][0].toFixed(2)} ${H} L${pts[0][0].toFixed(2)} ${H} Z`;
-  const last = pts[pts.length - 1];
-
-  // light horizontal gridlines
-  const grid = [0.25, 0.5, 0.75].map((f) => 8 + (H - 16) * f);
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      className={cn("w-full", className)}
-      style={{ height }}
-      aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.26" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {grid.map((y, i) => (
-        <line
-          key={i}
-          x1="0"
-          x2={W}
-          y1={y}
-          y2={y}
-          stroke="var(--border)"
-          strokeWidth="1"
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
-      <path d={area} fill={`url(#${id})`} />
-      <path
-        d={line}
-        fill="none"
-        stroke={color}
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
-      {showDots &&
-        pts.map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="2.4" fill={color} vectorEffect="non-scaling-stroke" />
-        ))}
-      <circle cx={last[0]} cy={last[1]} r="3.5" fill={color} vectorEffect="non-scaling-stroke" />
-      <circle
-        cx={last[0]}
-        cy={last[1]}
-        r="6.5"
-        fill={color}
-        opacity="0.18"
-        vectorEffect="non-scaling-stroke"
-      />
-      {valueLabel && null}
     </svg>
   );
 }

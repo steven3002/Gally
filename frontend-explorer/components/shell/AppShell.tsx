@@ -6,6 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { PauseBanner } from "./PauseBanner";
 import { CommandPalette } from "@/components/search/CommandPalette";
+import { Toaster } from "@/components/notifications/Toaster";
 import { cn } from "@/lib/format";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -62,6 +63,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Global ⌘K command palette */}
       <CommandPalette />
+
+      {/* Transaction & alert toasts (FE-M7.2) */}
+      <Toaster />
     </div>
   );
 }
