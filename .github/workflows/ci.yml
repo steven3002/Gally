@@ -5,11 +5,13 @@ on:
     branches: [main, develop]
     paths:
       - "gally_core/**"
+      - "frontend-explorer/**"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [main, develop]
     paths:
       - "gally_core/**"
+      - "frontend-explorer/**"
       - ".github/workflows/ci.yml"
 
 jobs:
@@ -46,3 +48,37 @@ jobs:
       - name: Run gally_core tests
         working-directory: gally_core
         run: sui move test
+
+  frontend-tests:
+    name: Frontend Typecheck, Lint & Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        working-directory: frontend-explorer
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: frontend-explorer
+        run: pnpm typecheck
+
+      - name: Lint
+        working-directory: frontend-explorer
+        run: pnpm lint
+
+      - name: Unit tests (Vitest)
+        working-directory: frontend-explorer
+        run: pnpm test
