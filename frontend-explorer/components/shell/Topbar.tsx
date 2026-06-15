@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Bell, Menu, Moon, Search, Sun, Wallet } from "@/components/ui/icons";
 import { Avatar } from "@/components/ui/primitives";
@@ -68,22 +68,35 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   );
 }
 
-function ThemeToggle() {
-  const [mounted, setMounted] = useState(false);
-  const [dark, setDark] = useState(false);
+// The theme lives in the DOM (`<html class="dark">`, set pre-paint by the inline
+// script in layout.tsx). Read it as external state so there's no setState-in-effect
+// and no hydration mismatch: server/first-paint snapshot is `false` (Moon), then it
+// swaps to the real value after hydration.
+const THEME_EVENT = "gally:theme-change";
 
-  useEffect(() => {
-    setMounted(true);
-    setDark(document.documentElement.classList.contains("dark"));
-  }, []);
+function subscribeTheme(cb: () => void): () => void {
+  window.addEventListener(THEME_EVENT, cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    window.removeEventListener(THEME_EVENT, cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+
+function isDark(): boolean {
+  return document.documentElement.classList.contains("dark");
+}
+
+function ThemeToggle() {
+  const dark = useSyncExternalStore(subscribeTheme, isDark, () => false);
 
   function toggle() {
     const next = !dark;
-    setDark(next);
     document.documentElement.classList.toggle("dark", next);
     try {
       localStorage.setItem("gally-theme", next ? "dark" : "light");
     } catch {}
+    window.dispatchEvent(new Event(THEME_EVENT));
   }
 
   return (
@@ -92,7 +105,7 @@ function ThemeToggle() {
       className="rounded-xl p-2 text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
       aria-label="Toggle theme"
     >
-      {mounted && dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+      {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
     </button>
   );
 }

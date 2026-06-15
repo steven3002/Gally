@@ -4,7 +4,7 @@ import type { Tone } from "@/lib/format";
 import { accountByAddr } from "@/lib/mock/accounts";
 import { holdingsOf } from "@/lib/mock/holders";
 import { eventsForActor } from "@/lib/mock/activity";
-import { num, usd, usdCompact, pct, shortAddr, suiscanUrl } from "@/lib/format";
+import { num, usd, usdCompact, pct, suiscanUrl } from "@/lib/format";
 import { Avatar, Card, CardHeader, Empty, Pill, Stat } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/bits";
 import { EventList } from "@/components/events/EventList";

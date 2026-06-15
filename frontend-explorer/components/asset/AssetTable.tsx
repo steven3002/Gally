@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { Asset } from "@/lib/types";
 import {
-  cn,
   daysLeft,
   pct,
   pctOf,

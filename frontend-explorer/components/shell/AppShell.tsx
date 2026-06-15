@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -10,11 +10,14 @@ import { cn } from "@/lib/format";
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
+  const [prevPath, setPrevPath] = useState(pathname);
 
-  // close the mobile drawer on route change
-  useEffect(() => {
+  // Close the mobile drawer on route change — adjust state during render, the
+  // React-recommended alternative to a setState-in-effect.
+  if (prevPath !== pathname) {
+    setPrevPath(pathname);
     setMobileOpen(false);
-  }, [pathname]);
+  }
 
   return (
     <div className="flex min-h-screen w-full bg-background">

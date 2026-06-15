@@ -5,7 +5,7 @@ import type { Tone } from "@/lib/format";
 import { Avatar, ProgressBar } from "@/components/ui/primitives";
 import { Pill } from "@/components/ui/bits";
 import { RingGauge, Sparkline } from "@/components/ui/charts";
-import { ChevronRight, Shield } from "@/components/ui/icons";
+import { ChevronRight } from "@/components/ui/icons";
 
 const STATUS_TONE: Record<Validator["status"], Tone> = {
   ACTIVE: "positive",

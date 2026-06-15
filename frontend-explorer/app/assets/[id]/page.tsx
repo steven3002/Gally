@@ -13,7 +13,6 @@ import {
   num,
   pct,
   pctOf,
-  relTime,
   shortDate,
   suiscanUrl,
   usd,
@@ -43,7 +42,6 @@ import {
   ExternalLink,
   Lock,
   MapPin,
-  Shield,
   Users,
 } from "@/components/ui/icons";
 

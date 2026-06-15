@@ -5,7 +5,6 @@ import type {
   Category,
   Dispute,
   Position,
-  ProtocolEvent,
   Tranche,
   Validator,
 } from "../types";

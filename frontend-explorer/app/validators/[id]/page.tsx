@@ -7,7 +7,7 @@ import {
   validators,
 } from "@/lib/mock/data";
 import { eventsForActor } from "@/lib/mock/activity";
-import { num, pct, relTime, shortDate, usd, usdCompact } from "@/lib/format";
+import { num, pct, shortDate, usd, usdCompact } from "@/lib/format";
 import {
   Avatar,
   Card,

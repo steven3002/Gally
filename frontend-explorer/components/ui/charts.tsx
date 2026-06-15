@@ -210,7 +210,9 @@ export function Donut({
   const total = segments.reduce((a, s) => a + s.value, 0) || 1;
   const r = (size - thickness) / 2;
   const c = 2 * Math.PI * r;
-  let offset = 0;
+  // Precompute each arc's length and its cumulative start offset (no render-time mutation).
+  const lengths = segments.map((s) => (s.value / total) * c);
+  const starts = lengths.map((_, i) => lengths.slice(0, i).reduce((a, b) => a + b, 0));
   return (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
@@ -222,26 +224,21 @@ export function Donut({
           stroke="var(--surface-3)"
           strokeWidth={thickness}
         />
-        {segments.map((s, i) => {
-          const len = (s.value / total) * c;
-          const el = (
-            <circle
-              key={i}
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              fill="none"
-              stroke={s.color}
-              strokeWidth={thickness}
-              strokeDasharray={`${len} ${c - len}`}
-              strokeDashoffset={-offset}
-              strokeLinecap="round"
-              transform={`rotate(-90 ${size / 2} ${size / 2})`}
-            />
-          );
-          offset += len;
-          return el;
-        })}
+        {segments.map((s, i) => (
+          <circle
+            key={i}
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={thickness}
+            strokeDasharray={`${lengths[i]} ${c - lengths[i]}`}
+            strokeDashoffset={-starts[i]}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        ))}
       </svg>
       {center && <div className="absolute inset-0 flex flex-col items-center justify-center">{center}</div>}
     </div>

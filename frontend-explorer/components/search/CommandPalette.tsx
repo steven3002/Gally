@@ -36,41 +36,47 @@ export function CommandPalette() {
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Mirror `open` into a ref so the mount-time key listener reads the latest
+  // value without re-subscribing (a ref write in an effect is not setState).
+  const openRef = useRef(open);
 
   const results = useMemo(() => searchAll(q, 24), [q]);
 
-  // Open on ⌘K / Ctrl-K, or the topbar's custom event. Close on Esc.
   useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+
+  // Open on ⌘K / Ctrl-K, or the topbar's custom event. Close on Esc.
+  // State resets happen here (event handlers), not in a reactive effect.
+  useEffect(() => {
+    function openPalette() {
+      setQ("");
+      setActive(0);
+      setOpen(true);
+    }
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setOpen((o) => !o);
+        if (openRef.current) setOpen(false);
+        else openPalette();
       } else if (e.key === "Escape") {
         setOpen(false);
       }
     }
-    function onOpen() {
-      setOpen(true);
-    }
     window.addEventListener("keydown", onKey);
-    window.addEventListener(OPEN_PALETTE_EVENT, onOpen);
+    window.addEventListener(OPEN_PALETTE_EVENT, openPalette);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener(OPEN_PALETTE_EVENT, onOpen);
+      window.removeEventListener(OPEN_PALETTE_EVENT, openPalette);
     };
   }, []);
 
+  // Focus the input shortly after the palette opens (DOM side-effect only).
   useEffect(() => {
-    if (open) {
-      setQ("");
-      setActive(0);
-      // focus after paint
-      const t = setTimeout(() => inputRef.current?.focus(), 10);
-      return () => clearTimeout(t);
-    }
+    if (!open) return;
+    const t = setTimeout(() => inputRef.current?.focus(), 10);
+    return () => clearTimeout(t);
   }, [open]);
-
-  useEffect(() => setActive(0), [q]);
 
   function go(r: SearchResult) {
     setOpen(false);
@@ -118,7 +124,10 @@ export function CommandPalette() {
           <input
             ref={inputRef}
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setActive(0);
+            }}
             onKeyDown={onInputKey}
             placeholder="Search assets, accounts, validators, disputes, tx, or paste an id…"
             className="h-12 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-2"

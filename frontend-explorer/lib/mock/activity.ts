@@ -12,7 +12,7 @@ import type { EventFeed, EventType, ProtocolEvent, TxRow } from "../types";
 import { DAY, HOUR, NOW, usd } from "../format";
 import { assets, disputes, validators, DEMO_WALLET, validatorByPool } from "./data";
 import { holdersOf } from "./holders";
-import { paramHistory, treasuryHistory, pauseHistory, genesisTxDigest, GENESIS_TS, protocolConfig } from "./governance";
+import { paramHistory, treasuryHistory, pauseHistory, GENESIS_TS, protocolConfig } from "./governance";
 import { seeded } from "./series";
 
 const FEED_OF: Record<EventType, EventFeed> = {

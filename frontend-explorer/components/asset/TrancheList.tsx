@@ -1,5 +1,5 @@
 import type { Asset, Tranche } from "@/lib/types";
-import { cn, relTime, shortDate, usd } from "@/lib/format";
+import { cn, shortDate, usd } from "@/lib/format";
 import { Pill } from "@/components/ui/primitives";
 import { Check, Clock, Doc, Lock } from "@/components/ui/icons";
 

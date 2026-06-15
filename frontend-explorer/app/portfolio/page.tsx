@@ -14,7 +14,7 @@ import {
   SectionHeader,
 } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/bits";
-import { AddressChip } from "@/components/ui/AddressChip";
+import { IdLink } from "@/components/ui/IdLink";
 import { Donut, Sparkline } from "@/components/ui/charts";
 import { EventList } from "@/components/events/EventList";
 import { Coins, Wallet, ArrowRight, Lock } from "@/components/ui/icons";
@@ -80,7 +80,7 @@ export default function PortfolioPage() {
               </span>
             </h1>
             <div className="mt-1">
-              <AddressChip address={DEMO_WALLET} lead={10} tail={6} />
+              <IdLink id={DEMO_WALLET} lead={10} tail={6} />
             </div>
           </div>
         </div>

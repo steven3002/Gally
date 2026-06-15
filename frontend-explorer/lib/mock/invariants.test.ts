@@ -4,8 +4,8 @@
 
 import { describe, it, expect } from "vitest";
 import type { AssetState, EventType } from "../types";
-import { assets, assetById, validators, validatorByPool, disputes, DEMO_WALLET, portfolio } from "./data";
-import { holderLedger, holdersOf, holdingsOf, supplyOf } from "./holders";
+import { assets, validators, disputes, DEMO_WALLET, portfolio } from "./data";
+import { holdersOf, holdingsOf, supplyOf } from "./holders";
 import { accountByAddr } from "./accounts";
 import { allEvents, txList } from "./activity";
 import { resolveObject } from "./registry";

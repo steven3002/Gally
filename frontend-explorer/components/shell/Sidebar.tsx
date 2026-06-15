@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV, isActive } from "./nav";
-import { Logo, Close, Plus } from "@/components/ui/icons";
+import { Logo, Close } from "@/components/ui/icons";
 import { cn } from "@/lib/format";
 import { protocolStats, protocolConfig } from "@/lib/mock/data";
 import { usdCompact } from "@/lib/format";

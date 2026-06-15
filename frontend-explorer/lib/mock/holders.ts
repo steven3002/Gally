@@ -12,7 +12,7 @@ import type { Asset, HolderEntry, Holding } from "../types";
 import { assets, assetById, portfolio, DEMO_WALLET } from "./data";
 import { INVESTOR_PERSONAS } from "./accounts";
 import { seeded } from "./series";
-import { NOW, DAY } from "../format";
+import { NOW } from "../format";
 
 /** States in which GallyShare holders exist (post-finalize). */
 const FUNDED_STATES = new Set([
@@ -83,9 +83,9 @@ function buildLedger(a: Asset): HolderEntry[] {
 
   // 4) Distribute the remaining wrapped supply across free holders, capped by each total.
   const wrap = new Array(freeAddrs.length).fill(0);
-  let remW = wrappedTotal - fixedWrapped;
+  const remW = wrappedTotal - fixedWrapped;
   if (remW > 0 && freeAddrs.length) {
-    const wWeights = totals.map((t, i) => t * (0.3 + rnd())); // wrap propensity varies
+    const wWeights = totals.map((t) => t * (0.3 + rnd())); // wrap propensity varies
     const wRaw = splitExact(remW, wWeights, 0).map((v, i) => Math.min(v, totals[i]));
     for (let i = 0; i < wrap.length; i++) wrap[i] = wRaw[i];
     let placed = wrap.reduce((a, b) => a + b, 0);

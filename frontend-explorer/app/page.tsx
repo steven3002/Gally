@@ -7,7 +7,7 @@ import {
   protocolStats,
 } from "@/lib/mock/data";
 import { recentEvents } from "@/lib/mock/activity";
-import { pct, usd, usdCompact } from "@/lib/format";
+import { pct, usdCompact } from "@/lib/format";
 import { Card, CardHeader, SectionHeader, Stat } from "@/components/ui/primitives";
 import { CategoryIcon } from "@/components/ui/primitives";
 import { Sparkline } from "@/components/ui/charts";
