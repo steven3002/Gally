@@ -1,0 +1,29 @@
+[package]
+name = "gally_indexer"
+version = "0.1.0"
+edition = "2021"
+description = "Gally Capital Protocol backend indexer (event ingestion + read-only REST/WebSocket API)"
+autotests = false
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "macros",
+    "migrate",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+config = "0.14"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+anyhow = "1"
+
+# Single integration-test binary; submodules added per milestone (logic_flow.md §8).
+[[test]]
+name = "integration"
+path = "tests/integration/mod.rs"
