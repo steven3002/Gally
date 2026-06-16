@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { AccountRole, Category } from "@/lib/types";
-import { CATEGORY_COLOR, cn, num, pct, usd, usdCompact, suiscanUrl, type Tone } from "@/lib/format";
+import { CATEGORY_COLOR, num, pct, usd, usdCompact, suiscanUrl, type Tone } from "@/lib/format";
 import { accountByAddr } from "@/lib/mock/accounts";
 import { holdingsOf } from "@/lib/mock/holders";
 import { eventsForActor } from "@/lib/mock/activity";
@@ -29,9 +29,6 @@ import {
   Lock,
   Wallet,
 } from "@/components/ui/icons";
-
-// Shared column template so Principal / Claimable / APY line up across holdings.
-const HOLD_COLS = "sm:grid sm:grid-cols-[minmax(0,2.6fr)_1fr_1fr_0.8fr] sm:items-center sm:gap-4";
 
 const ROLE_TONE: Record<AccountRole, Tone> = {
   investor: "primary",
@@ -183,26 +180,25 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <section className="lg:col-span-2">
             <SectionHeader title="Holdings" subtitle="Deeds accrue yield; wrapped tokens are composable but earn none until unwrapped" />
-            <Card>
-              {/* Column header (sm+); rows stack with inline labels on mobile */}
-              <div className={cn("hidden border-b border-border px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-2", HOLD_COLS)}>
-                <span>Asset</span>
-                <span className="text-right">Principal</span>
-                <span className="text-right">Claimable</span>
-                <span className="text-right">APY</span>
-              </div>
-              <div className="divide-y divide-border">
-                {holdings.map((h) => (
-                  <div key={h.assetId} className="flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-surface-2 sm:px-5">
-                    <div className={cn("flex flex-col gap-3", HOLD_COLS)}>
-                      <Link href={`/assets/${h.assetId}`} className="flex min-w-0 items-center gap-3">
+            {/* One self-contained card per holding — a distinct border + the action
+                bar as an attached footer make it unambiguous which buttons act on
+                which position (no more rows bleeding into each other). */}
+            <div className="space-y-3">
+              {holdings.map((h) => (
+                <div
+                  key={h.assetId}
+                  className="overflow-hidden rounded-[var(--radius-card)] border border-border bg-surface shadow-[var(--shadow-sm)] transition-colors hover:border-border-strong"
+                >
+                  <div className="p-4 sm:p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <Link href={`/assets/${h.assetId}`} className="group flex min-w-0 items-center gap-3">
                         <Avatar seed={h.assetId} label={h.ticker} size={40} rounded="rounded-lg" />
-                        <div className="min-w-0 flex-1">
+                        <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-medium text-foreground">{h.assetName}</span>
+                            <span className="truncate text-sm font-semibold text-foreground transition-colors group-hover:text-primary">{h.assetName}</span>
                             <StatePill state={h.state} />
                           </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
                             <span className="inline-flex items-center gap-1 rounded-md bg-positive-soft px-2 py-0.5 font-medium text-positive">
                               <Coins className="h-3 w-3" /> {num(h.shareCount)} deeds
                             </span>
@@ -213,40 +209,34 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
                             )}
                           </div>
                         </div>
-                        {/* Mobile-only headline: the principal is the card's primary
-                            number, so it reads at a glance instead of hiding in a
-                            cramped metric column. On sm+ the table column carries it. */}
-                        <div className="shrink-0 text-right sm:hidden">
-                          <div className="tnum text-sm font-bold text-foreground">{usd(h.shareCount + h.wrapped)}</div>
-                          <div className="text-[10px] uppercase tracking-wide text-muted-2">principal</div>
-                        </div>
                       </Link>
-                      {/* Mobile: a clean two-up strip of the secondary metrics. */}
-                      <div className="grid grid-cols-2 divide-x divide-border overflow-hidden rounded-xl border border-border bg-surface-2/50 sm:hidden">
-                        <MiniStat label="Claimable" value={h.pendingYield > 0 ? `+${usd(h.pendingYield)}` : "—"} cls={h.pendingYield > 0 ? "text-positive" : "text-muted-2"} />
-                        <MiniStat label="APY" value={h.apy > 0 ? pct(h.apy) : "—"} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
-                      </div>
-                      {/* Desktop: feed the aligned HOLD_COLS table columns. */}
-                      <div className="hidden sm:contents">
-                        <Cell label="Principal" value={usd(h.shareCount + h.wrapped)} />
-                        <Cell label="Claimable" value={h.pendingYield > 0 ? `+${usd(h.pendingYield)}` : "—"} cls={h.pendingYield > 0 ? "text-positive" : "text-muted-2"} />
-                        <Cell label="APY" value={h.apy > 0 ? pct(h.apy) : "—"} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
+                      <div className="shrink-0 text-right">
+                        <div className="tnum text-sm font-bold text-foreground">{usd(h.shareCount + h.wrapped)}</div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-2">principal</div>
                       </div>
                     </div>
-                    <HoldingActions
-                      owner={address}
-                      assetId={h.assetId}
-                      assetName={h.assetName}
-                      tokenSymbol={h.tokenSymbol}
-                      shareCount={h.shareCount}
-                      wrapped={h.wrapped}
-                      pendingYield={h.pendingYield}
-                      frozen={assetById[h.assetId]?.accumulator?.wrappingFrozen ?? false}
-                    />
+
+                    {/* Secondary metrics — identical layout at every breakpoint. */}
+                    <div className="mt-4 grid grid-cols-2 divide-x divide-border overflow-hidden rounded-xl border border-border bg-surface-2/50">
+                      <MiniStat label="Claimable" value={h.pendingYield > 0 ? `+${usd(h.pendingYield)}` : "—"} cls={h.pendingYield > 0 ? "text-positive" : "text-muted-2"} />
+                      <MiniStat label="APY" value={h.apy > 0 ? pct(h.apy) : "—"} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
+                    </div>
                   </div>
-                ))}
-              </div>
-            </Card>
+
+                  {/* Action footer (owner-only) — visually fused to its own card. */}
+                  <HoldingActions
+                    owner={address}
+                    assetId={h.assetId}
+                    assetName={h.assetName}
+                    tokenSymbol={h.tokenSymbol}
+                    shareCount={h.shareCount}
+                    wrapped={h.wrapped}
+                    pendingYield={h.pendingYield}
+                    frozen={assetById[h.assetId]?.accumulator?.wrappingFrozen ?? false}
+                  />
+                </div>
+              ))}
+            </div>
           </section>
 
           <section>
@@ -319,12 +309,7 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
   );
 }
 
-// Desktop table cell — the column header carries the label, so only the value shows.
-function Cell({ value, cls = "text-foreground" }: { label: string; value: string; cls?: string }) {
-  return <div className={`tnum text-right text-sm font-semibold ${cls}`}>{value}</div>;
-}
-
-// Mobile metric tile inside the two-up holdings strip (label above the value).
+// Metric tile inside the two-up holdings strip (label above the value).
 function MiniStat({ label, value, cls = "text-foreground" }: { label: string; value: string; cls?: string }) {
   return (
     <div className="px-3 py-2.5">

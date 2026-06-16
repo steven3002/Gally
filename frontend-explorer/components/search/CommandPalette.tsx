@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { searchAll, type SearchResult } from "@/lib/mock/registry";
 import type { ObjectKind } from "@/lib/types";
 import { cn } from "@/lib/format";
+import { startNavProgress } from "@/components/shell/NavigationProgress";
 import { Activity, Coins, Layers, Scale, Search, Settings, Shield, Wallet } from "@/components/ui/icons";
 
 /** Fire this to open the palette from anywhere (the topbar search button does). */
@@ -80,6 +81,7 @@ export function CommandPalette() {
 
   function go(r: SearchResult) {
     setOpen(false);
+    startNavProgress();
     router.push(r.route);
   }
 
@@ -95,6 +97,7 @@ export function CommandPalette() {
       if (results[active]) go(results[active]);
       else if (q.trim()) {
         setOpen(false);
+        startNavProgress();
         router.push(`/search?q=${encodeURIComponent(q.trim())}`);
       }
     }

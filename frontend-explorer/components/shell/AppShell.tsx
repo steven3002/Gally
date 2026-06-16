@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { PauseBanner } from "./PauseBanner";
+import { NavigationProgress } from "./NavigationProgress";
 import { CommandPalette } from "@/components/search/CommandPalette";
 import { Toaster } from "@/components/notifications/Toaster";
 import { cn } from "@/lib/format";
@@ -23,6 +24,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen w-full bg-background">
+      {/* Top-of-viewport navigation progress (instant click feedback) */}
+      <NavigationProgress />
+
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-[252px] shrink-0 border-r border-border bg-surface lg:block">
         <Sidebar />

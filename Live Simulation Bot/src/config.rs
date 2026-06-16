@@ -17,6 +17,7 @@ pub const DEFAULT_RESEED_AMOUNT: u64 = 500_000_000_000; // 500,000 USDC
 pub const DEFAULT_USER_COUNT: usize = 8;
 pub const DEFAULT_GAS_THRESHOLD_MIST: u64 = 1_000_000_000; // 1 SUI
 pub const DEFAULT_USER_KEYS_PATH: &str = "./sim_users.json";
+pub const DEFAULT_SIM_STATE_PATH: &str = "./sim_state.json";
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -27,6 +28,7 @@ pub struct Config {
     pub reseed_amount: u64,
     pub user_count: usize,
     pub user_keys_path: String,
+    pub sim_state_path: String,
     pub gas_threshold_mist: u64,
     // Operational — required only for live re-seed (validated by `operator`).
     pub operator_key: Option<String>,
@@ -34,6 +36,8 @@ pub struct Config {
     pub faucet_package_id: Option<String>,
     pub mock_faucet_id: Option<String>,
     pub usdc_treasury_cap_id: Option<String>,
+    /// Shared `ProtocolConfig` id — required only for genesis seeding / funding (SIM-M3).
+    pub protocol_config_id: Option<String>,
 }
 
 /// Validated operator context needed to mint + refill.
@@ -114,13 +118,24 @@ impl Config {
             user_count,
             user_keys_path: get("USER_KEYS_PATH")
                 .unwrap_or_else(|| DEFAULT_USER_KEYS_PATH.to_string()),
+            sim_state_path: get("SIM_STATE_PATH")
+                .unwrap_or_else(|| DEFAULT_SIM_STATE_PATH.to_string()),
             gas_threshold_mist,
             operator_key: get("OPERATOR_KEY"),
             gally_package_id: get("GALLY_PACKAGE_ID"),
             faucet_package_id: get("FAUCET_PACKAGE_ID"),
             mock_faucet_id: get("MOCK_FAUCET_ID"),
             usdc_treasury_cap_id: get("USDC_TREASURY_CAP_ID"),
+            protocol_config_id: get("PROTOCOL_CONFIG_ID"),
         })
+    }
+
+    /// The Mock USDC coin type (`<gally_package>::usdc::USDC`), once the package
+    /// id is known. Used to query a user's claimed USDC balance.
+    pub fn usdc_type(&self) -> Option<String> {
+        self.gally_package_id
+            .as_ref()
+            .map(|p| format!("{p}::usdc::USDC"))
     }
 
     /// Operator address (if a parseable `OPERATOR_KEY` is set), for gas funding.

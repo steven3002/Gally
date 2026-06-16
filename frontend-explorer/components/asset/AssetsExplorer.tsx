@@ -110,9 +110,11 @@ export function AssetsExplorer({ initialCategory }: { initialCategory?: string }
                 className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-2"
               />
             </div>
+            {/* Sort + view toggle — sort flexes to fill the row on mobile so the
+                menu (and its panel) never clip; both sit inline on desktop. */}
             <div className="flex items-center gap-2">
               <SortMenu value={sort} onChange={setSort} />
-              <div className="flex rounded-xl border border-border p-0.5">
+              <div className="flex shrink-0 rounded-xl border border-border p-0.5">
                 {(["grid", "table"] as const).map((v) => (
                   <button
                     key={v}
@@ -126,31 +128,32 @@ export function AssetsExplorer({ initialCategory }: { initialCategory?: string }
                   </button>
                 ))}
               </div>
-              {/* Mobile-only filter toggle — hides chips until tapped */}
-              <button
-                onClick={() => setFiltersOpen((v) => !v)}
-                aria-expanded={filtersOpen}
-                className={cn(
-                  "md:hidden flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition-colors",
-                  filtersOpen || activeFilterCount > 0
-                    ? "border-primary bg-primary-soft text-primary"
-                    : "border-border text-muted hover:text-foreground",
-                )}
-              >
-                Filters
-                {activeFilterCount > 0 && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-on-primary">
-                    {activeFilterCount}
-                  </span>
-                )}
-                <ChevronDown
-                  className={cn(
-                    "h-3.5 w-3.5 transition-transform duration-200",
-                    filtersOpen && "rotate-180",
-                  )}
-                />
-              </button>
             </div>
+            {/* Mobile/tablet filter toggle — full width on mobile so it can't run
+                off-screen; auto width once it shares the desktop row. */}
+            <button
+              onClick={() => setFiltersOpen((v) => !v)}
+              aria-expanded={filtersOpen}
+              className={cn(
+                "md:hidden flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition-colors sm:w-auto",
+                filtersOpen || activeFilterCount > 0
+                  ? "border-primary bg-primary-soft text-primary"
+                  : "border-border text-muted hover:text-foreground",
+              )}
+            >
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-on-primary">
+                  {activeFilterCount}
+                </span>
+              )}
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 transition-transform duration-200",
+                  filtersOpen && "rotate-180",
+                )}
+              />
+            </button>
           </div>
 
           {/* Filter chips — always visible on md+, collapsed behind toggle on mobile */}
@@ -245,16 +248,16 @@ function SortMenu({ value, onChange }: { value: Sort; onChange: (s: Sort) => voi
   }, [open]);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative flex-1 sm:flex-none">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-border-strong"
+        className="flex w-full items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-border-strong"
       >
         <Filter className="h-4 w-4 shrink-0 text-muted-2" />
         <span className="hidden text-xs font-normal text-muted-2 sm:inline">Sort</span>
-        <span className="max-w-[7.5rem] truncate">{current.label}</span>
+        <span className="flex-1 truncate text-left">{current.label}</span>
         <ChevronDown
           className={cn(
             "h-3.5 w-3.5 shrink-0 text-muted-2 transition-transform duration-200",
@@ -265,7 +268,7 @@ function SortMenu({ value, onChange }: { value: Sort; onChange: (s: Sort) => voi
       {open && (
         <div
           role="listbox"
-          className="motion-safe:animate-rise absolute right-0 z-50 mt-2 w-56 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-[var(--shadow-lg)]"
+          className="motion-safe:animate-rise absolute inset-x-0 z-50 mt-2 overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-[var(--shadow-lg)] sm:left-auto sm:right-0 sm:w-56"
         >
           {SORTS.map((s) => (
             <button

@@ -98,6 +98,82 @@ impl SuiClient {
             .context("parsing totalBalance")
     }
 
+    /// Owned coins of a given type for `owner`, as `(object_id, balance μ-units)`.
+    pub fn get_coins(&self, owner: &str, coin_type: &str) -> Result<Vec<(String, u64)>> {
+        let r = self.rpc("suix_getCoins", json!([owner, coin_type]))?;
+        let data = r
+            .get("data")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow!("getCoins: no data array"))?;
+        let mut out = Vec::with_capacity(data.len());
+        for c in data {
+            let id = c
+                .get("coinObjectId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("getCoins: coin without coinObjectId"))?;
+            let bal = c
+                .get("balance")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("getCoins: coin without balance"))?
+                .parse::<u64>()
+                .context("parsing coin balance")?;
+            out.push((id.to_string(), bal));
+        }
+        Ok(out)
+    }
+
+    /// `(state, raised, funding_goal)` of an `Asset` (μUSDC). `state` is a `u8`
+    /// (FUNDING = 1, …); `raised`/`funding_goal` arrive as JSON strings (R2).
+    pub fn asset_view(&self, asset_id: &str) -> Result<(u8, u64, u64)> {
+        let f = self.get_object_fields(asset_id)?;
+        let state = f
+            .get("state")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow!("Asset {asset_id}: no u8 'state' field"))? as u8;
+        let u64f = |k: &str| -> Result<u64> {
+            f.get(k)
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("Asset {asset_id}: field '{k}' missing or not a string"))?
+                .parse::<u64>()
+                .with_context(|| format!("parsing Asset field '{k}'"))
+        };
+        Ok((state, u64f("raised")?, u64f("funding_goal")?))
+    }
+
+    /// Sign a serialised (unsigned) `TransactionData` (base64, e.g. from
+    /// [`crate::ptb::build_unsigned`]) with `signer` and execute it. Returns the
+    /// full execution `Value` (effects + events + objectChanges); errors on a
+    /// non-`success` status.
+    pub fn sign_and_execute(&self, tx_bytes_b64: &str, signer: &Keypair) -> Result<Value> {
+        let tx_bytes = STANDARD.decode(tx_bytes_b64).context("decoding txBytes base64")?;
+        let mut intent_msg = Vec::with_capacity(INTENT_TX_DATA.len() + tx_bytes.len());
+        intent_msg.extend_from_slice(&INTENT_TX_DATA);
+        intent_msg.extend_from_slice(&tx_bytes);
+        let signature = signer.sign_intent(&intent_msg);
+
+        let exec = self.rpc(
+            "sui_executeTransactionBlock",
+            json!([
+                tx_bytes_b64,
+                [signature],
+                { "showEffects": true, "showEvents": true, "showObjectChanges": true },
+                "WaitForLocalExecution"
+            ]),
+        )?;
+        let status = exec
+            .pointer("/effects/status/status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        if status != "success" {
+            let detail = exec
+                .pointer("/effects/status/error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            return Err(anyhow!("tx status={status}: {detail}"));
+        }
+        Ok(exec)
+    }
+
     /// Build (`unsafe_moveCall`) → sign → execute one Move call. Returns the full
     /// execution result `Value` (effects + events) on success; errors on a
     /// non-`success` status.
@@ -126,37 +202,9 @@ impl SuiClient {
             .ok_or_else(|| anyhow!("unsafe_moveCall: no txBytes"))?
             .to_string();
 
-        // 2. sign Blake2b256(intent || tx_bytes).
-        let tx_bytes = STANDARD
-            .decode(&tx_bytes_b64)
-            .context("decoding txBytes base64")?;
-        let mut intent_msg = Vec::with_capacity(INTENT_TX_DATA.len() + tx_bytes.len());
-        intent_msg.extend_from_slice(&INTENT_TX_DATA);
-        intent_msg.extend_from_slice(&tx_bytes);
-        let signature = signer.sign_intent(&intent_msg);
-
-        // 3. execute and wait for local execution.
-        let exec = self.rpc(
-            "sui_executeTransactionBlock",
-            json!([
-                tx_bytes_b64,
-                [signature],
-                { "showEffects": true, "showEvents": true },
-                "WaitForLocalExecution"
-            ]),
-        )?;
-        let status = exec
-            .pointer("/effects/status/status")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        if status != "success" {
-            let detail = exec
-                .pointer("/effects/status/error")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            return Err(anyhow!("{module}::{function} tx status={status}: {detail}"));
-        }
-        Ok(exec)
+        // 2 + 3. sign Blake2b256(intent || tx_bytes) and execute.
+        self.sign_and_execute(&tx_bytes_b64, signer)
+            .with_context(|| format!("{module}::{function}"))
     }
 }
 
@@ -167,6 +215,25 @@ pub fn first_created_owned_object(exec: &Value) -> Option<String> {
     for c in created {
         if c.pointer("/owner/AddressOwner").is_some() {
             if let Some(id) = c.pointer("/reference/objectId").and_then(|v| v.as_str()) {
+                return Some(id.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Object id of a **created** object whose `objectType` ends with `type_suffix`
+/// (e.g. `"::asset::Asset"`, `"::validator::ValidatorPool"`), read from the
+/// transaction's `objectChanges`. Used to recover seeded object ids.
+pub fn created_object_id(exec: &Value, type_suffix: &str) -> Option<String> {
+    let changes = exec.get("objectChanges")?.as_array()?;
+    for ch in changes {
+        if ch.get("type").and_then(|v| v.as_str()) != Some("created") {
+            continue;
+        }
+        let ty = ch.get("objectType").and_then(|v| v.as_str()).unwrap_or("");
+        if ty.ends_with(type_suffix) {
+            if let Some(id) = ch.get("objectId").and_then(|v| v.as_str()) {
                 return Some(id.to_string());
             }
         }
