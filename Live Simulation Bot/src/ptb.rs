@@ -25,8 +25,10 @@ pub fn build_unsigned(sender: &str, gas_budget: u64, args: &[String]) -> Result<
     let mut cmd = Command::new("sui");
     cmd.arg("client")
         .arg("ptb")
+        // The PTB parser reads the sender with the generic argument lexer, which
+        // requires the `@` address sigil (a bare `0x…` is rejected).
         .arg("--sender")
-        .arg(sender)
+        .arg(format!("@{sender}"))
         .arg("--gas-budget")
         .arg(gas_budget.to_string());
     for a in args {

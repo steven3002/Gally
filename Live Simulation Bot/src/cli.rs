@@ -18,6 +18,12 @@ pub struct Cli {
     pub tick_override: Option<u64>,
     pub check: bool,
     pub once: bool,
+    /// SIM-M3: ensure a vouched FUNDING asset is seeded, then run the user-cohort
+    /// claim+contribute funding loop (one pass), then exit.
+    pub fund: bool,
+    /// SIM-M3: full genesis — seed an asset in every lifecycle state (+ K validators,
+    /// AdminCap time-warp, non-zero yield index), then exit.
+    pub seed_all: bool,
 }
 
 impl Cli {
@@ -40,6 +46,8 @@ impl Cli {
                 }
                 "--check" => cli.check = true,
                 "--once" => cli.once = true,
+                "--fund" => cli.fund = true,
+                "--seed-all" => cli.seed_all = true,
                 "-h" | "--help" => {
                     print_help();
                     std::process::exit(0);
@@ -54,11 +62,13 @@ impl Cli {
 fn print_help() {
     println!(
         "gally_sim_bot — Gally Root Simulator (SIM-M2: lazy re-seed loop)\n\n\
-         USAGE: gally_sim_bot [--pace real-world|accelerated] [--tick-ms N] [--check] [--once]\n\n\
+         USAGE: gally_sim_bot [--pace real-world|accelerated] [--tick-ms N] [--check] [--once] [--fund]\n\n\
          --pace      Dual-State Engine profile (default: real-world)\n\
          --tick-ms   override the profile's default tick interval (ms)\n\
          --check     connect, read the faucet, report, then exit\n\
-         --once      run one re-seed tick, then exit\n\n\
+         --once      run one re-seed tick, then exit\n\
+         --fund      seed a vouched FUNDING asset + run the user claim+contribute loop, then exit (SIM-M3)\n\
+         --seed-all  full genesis: an asset in every lifecycle state + K validators + yield index (SIM-M3)\n\n\
          Config (env / config.toml): RPC_URL, FAUCET_URL, OPERATOR_KEY, GALLY_PACKAGE_ID,\n\
          FAUCET_PACKAGE_ID, MOCK_FAUCET_ID, USDC_TREASURY_CAP_ID, USER_COUNT, TICK_INTERVAL_MS,\n\
          RESEED_AMOUNT, GAS_THRESHOLD_MIST, USER_KEYS_PATH, PACE."
@@ -83,6 +93,10 @@ mod tests {
         let c = parse(&["--pace=real-world", "--check"]).unwrap();
         assert_eq!(c.pace, Some(Pace::RealWorld));
         assert!(c.check);
+
+        let c = parse(&["--fund", "--pace", "accelerated"]).unwrap();
+        assert!(c.fund && !c.check);
+        assert_eq!(c.pace, Some(Pace::Accelerated));
 
         // empty -> all defaults (pace resolved later by config)
         let c = parse(&[]).unwrap();

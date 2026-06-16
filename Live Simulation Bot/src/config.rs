@@ -38,6 +38,8 @@ pub struct Config {
     pub usdc_treasury_cap_id: Option<String>,
     /// Shared `ProtocolConfig` id — required only for genesis seeding / funding (SIM-M3).
     pub protocol_config_id: Option<String>,
+    /// `AdminCap` id — required only for the lifecycle seed (time-warp + close_wind_down).
+    pub admin_cap_id: Option<String>,
 }
 
 /// Validated operator context needed to mint + refill.
@@ -127,15 +129,8 @@ impl Config {
             mock_faucet_id: get("MOCK_FAUCET_ID"),
             usdc_treasury_cap_id: get("USDC_TREASURY_CAP_ID"),
             protocol_config_id: get("PROTOCOL_CONFIG_ID"),
+            admin_cap_id: get("ADMIN_CAP_ID"),
         })
-    }
-
-    /// The Mock USDC coin type (`<gally_package>::usdc::USDC`), once the package
-    /// id is known. Used to query a user's claimed USDC balance.
-    pub fn usdc_type(&self) -> Option<String> {
-        self.gally_package_id
-            .as_ref()
-            .map(|p| format!("{p}::usdc::USDC"))
     }
 
     /// Operator address (if a parseable `OPERATOR_KEY` is set), for gas funding.

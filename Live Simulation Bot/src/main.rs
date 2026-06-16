@@ -6,12 +6,17 @@
 //!
 //! The bot runs **no server** (SIM-D7): the chain is the only IPC.
 
+mod activity;
 mod cli;
 mod config;
 mod gas;
 mod keys;
+mod lifecycle;
 mod pace;
+mod ptb;
 mod reseed;
+mod seed;
+mod sim_state;
 mod sui_client;
 
 use anyhow::{Context, Result};
@@ -86,6 +91,58 @@ fn main() -> Result<()> {
             None => warn!("MOCK_FAUCET_ID unset — skipped faucet read"),
         }
         info!("base-architecture check complete");
+        return Ok(());
+    }
+
+    // --seed-all: SIM-M3 full genesis — an asset in every lifecycle state, K
+    // validators, AdminCap time-warp, non-zero yield index. One pass, idempotent.
+    if cli.seed_all {
+        reseed::tick(&client, &gasf, &cfg).context("re-seeding faucet before genesis")?;
+        lifecycle::seed_lifecycle(&client, &cfg).context("seeding all lifecycle states")?;
+        info!("SIM-M3 full genesis pass complete");
+        return Ok(());
+    }
+
+    // --fund: SIM-M3 funding slice — ensure the faucet has USDC, seed a vouched
+    // FUNDING asset, then drive the user cohort to claim + contribute. One pass.
+    if cli.fund {
+        let faucet_id = cfg
+            .mock_faucet_id
+            .clone()
+            .context("--fund requires MOCK_FAUCET_ID")?;
+        let config_id = cfg
+            .protocol_config_id
+            .clone()
+            .context("--fund requires PROTOCOL_CONFIG_ID")?;
+        cfg.faucet_package_id
+            .as_ref()
+            .context("--fund requires FAUCET_PACKAGE_ID")?;
+        cfg.gally_package_id
+            .as_ref()
+            .context("--fund requires GALLY_PACKAGE_ID")?;
+
+        // 1. make sure the faucet can satisfy the cohort's claims.
+        reseed::tick(&client, &gasf, &cfg).context("re-seeding faucet before funding")?;
+        // 2. ensure a vouched FUNDING asset exists (idempotent).
+        let seeded = seed::ensure_seed(&client, &cfg).context("seeding the demo asset")?;
+        // 3. drive the user cohort to fund it, paced by --pace.
+        let raised = activity::fund_asset(
+            &client,
+            &cfg,
+            &users,
+            &faucet_id,
+            &seeded.asset_id,
+            &config_id,
+        )
+        .context("running the funding loop")?;
+        info!(
+            asset = %seeded.asset_id,
+            validator_pool = %seeded.validator_pool_id,
+            raised,
+            goal = seed::DEMO_FUNDING_GOAL,
+            funded = (raised >= seed::DEMO_FUNDING_GOAL),
+            "SIM-M3 funding pass complete"
+        );
         return Ok(());
     }
 

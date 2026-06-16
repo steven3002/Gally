@@ -2,8 +2,10 @@
 
 The Rust "lazy worker" of the Live Simulation track. SIM-M2 scope: connect to a
 local Sui node, keep the on-chain **`MockFaucet`** topped up, and parse the
-Dual-State Engine `--pace` flag. Genesis seeding (SIM-M3) and protocol activity
-generation (SIM-M4) are **not** here yet.
+Dual-State Engine `--pace` flag. SIM-M3 (in progress) adds the **funding slice**
+behind `--fund`: seed a vouched FUNDING asset and drive the simulated user cohort
+to claim Mock USDC and `contribute_capital`, paced by `--pace`. The full
+every-lifecycle-state genesis and the SIM-M4 activity generator are **not** here yet.
 
 > Specs: `milestone/live-simulation/protocol_flow.md` (§5 architecture, §5.3 the
 > Dual-State Engine / SIM-D8, §6 tick machine, §10 re-seed) + `guard_rails.md`.
@@ -25,14 +27,18 @@ generation (SIM-M4) are **not** here yet.
 
 | File | Role |
 |---|---|
-| `cli.rs` | `--pace`, `--tick-ms`, `--check`, `--once` (hand-rolled, no clap) |
+| `cli.rs` | `--pace`, `--tick-ms`, `--check`, `--once`, `--fund` (hand-rolled, no clap) |
 | `pace.rs` | Dual-State Engine: `Pace::{RealWorld,Accelerated}` parse + profile (cadence/traffic/time-regime) |
-| `config.rs` | env over a `config.toml`-style file; defaults; fail-fast operator validation |
+| `config.rs` | env over a `config.toml`-style file; defaults; fail-fast operator validation; `PROTOCOL_CONFIG_ID` |
 | `keys.rs` | ed25519 fake-user keys (persisted → stable addresses); Sui address; operator-key parse; signing |
-| `sui_client.rs` | JSON-RPC: chain id, object fields, `MockFaucet` read, SUI balance, build→sign→submit move call |
+| `sui_client.rs` | JSON-RPC: chain id, object fields, `MockFaucet`/`Asset` read, SUI balance, sign+submit (move call **or** serialized PTB), `objectChanges` parsing |
+| `ptb.rs` | build a multi-command PTB via `sui client ptb --sender @addr --serialize-unsigned-transaction` (claim+transfer, contribute+change, mint→register/create, walrus-vec→vouch) |
 | `gas.rs` | lazy SUI gas-faucet top-up |
 | `reseed.rs` | `should_reseed` + mint(`TreasuryCap<USDC>`)→`refill` executor |
-| `main.rs` | BOOT → connect → keys → ENSURE_GAS → re-seed tick loop |
+| `seed.rs` | SIM-M3 funding-slice genesis: operator seeds 1 validator + 1 vouched FUNDING asset (idempotent) |
+| `activity.rs` | SIM-M3 funding loop: each sim user claims + `contribute_capital` in one PTB, paced by `--pace` |
+| `sim_state.rs` | `sim_state.json` cache of seeded object ids (re-derivable; never a source of truth — SIM-D6/R5) |
+| `main.rs` | BOOT → connect → keys → ENSURE_GAS → (`--fund`: re-seed + seed + funding loop) → re-seed tick loop |
 
 ## Configuration
 

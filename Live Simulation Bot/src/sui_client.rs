@@ -98,30 +98,6 @@ impl SuiClient {
             .context("parsing totalBalance")
     }
 
-    /// Owned coins of a given type for `owner`, as `(object_id, balance μ-units)`.
-    pub fn get_coins(&self, owner: &str, coin_type: &str) -> Result<Vec<(String, u64)>> {
-        let r = self.rpc("suix_getCoins", json!([owner, coin_type]))?;
-        let data = r
-            .get("data")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| anyhow!("getCoins: no data array"))?;
-        let mut out = Vec::with_capacity(data.len());
-        for c in data {
-            let id = c
-                .get("coinObjectId")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("getCoins: coin without coinObjectId"))?;
-            let bal = c
-                .get("balance")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("getCoins: coin without balance"))?
-                .parse::<u64>()
-                .context("parsing coin balance")?;
-            out.push((id.to_string(), bal));
-        }
-        Ok(out)
-    }
-
     /// `(state, raised, funding_goal)` of an `Asset` (μUSDC). `state` is a `u8`
     /// (FUNDING = 1, …); `raised`/`funding_goal` arrive as JSON strings (R2).
     pub fn asset_view(&self, asset_id: &str) -> Result<(u8, u64, u64)> {
@@ -226,13 +202,23 @@ pub fn first_created_owned_object(exec: &Value) -> Option<String> {
 /// (e.g. `"::asset::Asset"`, `"::validator::ValidatorPool"`), read from the
 /// transaction's `objectChanges`. Used to recover seeded object ids.
 pub fn created_object_id(exec: &Value, type_suffix: &str) -> Option<String> {
+    created_object_id_matching(exec, |ty| ty.ends_with(type_suffix))
+}
+
+/// Like [`created_object_id`] but matches by substring — for generic types whose
+/// `objectType` carries a type parameter (`"::accumulator::GlobalYieldAccumulator<…>"`).
+pub fn created_object_id_contains(exec: &Value, needle: &str) -> Option<String> {
+    created_object_id_matching(exec, |ty| ty.contains(needle))
+}
+
+fn created_object_id_matching(exec: &Value, pred: impl Fn(&str) -> bool) -> Option<String> {
     let changes = exec.get("objectChanges")?.as_array()?;
     for ch in changes {
         if ch.get("type").and_then(|v| v.as_str()) != Some("created") {
             continue;
         }
         let ty = ch.get("objectType").and_then(|v| v.as_str()).unwrap_or("");
-        if ty.ends_with(type_suffix) {
+        if pred(ty) {
             if let Some(id) = ch.get("objectId").and_then(|v| v.as_str()) {
                 return Some(id.to_string());
             }
