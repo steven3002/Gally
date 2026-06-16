@@ -39,7 +39,7 @@ export function HoldingActions({
   if (!canClaim && !canWrap && !canUnwrap && !canSplit) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 pt-1">
+    <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
       {canClaim && (
         <ActionButton
           size="sm"

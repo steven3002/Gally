@@ -1,10 +1,14 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import type { Holding } from "@/lib/types";
 import { assetById } from "@/lib/mock/data";
 import { graceOf, type Grace } from "@/lib/mock/health";
 import { num, relTime, shortDate } from "@/lib/format";
 import { Card } from "@/components/ui/primitives";
-import { Alert, ArrowRight } from "@/components/ui/icons";
+import { Alert, ArrowRight, ChevronDown } from "@/components/ui/icons";
+import { cn } from "@/lib/format";
 
 interface AtRisk {
   assetId: string;
@@ -21,6 +25,8 @@ interface AtRisk {
  * link to the asset. Missing the deadline forfeits the slashed/seized restitution.
  */
 export function UnwrapAlert({ holdings }: { holdings: Holding[] }) {
+  const [expanded, setExpanded] = useState(false);
+
   const atRisk: AtRisk[] = [];
   for (const h of holdings) {
     if (h.wrapped <= 0) continue;
@@ -45,15 +51,30 @@ export function UnwrapAlert({ holdings }: { holdings: Holding[] }) {
             <Alert className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold text-foreground">
-              Action needed — unwrap to keep your compensation
+            <h3 className="text-sm font-bold text-foreground">
+              Unwrap now — deadline approaching for compensation
             </h3>
             <p className="mt-0.5 text-xs text-muted">
-              You hold wrapped tokens in {atRisk.length === 1 ? "an asset" : `${atRisk.length} assets`} with an
-              open compensation grace window. Wrapped <code>Coin&lt;T&gt;</code> is <strong>not eligible</strong>{" "}
-              for the slashed/seized restitution — unwrap to GallyShare deeds before the deadline or you
-              permanently miss it.
+              Wrapped <code>Coin&lt;T&gt;</code> is <strong>excluded</strong> from slashed/seized
+              restitution in {atRisk.length === 1 ? "this asset" : `${atRisk.length} assets`}. Unwrap
+              to GallyShare deeds before the deadline or you permanently forfeit it.
             </p>
+            {/* Learn more toggle */}
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-danger hover:underline"
+            >
+              {expanded ? "Hide details" : "Learn more"}
+              <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", expanded && "rotate-180")} />
+            </button>
+            {expanded && (
+              <p className="mt-2 text-xs text-muted">
+                The protocol&apos;s compensation mechanism (§13) distributes slashed validator stake
+                and seized collateral exclusively to <em>GallyShare deed</em> holders at the snapshot
+                block. Coins held in the wrapped <code>Coin&lt;T&gt;</code> form are not deed holders
+                at that moment — they must be unwrapped first via the asset page below.
+              </p>
+            )}
             <div className="mt-3 space-y-2">
               {atRisk.map((r) => (
                 <Link

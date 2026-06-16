@@ -8,7 +8,7 @@ import { AssetCard } from "./AssetCard";
 import { AssetTable } from "./AssetTable";
 import { Card } from "@/components/ui/primitives";
 import { Pager, usePaged } from "@/components/ui/Pager";
-import { Search, Filter, Layers } from "@/components/ui/icons";
+import { Search, Filter, Layers, ChevronDown } from "@/components/ui/icons";
 
 const CATEGORIES: (Category | "All")[] = [
   "All",
@@ -49,6 +49,7 @@ export function AssetsExplorer({ initialCategory }: { initialCategory?: string }
   const [state, setState] = useState<AssetState | "All">("All");
   const [sort, setSort] = useState<Sort>("raised");
   const [view, setView] = useState<"grid" | "table">("grid");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -91,6 +92,8 @@ export function AssetsExplorer({ initialCategory }: { initialCategory?: string }
     setPrevSig(sig);
     setPage(0);
   }
+
+  const activeFilterCount = (cat !== "All" ? 1 : 0) + (state !== "All" ? 1 : 0);
 
   return (
     <div className="space-y-5">
@@ -136,25 +139,52 @@ export function AssetsExplorer({ initialCategory }: { initialCategory?: string }
                   </button>
                 ))}
               </div>
+              {/* Mobile-only filter toggle — hides chips until tapped */}
+              <button
+                onClick={() => setFiltersOpen((v) => !v)}
+                aria-expanded={filtersOpen}
+                className={cn(
+                  "md:hidden flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition-colors",
+                  filtersOpen || activeFilterCount > 0
+                    ? "border-primary bg-primary-soft text-primary"
+                    : "border-border text-muted hover:text-foreground",
+                )}
+              >
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-on-primary">
+                    {activeFilterCount}
+                  </span>
+                )}
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform duration-200",
+                    filtersOpen && "rotate-180",
+                  )}
+                />
+              </button>
             </div>
           </div>
 
-          {/* Category chips */}
-          <div className="flex flex-wrap gap-2">
-            {CATEGORIES.map((c) => (
-              <Chip key={c} active={cat === c} onClick={() => setCat(c)}>
-                {c}
-              </Chip>
-            ))}
-          </div>
+          {/* Filter chips — always visible on md+, collapsed behind toggle on mobile */}
+          <div className={cn("flex flex-col gap-3", filtersOpen ? "flex" : "hidden md:flex")}>
+            {/* Category chips */}
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIES.map((c) => (
+                <Chip key={c} active={cat === c} onClick={() => setCat(c)}>
+                  {c}
+                </Chip>
+              ))}
+            </div>
 
-          {/* State chips */}
-          <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-            {STATES.map((s) => (
-              <Chip key={s} active={state === s} onClick={() => setState(s)} subtle>
-                {s === "All" ? "All statuses" : STATE_LABEL[s]}
-              </Chip>
-            ))}
+            {/* State chips */}
+            <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+              {STATES.map((s) => (
+                <Chip key={s} active={state === s} onClick={() => setState(s)} subtle>
+                  {s === "All" ? "All statuses" : STATE_LABEL[s]}
+                </Chip>
+              ))}
+            </div>
           </div>
         </div>
       </Card>

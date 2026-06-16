@@ -71,7 +71,7 @@ export function NotificationBell() {
           <div
             role="dialog"
             aria-label="Notifications"
-            className="motion-safe:animate-rise absolute right-0 z-50 mt-2 w-[min(92vw,360px)] overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow-lg)]"
+            className="motion-safe:animate-rise absolute right-0 z-50 mt-2 w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow-lg)]"
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div className="flex items-center gap-2">
@@ -100,7 +100,7 @@ export function NotificationBell() {
               )}
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto">
+            <div className="max-h-[80vh] overflow-y-auto">
               {items.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
                   <Bell className="h-7 w-7 text-muted-2" />

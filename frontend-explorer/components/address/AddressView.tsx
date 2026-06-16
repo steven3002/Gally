@@ -150,14 +150,13 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
       {demo && claimable > 0 && (
         <Card className="flex flex-col items-start justify-between gap-3 border-positive/30 bg-positive-soft/40 p-5 sm:flex-row sm:items-center">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-positive/15 text-positive">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-positive/15 text-positive">
               <Coins className="h-5 w-5" />
             </span>
             <div>
-              <div className="text-sm font-semibold text-foreground">{usd(claimable)} in yield ready to claim</div>
+              <div className="text-sm font-bold text-foreground">{usd(claimable)} yield ready to claim</div>
               <div className="text-xs text-muted">
-                Accrued via the lazy index on your GallyShare deeds across {claimablePositions}{" "}
-                position{claimablePositions === 1 ? "" : "s"}. Wrapped tokens are not included.
+                {claimablePositions} position{claimablePositions === 1 ? "" : "s"} accruing — wrapped tokens excluded.
               </div>
             </div>
           </div>
