@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Asset, AssetState, Category } from "@/lib/types";
 import { assets } from "@/lib/mock/data";
 import { cn, STATE_LABEL } from "@/lib/format";
@@ -8,7 +8,7 @@ import { AssetCard } from "./AssetCard";
 import { AssetTable } from "./AssetTable";
 import { Card } from "@/components/ui/primitives";
 import { Pager, usePaged } from "@/components/ui/Pager";
-import { Search, Filter, Layers, ChevronDown } from "@/components/ui/icons";
+import { Search, Filter, Layers, ChevronDown, Check } from "@/components/ui/icons";
 
 const CATEGORIES: (Category | "All")[] = [
   "All",
@@ -111,20 +111,7 @@ export function AssetsExplorer({ initialCategory }: { initialCategory?: string }
               />
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 rounded-xl border border-border px-3 py-2">
-                <Filter className="h-4 w-4 text-muted-2" />
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as Sort)}
-                  className="bg-transparent text-sm font-medium text-foreground outline-none"
-                >
-                  {SORTS.map((s) => (
-                    <option key={s.id} value={s.id} className="bg-surface text-foreground">
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SortMenu value={sort} onChange={setSort} />
               <div className="flex rounded-xl border border-border p-0.5">
                 {(["grid", "table"] as const).map((v) => (
                   <button
@@ -224,6 +211,82 @@ export function AssetsExplorer({ initialCategory }: { initialCategory?: string }
             onPage={setPage}
             className="rounded-[var(--radius-card)] border border-border bg-surface"
           />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Themed sort selector. Replaces the native <select> (whose option list is
+ * OS-styled, unthemeable, and on mobile renders a full-screen picker that ran off
+ * the design). This is a self-contained popover: outside-click + Escape close it,
+ * and it's right-anchored + width-capped so it can't spill off a narrow viewport.
+ */
+function SortMenu({ value, onChange }: { value: Sort; onChange: (s: Sort) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = SORTS.find((s) => s.id === value) ?? SORTS[0];
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: PointerEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-border-strong"
+      >
+        <Filter className="h-4 w-4 shrink-0 text-muted-2" />
+        <span className="hidden text-xs font-normal text-muted-2 sm:inline">Sort</span>
+        <span className="max-w-[7.5rem] truncate">{current.label}</span>
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-muted-2 transition-transform duration-200",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          className="motion-safe:animate-rise absolute right-0 z-50 mt-2 w-56 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-[var(--shadow-lg)]"
+        >
+          {SORTS.map((s) => (
+            <button
+              key={s.id}
+              role="option"
+              aria-selected={s.id === value}
+              onClick={() => {
+                onChange(s.id);
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                s.id === value
+                  ? "bg-primary-soft font-semibold text-primary"
+                  : "text-foreground hover:bg-surface-2",
+              )}
+            >
+              {s.label}
+              {s.id === value && <Check className="h-4 w-4 shrink-0" />}
+            </button>
+          ))}
         </div>
       )}
     </div>

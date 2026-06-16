@@ -45,7 +45,7 @@ export function UnwrapAlert({ holdings }: { holdings: Holding[] }) {
 
   return (
     <Card className="border-danger/40">
-      <div className="bg-danger-soft p-5">
+      <div className="bg-danger-soft p-4 sm:p-5">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-danger/15 text-danger">
             <Alert className="h-5 w-5" />
@@ -80,17 +80,22 @@ export function UnwrapAlert({ holdings }: { holdings: Holding[] }) {
                 <Link
                   key={r.assetId}
                   href={`/assets/${r.assetId}`}
-                  className="flex flex-col gap-1 rounded-xl border border-danger/30 bg-surface px-3.5 py-2.5 transition-colors hover:border-danger/60 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex items-center justify-between gap-3 rounded-xl border border-danger/30 bg-surface px-3.5 py-2.5 transition-colors hover:border-danger/60"
                 >
-                  <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-                    {r.assetName}
+                  {/* Name + deadline stack on the left; amount + arrow on the right.
+                      Stacking the deadline under the name (instead of one long line)
+                      keeps the row scannable and from spilling on narrow screens. */}
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-foreground">{r.assetName}</span>
+                    <span className="mt-0.5 block text-[11px] font-semibold text-danger">
+                      Unwrap before {shortDate(r.grace.unlockMs)} · {relTime(r.grace.unlockMs)}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
                     <span className="tnum rounded-md bg-danger-soft px-1.5 py-0.5 text-[11px] font-semibold text-danger">
                       {num(r.wrapped)} {r.tokenSymbol ?? "wrapped"}
                     </span>
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-danger">
-                    Unwrap before {shortDate(r.grace.unlockMs)} ({relTime(r.grace.unlockMs)})
-                    <ArrowRight className="h-3.5 w-3.5" />
+                    <ArrowRight className="h-4 w-4 text-danger" />
                   </span>
                 </Link>
               ))}

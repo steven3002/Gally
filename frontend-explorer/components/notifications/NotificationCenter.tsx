@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useNotifications, markRead, type AppNotification } from "@/lib/notifications";
 import { cn, relTime, type Tone } from "@/lib/format";
@@ -32,18 +32,31 @@ const ICON: Record<Tone, React.ReactNode> = {
 export function NotificationBell() {
   const { items, unread, hydrated, markAllRead, clearAll } = useNotifications();
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
+  // Close on Escape or any pointer-down outside the bell/panel. A ref-based
+  // outside-click is used instead of a fixed backdrop on purpose: the Topbar has
+  // `backdrop-blur` (a backdrop-filter), which makes it the containing block for
+  // any `position: fixed` child — so a `fixed inset-0` backdrop would only cover
+  // the 64px header, not the viewport, and taps below it wouldn't close the panel.
   useEffect(() => {
     if (!open) return;
+    function onPointerDown(e: PointerEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
+    document.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
         className="relative rounded-xl p-2 text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
@@ -61,17 +74,17 @@ export function NotificationBell() {
 
       {open && (
         <>
-          {/* click-away backdrop */}
-          <button
-            className="fixed inset-0 z-40 cursor-default"
-            aria-hidden="true"
-            tabIndex={-1}
-            onClick={() => setOpen(false)}
-          />
+          {/* On mobile the panel is pinned to the viewport (inset-x with margins)
+              so it can never run off the right/left edge; on sm+ it drops down
+              anchored to the bell. Outside-click + Escape handle dismissal. */}
           <div
             role="dialog"
             aria-label="Notifications"
-            className="motion-safe:animate-rise absolute right-0 z-50 mt-2 w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow-lg)]"
+            className={cn(
+              "motion-safe:animate-rise z-50 overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow-lg)]",
+              "fixed inset-x-3 top-[4.5rem]",
+              "sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[360px] sm:max-w-[calc(100vw-2rem)]",
+            )}
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div className="flex items-center gap-2">
@@ -100,7 +113,7 @@ export function NotificationBell() {
               )}
             </div>
 
-            <div className="max-h-[80vh] overflow-y-auto">
+            <div className="max-h-[70vh] overflow-y-auto sm:max-h-[28rem]">
               {items.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
                   <Bell className="h-7 w-7 text-muted-2" />

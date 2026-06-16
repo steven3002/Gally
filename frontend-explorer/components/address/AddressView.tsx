@@ -193,11 +193,11 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
               </div>
               <div className="divide-y divide-border">
                 {holdings.map((h) => (
-                  <div key={h.assetId} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-surface-2">
+                  <div key={h.assetId} className="flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-surface-2 sm:px-5">
                     <div className={cn("flex flex-col gap-3", HOLD_COLS)}>
                       <Link href={`/assets/${h.assetId}`} className="flex min-w-0 items-center gap-3">
                         <Avatar seed={h.assetId} label={h.ticker} size={40} rounded="rounded-lg" />
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="truncate text-sm font-medium text-foreground">{h.assetName}</span>
                             <StatePill state={h.state} />
@@ -213,8 +213,21 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
                             )}
                           </div>
                         </div>
+                        {/* Mobile-only headline: the principal is the card's primary
+                            number, so it reads at a glance instead of hiding in a
+                            cramped metric column. On sm+ the table column carries it. */}
+                        <div className="shrink-0 text-right sm:hidden">
+                          <div className="tnum text-sm font-bold text-foreground">{usd(h.shareCount + h.wrapped)}</div>
+                          <div className="text-[10px] uppercase tracking-wide text-muted-2">principal</div>
+                        </div>
                       </Link>
-                      <div className="grid grid-cols-3 gap-x-6 gap-y-2 sm:contents">
+                      {/* Mobile: a clean two-up strip of the secondary metrics. */}
+                      <div className="grid grid-cols-2 divide-x divide-border overflow-hidden rounded-xl border border-border bg-surface-2/50 sm:hidden">
+                        <MiniStat label="Claimable" value={h.pendingYield > 0 ? `+${usd(h.pendingYield)}` : "—"} cls={h.pendingYield > 0 ? "text-positive" : "text-muted-2"} />
+                        <MiniStat label="APY" value={h.apy > 0 ? pct(h.apy) : "—"} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
+                      </div>
+                      {/* Desktop: feed the aligned HOLD_COLS table columns. */}
+                      <div className="hidden sm:contents">
                         <Cell label="Principal" value={usd(h.shareCount + h.wrapped)} />
                         <Cell label="Claimable" value={h.pendingYield > 0 ? `+${usd(h.pendingYield)}` : "—"} cls={h.pendingYield > 0 ? "text-positive" : "text-muted-2"} />
                         <Cell label="APY" value={h.apy > 0 ? pct(h.apy) : "—"} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
@@ -306,12 +319,17 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
   );
 }
 
-function Cell({ label, value, cls = "text-foreground" }: { label: string; value: string; cls?: string }) {
+// Desktop table cell — the column header carries the label, so only the value shows.
+function Cell({ value, cls = "text-foreground" }: { label: string; value: string; cls?: string }) {
+  return <div className={`tnum text-right text-sm font-semibold ${cls}`}>{value}</div>;
+}
+
+// Mobile metric tile inside the two-up holdings strip (label above the value).
+function MiniStat({ label, value, cls = "text-foreground" }: { label: string; value: string; cls?: string }) {
   return (
-    <div className="text-left sm:text-right">
-      {/* label repeats per-row on mobile; on sm+ the table header carries it */}
-      <div className="text-[11px] text-muted-2 sm:hidden">{label}</div>
-      <div className={`tnum text-sm font-semibold ${cls}`}>{value}</div>
+    <div className="px-3 py-2.5">
+      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-2">{label}</div>
+      <div className={`tnum mt-0.5 text-sm font-semibold ${cls}`}>{value}</div>
     </div>
   );
 }
