@@ -3,3 +3,6 @@
 claude.md
 milestone
 milestone.zip
+# Move build output + ephemeral per-environment publication records
+build/
+Published.toml

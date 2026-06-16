@@ -1,0 +1,28 @@
+[package]
+name = "gally_sim_bot"
+version = "0.1.0"
+edition = "2021"
+description = "Gally Root Simulator bot — re-seeds the on-chain faucet and (later) drives protocol activity on a local Sui node"
+
+# Standalone crate (not part of any parent workspace).
+[workspace]
+
+[[bin]]
+name = "gally_sim_bot"
+path = "src/main.rs"
+
+[dependencies]
+# Lean synchronous stack — chosen for this low-RAM local box (see README "Transport
+# choice"). A lazy sequential tick loop gains nothing from async; this keeps the
+# dependency tree small and the build cheap.
+ureq = { version = "2", default-features = false }          # HTTP (localhost, no TLS) for JSON-RPC + gas faucet
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
+ed25519-dalek = "2"                                          # fake-user + operator keypairs, tx signing
+blake2 = "0.10"                                              # Sui address + intent-message digest
+base64 = "0.22"
+hex = "0.4"
+getrandom = "0.2"                                            # OS entropy for keygen

@@ -1,0 +1,5 @@
+/target
+# Local secrets / runtime state — never commit
+config.toml
+sim_users.json
+sim_state.json
