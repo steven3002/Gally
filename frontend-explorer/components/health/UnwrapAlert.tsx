@@ -52,7 +52,7 @@ export function UnwrapAlert({ holdings }: { holdings: Holding[] }) {
           </span>
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-bold text-foreground">
-              Unwrap now — deadline approaching for compensation
+              Unwrap to keep your compensation — deadline approaching
             </h3>
             <p className="mt-0.5 text-xs text-muted">
               Wrapped <code>Coin&lt;T&gt;</code> is <strong>excluded</strong> from slashed/seized

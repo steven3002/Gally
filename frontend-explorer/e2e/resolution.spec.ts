@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { firstHref, idFromHref, endsWithPath } from "./utils";
+import { firstHref, idFromHref, endsWithPath, openPalette } from "./utils";
 
 // FE-M2: universal resolution (`/objects/:id`), the clickable id graph, the
 // `/tx/:digest` page, and the global ⌘K command palette.
@@ -67,9 +67,7 @@ test.describe("clickable id graph (FE-M2)", () => {
 test.describe("global ⌘K command palette (FE-M2)", () => {
   test("opens on the keyboard shortcut and closes on Escape", async ({ page }) => {
     await page.goto("/");
-    await page.keyboard.press("Control+k");
-    const input = page.getByPlaceholder(/Search assets/i);
-    await expect(input).toBeVisible();
+    const input = await openPalette(page);
     await page.keyboard.press("Escape");
     await expect(input).toBeHidden();
   });
@@ -91,9 +89,7 @@ test.describe("global ⌘K command palette (FE-M2)", () => {
 
     for (const c of cases) {
       await page.goto("/");
-      await page.keyboard.press("Control+k");
-      const input = page.getByPlaceholder(/Search assets/i);
-      await expect(input).toBeVisible();
+      const input = await openPalette(page);
       await input.fill(c.query);
       // a result is shown; Enter activates the top (highest-ranked) match
       await expect(page.getByRole("dialog")).toBeVisible();

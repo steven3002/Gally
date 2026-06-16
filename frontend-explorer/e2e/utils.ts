@@ -19,3 +19,17 @@ export function endsWithPath(path: string): RegExp {
   const esc = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(esc + "(\\?.*)?$");
 }
+
+/**
+ * Open the global ⌘K palette and return its search input. The keyboard
+ * shortcut is a client listener, so a single keypress fired before React
+ * hydrates is silently dropped; re-press until the palette actually opens.
+ */
+export async function openPalette(page: Page) {
+  const input = page.getByPlaceholder(/Search assets/i);
+  await expect(async () => {
+    await page.keyboard.press("Control+k");
+    await expect(input).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
+  return input;
+}
