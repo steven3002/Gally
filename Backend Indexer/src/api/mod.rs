@@ -10,24 +10,35 @@ use axum::{routing::get, Router};
 use sqlx::PgPool;
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::sui_client::ObjectProxy;
+use crate::metrics::Metrics;
+use crate::sui_client::{ChainTip, ObjectProxy};
+use crate::ws::Hub;
 
-/// Shared state handed to every request handler: the DB pool and the cached object proxy
-/// (`sui_client::ObjectProxy`, BI-M6). `Arc` keeps the proxy's cache shared across handler clones.
+/// Shared state handed to every request handler. BI-M6 added the cached object proxy; BI-M7 adds
+/// the WebSocket fan-out [`Hub`], the Prometheus [`Metrics`], the cached chain-tip reader
+/// ([`ChainTip`], for `/health` lag), and the lag-alert threshold. `Arc` keeps each shared across
+/// handler clones; the threshold is a plain copy.
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub objects: Arc<ObjectProxy>,
+    pub hub: Arc<Hub>,
+    pub metrics: Arc<Metrics>,
+    pub tip: Arc<ChainTip>,
+    /// Checkpoints behind the chain tip before `/health` reports `lagging` + 503 (`LAG_ALERT_CHECKPOINTS`).
+    pub lag_alert_checkpoints: i64,
 }
 
 /// Build the API router. BI-M2 added `/assets*` + `/governance`; BI-M3 added validator, portfolio,
 /// raise-progress, and holder-ledger endpoints; BI-M4 added the yield curve, wrap-ratio, tranche,
 /// and dispute feeds; BI-M5 hardened filtering/pagination; BI-M6 completes the surface with the
 /// account page (`/address/:addr`), the transaction lookup (`/tx/:digest`), and the object proxy
-/// (`/objects/:id` + legal-docs + token-metadata), and applies CORS. WebSocket routes land in BI-M7.
+/// (`/objects/:id` + legal-docs + token-metadata), and applies CORS. BI-M7 adds the three
+/// WebSocket channels, upgrades `/health` with lag alerting, and adds `/metrics`.
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(routes::health::health))
+        .route("/metrics", get(routes::metrics::metrics))
         .route("/assets", get(routes::assets::list_assets))
         .route("/assets/:asset_id", get(routes::assets::get_asset))
         .route("/assets/:asset_id/history", get(routes::assets::asset_history))
@@ -61,6 +72,9 @@ pub fn router(state: AppState) -> Router {
             "/objects/:object_id/token-metadata",
             get(routes::proxy::token_metadata),
         )
+        .route("/ws/assets/:asset_id", get(routes::ws::ws_asset))
+        .route("/ws/portfolio/:address", get(routes::ws::ws_portfolio))
+        .route("/ws/disputes/:dispute_id", get(routes::ws::ws_dispute))
         .layer(cors_layer())
         .with_state(state)
 }

@@ -19,8 +19,12 @@ use sqlx::PgPool;
 use tokio::time::sleep;
 use tracing::{debug, warn};
 
+use std::sync::Arc;
+
 use crate::db::queries::{self, RawEventInsert};
+use crate::metrics::Metrics;
 use crate::sui_client::{EventId, SuiClient, SuiEvent};
+use crate::ws::Hub;
 use handlers::{asset, dispute, governance, position, tranche, validator, yield_index, EventMeta};
 
 /// `gally_core` modules that emit events (`share` emits none — `logic_flow.md §10.3`).
@@ -166,6 +170,31 @@ pub async fn route_event(pool: &PgPool, ev: &SuiEvent) -> Result<bool> {
     }
 }
 
+/// Archive → route → record → broadcast one event (BI-M7). This is the single ingestion unit: it
+/// writes `raw_events`, dispatches to the typed handler, updates the metrics counters/histogram,
+/// and fans the event out to any open WebSocket channels (`logic_flow.md §4` "broadcast to any
+/// open WebSocket subscriptions" + §9 constraint 5). A typed-handler error is logged, not
+/// propagated — the raw payload is already archived, so the loop keeps advancing (R7); only a
+/// store failure (DB down) bubbles up.
+pub async fn process_event(
+    pool: &PgPool,
+    hub: &Hub,
+    metrics: &Metrics,
+    ev: &SuiEvent,
+) -> Result<()> {
+    let timer = metrics.db_write_duration.start_timer();
+    store_event(pool, ev).await?;
+    match route_event(pool, ev).await {
+        Ok(true) => metrics.record_event(short_event_name(&ev.event_type)),
+        Ok(false) => metrics.record_unknown(),
+        Err(e) => warn!(event_type = %ev.event_type, error = %e,
+            "typed handler failed; raw payload retained, continuing"),
+    }
+    timer.observe_duration();
+    hub.publish_event(ev);
+    Ok(())
+}
+
 /// Run the ingestion loop forever: sweep each module's events, archive to `raw_events`, and
 /// advance the cursor. Ingestion is idempotent — duplicate events (on restart/reconnect) are
 /// skipped by the `(tx_digest, event_seq)` key, so a coarse resume cursor is always safe.
@@ -175,7 +204,14 @@ pub async fn route_event(pool: &PgPool, ev: &SuiEvent) -> Result<bool> {
 /// restart; idempotent upserts make the re-scan harmless. Precise per-module persistence is
 /// the `logic_flow.md §2.1` per-event-type follow-up. `suix_queryEvents` also returns no
 /// per-event checkpoint number, so `checkpoint_seq` stays 0 until the gRPC path (BI-M7).
-pub async fn run(pool: PgPool, sui: SuiClient, package_id: String, poll_secs: u64) -> Result<()> {
+pub async fn run(
+    pool: PgPool,
+    sui: SuiClient,
+    package_id: String,
+    poll_secs: u64,
+    hub: Arc<Hub>,
+    metrics: Arc<Metrics>,
+) -> Result<()> {
     match queries::read_backfill_cursor(&pool).await? {
         Some((tx, seq)) => {
             tracing::info!(resume_tx = %tx, resume_seq = seq, "resuming from persisted backfill cursor")
@@ -195,13 +231,8 @@ pub async fn run(pool: PgPool, sui: SuiClient, package_id: String, poll_secs: u6
                 Ok(page) => {
                     let count = page.data.len();
                     for ev in &page.data {
-                        store_event(&pool, ev).await?;
-                        // A typed-handler failure is logged, not propagated: the raw payload is
-                        // already archived, so the loop must keep advancing (R7 / §9.8).
-                        if let Err(e) = route_event(&pool, ev).await {
-                            warn!(event_type = %ev.event_type, error = %e,
-                                  "typed handler failed; raw payload retained, continuing");
-                        }
+                        // store → route → record → broadcast; only a store failure propagates.
+                        process_event(&pool, &hub, &metrics, ev).await?;
                     }
                     if let Some(nc) = page.next_cursor {
                         let seq: i32 = nc.event_seq.parse().unwrap_or(0);

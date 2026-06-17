@@ -7,6 +7,7 @@ pub mod address;
 pub mod assets;
 pub mod disputes;
 pub mod governance;
+pub mod metrics;
 pub mod portfolio;
 pub mod proxy;
 pub mod tx;

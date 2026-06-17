@@ -7,7 +7,7 @@ autotests = false
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-axum = "0.7"
+axum = { version = "0.7", features = ["ws"] }
 sqlx = { version = "0.8", default-features = false, features = [
     "runtime-tokio",
     "tls-rustls",
@@ -24,6 +24,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 anyhow = "1"
 async-trait = "0.1"
 tower-http = { version = "0.6", features = ["cors"] }
+# Prometheus exposition for `/metrics` (BI-M7). No default features → text encoder only, no protobuf.
+prometheus = { version = "0.13", default-features = false }
+
+# Test-only: a real WebSocket client for the BI-M7 live-push tests.
+[dev-dependencies]
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect"] }
+futures-util = "0.3"
 
 # Single integration-test binary; submodules added per milestone (logic_flow.md §8).
 [[test]]

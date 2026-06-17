@@ -75,6 +75,30 @@ pub trait ObjectSource: Send + Sync {
     async fn get_coin_metadata(&self, coin_type: &str) -> Result<Value>;
 }
 
+/// The chain-tip read `/health` needs (BI-M7): the latest checkpoint sequence number. A trait so
+/// the lag-alert tests can drive [`ChainTip`] with a fixture (a fixed tip, or an "unreachable"
+/// error) without a live node.
+#[async_trait]
+pub trait CheckpointSource: Send + Sync {
+    async fn latest_checkpoint(&self) -> Result<u64>;
+}
+
+#[async_trait]
+impl CheckpointSource for SuiClient {
+    /// `sui_getLatestCheckpointSequenceNumber` — the result is a `BigInt` rendered as a JSON
+    /// string (occasionally a bare number on some nodes); accept both.
+    async fn latest_checkpoint(&self) -> Result<u64> {
+        let result = self
+            .rpc("sui_getLatestCheckpointSequenceNumber", json!([]))
+            .await?;
+        result
+            .as_str()
+            .and_then(|s| s.parse::<u64>().ok())
+            .or_else(|| result.as_u64())
+            .context("sui_getLatestCheckpointSequenceNumber: unparseable result")
+    }
+}
+
 /// HTTP JSON-RPC client against a single Sui fullnode.
 pub struct SuiClient {
     http: Client,
@@ -164,6 +188,9 @@ pub struct ObjectProxy {
     package_id: String,
     ttl: Duration,
     cache: Mutex<HashMap<String, (Instant, Value)>>,
+    /// Optional metrics sink (BI-M7): counts cache hits/misses. `None` in tests that don't assert
+    /// the counter, so the BI-M6 proxy fixtures keep working unchanged.
+    metrics: Option<Arc<crate::metrics::Metrics>>,
 }
 
 impl ObjectProxy {
@@ -173,6 +200,20 @@ impl ObjectProxy {
             package_id: package_id.into(),
             ttl,
             cache: Mutex::new(HashMap::new()),
+            metrics: None,
+        }
+    }
+
+    /// Attach a metrics sink so cache hits/misses feed `gally_indexer_object_proxy_requests_total`.
+    pub fn with_metrics(mut self, metrics: Arc<crate::metrics::Metrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
+    }
+
+    /// Record one proxy call (`hit` = served from cache) if a metrics sink is attached.
+    fn record(&self, hit: bool) {
+        if let Some(m) = &self.metrics {
+            m.record_proxy(hit);
         }
     }
 
@@ -200,8 +241,10 @@ impl ObjectProxy {
     pub async fn object(&self, id: &str) -> Result<Option<Value>> {
         let key = format!("obj:{id}");
         if let Some(v) = self.cached(&key).await {
+            self.record(true);
             return Ok(Some(v));
         }
+        self.record(false);
         let result = self.source.get_object(id).await?;
         if !object_present(&result) {
             return Ok(None);
@@ -215,8 +258,10 @@ impl ObjectProxy {
     pub async fn legal_docs(&self, asset_id: &str) -> Result<Option<Value>> {
         let key = format!("ld:{asset_id}");
         if let Some(v) = self.cached(&key).await {
+            self.record(true);
             return Ok(Some(v));
         }
+        self.record(false);
         let name_type = format!("{}::asset::LegalDocsKey", self.package_id);
         let result = self
             .source
@@ -260,6 +305,38 @@ impl ObjectProxy {
         });
         self.store(&key, out.clone()).await;
         Ok(Some(out))
+    }
+}
+
+/// A short-TTL cache over a [`CheckpointSource`] — the chain tip `/health` compares the indexer
+/// cursor against (BI-M7). The tip is fetched at most once per `ttl` (the spec's 10s) so a burst of
+/// `/health` probes does not hammer the fullnode.
+pub struct ChainTip {
+    source: Arc<dyn CheckpointSource>,
+    ttl: Duration,
+    cache: Mutex<Option<(Instant, u64)>>,
+}
+
+impl ChainTip {
+    pub fn new(source: Arc<dyn CheckpointSource>, ttl: Duration) -> Self {
+        Self {
+            source,
+            ttl,
+            cache: Mutex::new(None),
+        }
+    }
+
+    /// The latest chain checkpoint, served from the ≤`ttl` cache when fresh. A source error
+    /// propagates (so `/health` can answer `503 cannot reach node`) and is not cached.
+    pub async fn latest(&self) -> Result<u64> {
+        if let Some((at, value)) = *self.cache.lock().await {
+            if Instant::now().duration_since(at) < self.ttl {
+                return Ok(value);
+            }
+        }
+        let value = self.source.latest_checkpoint().await?;
+        *self.cache.lock().await = Some((Instant::now(), value));
+        Ok(value)
     }
 }
 

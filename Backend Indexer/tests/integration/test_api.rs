@@ -9,11 +9,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use futures_util::StreamExt;
 use gally_indexer::ingestion::route_event;
 use gally_indexer::sui_client::{EventId, ObjectProxy, ObjectSource, SuiEvent};
 use gally_indexer::{api, db};
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use tokio_tungstenite::connect_async;
 
 const PKG: &str = "0x309d0b80";
 
@@ -43,15 +45,10 @@ async fn serve(pool: PgPool) -> String {
     serve_with_objects(pool, crate::default_objects()).await
 }
 
-/// Serve the app with a caller-supplied object proxy (BI-M6 proxy tests).
+/// Serve the app with a caller-supplied object proxy (BI-M6 proxy tests). The BI-M7 state fields
+/// (hub/metrics/tip) default via [`crate::app_state`].
 async fn serve_with_objects(pool: PgPool, objects: Arc<ObjectProxy>) -> String {
-    let app = api::router(api::AppState { pool, objects });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-    format!("http://{addr}")
+    crate::spawn(crate::app_state(pool, objects)).await
 }
 
 async fn get_json(base: &str, path: &str) -> (reqwest::StatusCode, Value) {
@@ -957,4 +954,231 @@ async fn test_token_metadata_symbol(pool: PgPool) {
     assert_eq!(body["symbol"], "GALLY");
     assert_eq!(body["coin_type"], "0xTOK::entity_token::ENTITY_TOKEN");
     assert_eq!(body["decimals"], 6);
+}
+
+// ---------------------------------------------------------------------------
+// BI-M7 — WebSocket live push, /health lag alerting, /metrics
+// ---------------------------------------------------------------------------
+
+/// The concrete WS client type `connect_async` yields over a plain TCP (ws://) connection.
+type WsClient =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Serve the app and hand back a clone of its WebSocket [`Hub`] so the test can publish events the
+/// connected client should receive.
+async fn serve_ws(pool: PgPool) -> (String, std::sync::Arc<gally_indexer::ws::Hub>) {
+    let hub = crate::default_hub();
+    let state = api::AppState {
+        pool,
+        objects: crate::default_objects(),
+        hub: hub.clone(),
+        metrics: crate::default_metrics(),
+        tip: crate::tip_at(Some(0)),
+        lag_alert_checkpoints: 100,
+    };
+    (crate::spawn(state).await, hub)
+}
+
+/// Serve the app with a specific chain-tip fixture (`/health` lag tests).
+async fn serve_with_tip(pool: PgPool, tip: std::sync::Arc<gally_indexer::sui_client::ChainTip>) -> String {
+    let state = api::AppState {
+        pool,
+        objects: crate::default_objects(),
+        hub: crate::default_hub(),
+        metrics: crate::default_metrics(),
+        tip,
+        lag_alert_checkpoints: 100,
+    };
+    crate::spawn(state).await
+}
+
+/// Open a WS connection to `path` (rewriting `http→ws`) and return the stream after the connection
+/// is established.
+async fn ws_open(base: &str, path: &str) -> WsClient {
+    let url = format!("{}{}", base.replacen("http", "ws", 1), path);
+    let (stream, _resp) = connect_async(url).await.expect("ws handshake");
+    stream
+}
+
+/// Receive the next frame as JSON, failing if none arrives within 1s (Pass Criteria 3).
+async fn recv_json(ws: &mut WsClient) -> Value {
+    let msg = tokio::time::timeout(Duration::from_secs(1), ws.next())
+        .await
+        .expect("a frame within 1s")
+        .expect("stream still open")
+        .expect("a valid ws frame");
+    serde_json::from_str(msg.to_text().unwrap()).unwrap()
+}
+
+/// A WS client subscribed to `assets/:id` receives the next ingested event for that asset.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_ws_asset_receives_event(pool: PgPool) {
+    let (base, hub) = serve_ws(pool).await;
+    let mut ws = ws_open(&base, "/ws/assets/0xA").await;
+
+    let hello = recv_json(&mut ws).await;
+    assert_eq!(hello["type"], "connected");
+    assert_eq!(hello["channel"], "assets/0xA");
+
+    hub.publish_event(&ev("asset", "SharesClaimedEvent", "0xtx", "0", 10,
+        json!({"asset_id":"0xA","holder":"0xH","count":"5","share_object_id":"0xS"})));
+
+    let frame = recv_json(&mut ws).await;
+    assert_eq!(frame["type"], "event");
+    assert_eq!(frame["event_type"], "SharesClaimedEvent");
+    assert_eq!(frame["asset_id"], "0xA");
+}
+
+/// A WS client subscribed to `portfolio/:address` receives the next position event for that actor.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_ws_portfolio_receives_event(pool: PgPool) {
+    let (base, hub) = serve_ws(pool).await;
+    let mut ws = ws_open(&base, "/ws/portfolio/0xH").await;
+    assert_eq!(recv_json(&mut ws).await["type"], "connected");
+
+    hub.publish_event(&ev("asset", "SharesClaimedEvent", "0xtx", "0", 10,
+        json!({"asset_id":"0xA","holder":"0xH","count":"5","share_object_id":"0xS"})));
+
+    let frame = recv_json(&mut ws).await;
+    assert_eq!(frame["type"], "event");
+    assert_eq!(frame["holder"], "0xH");
+}
+
+/// A WS client subscribed to `disputes/:id` receives a `JurorVotedEvent` push.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_ws_dispute_receives_vote(pool: PgPool) {
+    let (base, hub) = serve_ws(pool).await;
+    let mut ws = ws_open(&base, "/ws/disputes/0xD").await;
+    assert_eq!(recv_json(&mut ws).await["type"], "connected");
+
+    hub.publish_event(&ev("dispute", "JurorVotedEvent", "0xv", "0", 20,
+        json!({"dispute_id":"0xD","juror_pool_id":"0xJ1","guilty":true,"votes_guilty_after":"1","votes_innocent_after":"0"})));
+
+    let frame = recv_json(&mut ws).await;
+    assert_eq!(frame["type"], "event");
+    assert_eq!(frame["event_type"], "JurorVotedEvent");
+    assert_eq!(frame["dispute_id"], "0xD");
+}
+
+/// Events for asset A are NOT delivered to a subscriber on asset B (no cross-channel leak).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_ws_no_cross_channel_leak(pool: PgPool) {
+    let (base, hub) = serve_ws(pool).await;
+    let mut ws = ws_open(&base, "/ws/assets/0xA").await;
+    assert_eq!(recv_json(&mut ws).await["type"], "connected");
+
+    // A 0xB event has no subscriber on the 0xA channel → dropped. The next frame the 0xA client
+    // sees must be the subsequent 0xA event, proving the 0xB one never leaked.
+    hub.publish_event(&ev("asset", "SharesClaimedEvent", "0xtxB", "0", 10,
+        json!({"asset_id":"0xB","holder":"0xH","count":"1","share_object_id":"0xSB"})));
+    hub.publish_event(&ev("asset", "SharesClaimedEvent", "0xtxA", "0", 11,
+        json!({"asset_id":"0xA","holder":"0xH","count":"2","share_object_id":"0xSA"})));
+
+    let frame = recv_json(&mut ws).await;
+    assert_eq!(frame["asset_id"], "0xA", "only the 0xA event reaches the 0xA subscriber");
+}
+
+/// With the indexer at the chain tip, `/health` returns 200 and `status: "ok"`.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_health_ok(pool: PgPool) {
+    // Default serve uses tip = 0; a fresh DB cursor is also 0 → lag 0.
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/health").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["status"], "ok");
+    assert_eq!(body["lag_checkpoints"], 0);
+    assert_eq!(body["cursor"], 0);
+}
+
+/// With the cursor 200 checkpoints behind the tip (threshold 100), `/health` returns 503 `lagging`.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_health_lagging_503(pool: PgPool) {
+    // Cursor stays 0 (fresh DB); tip fixture is 200 → lag 200 > 100.
+    let base = serve_with_tip(pool, crate::tip_at(Some(200))).await;
+    let (status, body) = get_json(&base, "/health").await;
+    assert_eq!(status, 503);
+    assert_eq!(body["status"], "lagging");
+    assert_eq!(body["lag_checkpoints"], 200);
+    assert_eq!(body["latest_chain_checkpoint"], 200);
+}
+
+/// With the Sui node unreachable, `/health` returns 503 `error`.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_health_node_unreachable_503(pool: PgPool) {
+    let base = serve_with_tip(pool, crate::tip_at(None)).await;
+    let (status, body) = get_json(&base, "/health").await;
+    assert_eq!(status, 503);
+    assert_eq!(body["status"], "error");
+    assert_eq!(body["reason"], "cannot reach node");
+}
+
+/// `GET /metrics` returns valid Prometheus text exposition (HELP/TYPE headers for each metric).
+/// The labelled counter families (`events_processed`, `object_proxy_requests`) only emit a TYPE
+/// header once they have at least one series, so the test primes them first — the realistic state
+/// after any ingestion/proxy activity.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_metrics_valid_prometheus(pool: PgPool) {
+    let metrics = crate::default_metrics();
+    metrics.record_event("AssetCreatedEvent");
+    metrics.record_unknown();
+    metrics.record_proxy(true);
+    let state = api::AppState {
+        pool,
+        objects: crate::default_objects(),
+        hub: crate::default_hub(),
+        metrics: metrics.clone(),
+        tip: crate::tip_at(Some(0)),
+        lag_alert_checkpoints: 100,
+    };
+    let base = crate::spawn(state).await;
+    let resp = reqwest::Client::new()
+        .get(format!("{base}/metrics"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    assert!(ct.starts_with("text/plain"), "prometheus content-type, got {ct}");
+    let body = resp.text().await.unwrap();
+    // Every declared metric is present with a well-formed TYPE header (TextEncoder output is valid
+    // Prometheus text by construction; this confirms the registry wired all collectors).
+    for marker in [
+        "# TYPE gally_indexer_cursor gauge",
+        "# TYPE gally_indexer_lag_checkpoints gauge",
+        "# TYPE gally_indexer_events_processed_total counter",
+        "# TYPE gally_indexer_events_unknown_total counter",
+        "# TYPE gally_indexer_db_write_duration_seconds histogram",
+        "# TYPE gally_indexer_ws_connections_active gauge",
+        "# TYPE gally_indexer_object_proxy_requests_total counter",
+    ] {
+        assert!(body.contains(marker), "metrics output missing `{marker}`");
+    }
+}
+
+/// After ingesting 3 events, `gally_indexer_events_processed_total` reflects them.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_metrics_events_counter(pool: PgPool) {
+    let metrics = crate::default_metrics();
+    let hub = crate::default_hub();
+    for i in 0..3i64 {
+        gally_indexer::ingestion::process_event(
+            &pool,
+            &hub,
+            &metrics,
+            &ev("asset", "AssetCreatedEvent", &format!("0xt{i}"), "0", i,
+                asset_created(&format!("0xA{i}"), "0xE", "1000000000")),
+        )
+        .await
+        .unwrap();
+    }
+    let body = metrics.render();
+    assert!(
+        body.contains(r#"gally_indexer_events_processed_total{event_type="AssetCreatedEvent"} 3"#),
+        "events_processed_total counter reflects 3 AssetCreatedEvent ingests; got:\n{body}"
+    );
 }

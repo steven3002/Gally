@@ -7,4 +7,6 @@ pub mod api;
 pub mod config;
 pub mod db;
 pub mod ingestion;
+pub mod metrics;
 pub mod sui_client;
+pub mod ws;

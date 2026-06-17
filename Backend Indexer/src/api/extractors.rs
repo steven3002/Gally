@@ -63,7 +63,7 @@ pub fn encode_cursor(parts: &[&str]) -> String {
 /// Inverse of [`encode_cursor`]. Returns `None` if the token is malformed (treated as "no
 /// cursor" by callers, i.e. the request is rejected upstream as a bad cursor).
 pub fn decode_cursor(token: &str) -> Option<Vec<String>> {
-    if token.len() % 2 != 0 {
+    if !token.len().is_multiple_of(2) {
         return None;
     }
     let mut bytes = Vec::with_capacity(token.len() / 2);

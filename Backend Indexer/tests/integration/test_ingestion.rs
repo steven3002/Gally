@@ -5,13 +5,25 @@
 //! [`ingestion::route_event`] (deserialize → handler → DB). All DB tests use `#[sqlx::test]`,
 //! which provisions a fresh database per test from `DATABASE_URL`.
 
+use gally_indexer::db;
 use gally_indexer::ingestion::{self, route_event};
 use gally_indexer::sui_client::{EventId, SuiEvent};
-use gally_indexer::{api, db};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
 const PKG: &str = "0x309d0b80";
+
+/// Row shape for the `position_events` wrap/unwrap assertion (`event_type, amount,
+/// total_wrapped_after, share_object_id`).
+type PositionRow = (String, Option<i64>, Option<i64>, Option<String>);
+
+/// Row shape for the `yield_index_series` revenue-precision assertion (`event_type, gross, fee,
+/// investor_portion, entity_portion, index_after::text, unwrapped_supply`).
+type RevenueRow = (String, Option<i64>, Option<i64>, Option<i64>, Option<i64>, String, i64);
+
+/// Row shape for the `tranche_events` proof→approved→released assertion (`event_type,
+/// tranche_index, blob_id, sha256, validator, amount`).
+type TrancheRow = (String, i32, Option<String>, Option<String>, Option<String>, Option<i64>);
 
 /// Build a `SuiEvent` as it would arrive from `suix_queryEvents` (`module::Struct` short name,
 /// string `eventSeq`/`timestampMs`).
@@ -118,17 +130,11 @@ async fn test_unknown_event_type_does_not_panic(pool: PgPool) {
 
 #[sqlx::test(migrations = "src/db/migrations")]
 async fn test_health_endpoint_returns_200(pool: PgPool) {
-    let app = api::router(api::AppState {
-        pool,
-        objects: crate::default_objects(),
-    });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
+    // BI-M7: /health now compares the cursor to a chain tip; the default test state uses tip = 0,
+    // so a fresh DB (cursor 0) is "ok" with zero lag.
+    let base = crate::spawn(crate::app_state(pool, crate::default_objects())).await;
     let resp = reqwest::Client::new()
-        .get(format!("http://{addr}/health"))
+        .get(format!("{base}/health"))
         .send()
         .await
         .unwrap();
@@ -544,7 +550,7 @@ async fn test_position_wrap_unwrap_cycle(pool: PgPool) {
     route(&pool, &ev("accumulator", "SharesUnwrappedEvent", "0xu", "0", 20,
         json!({ "asset_id": "0xA", "holder": "0xH", "count": "150", "share_object_id": "0xSHARE", "total_wrapped_after": "250" }))).await;
 
-    let rows: Vec<(String, Option<i64>, Option<i64>, Option<String>)> = sqlx::query_as(
+    let rows: Vec<PositionRow> = sqlx::query_as(
         "SELECT event_type, amount, total_wrapped_after, share_object_id FROM position_events \
          WHERE actor = $1 ORDER BY timestamp_ms ASC, id ASC",
     )
@@ -573,7 +579,7 @@ async fn test_revenue_deposited_index_precision(pool: PgPool) {
         "index_after": big, "unwrapped_supply": "1000000"
     }))).await;
 
-    let row: (String, Option<i64>, Option<i64>, Option<i64>, Option<i64>, String, i64) = sqlx::query_as(
+    let row: RevenueRow = sqlx::query_as(
         "SELECT event_type, gross, fee, investor_portion, entity_portion, index_after::text, \
          unwrapped_supply FROM yield_index_series WHERE asset_id = $1",
     )
@@ -665,7 +671,7 @@ async fn test_tranche_proof_then_approved_then_released(pool: PgPool) {
         "asset_id": "0xA", "tranche": "0", "amount": "250000000", "escrow_after": "750000000"
     }))).await;
 
-    let rows: Vec<(String, i32, Option<String>, Option<String>, Option<String>, Option<i64>)> = sqlx::query_as(
+    let rows: Vec<TrancheRow> = sqlx::query_as(
         "SELECT event_type, tranche_index, blob_id, sha256, validator, amount FROM tranche_events \
          WHERE asset_id = $1 ORDER BY tranche_index ASC, id ASC",
     )
