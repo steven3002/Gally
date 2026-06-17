@@ -6,15 +6,18 @@
 //!
 //! The bot runs **no server** (SIM-D7): the chain is the only IPC.
 
+mod action;
 mod activity;
 mod cli;
 mod config;
+mod daemon;
 mod gas;
 mod keys;
 mod lifecycle;
 mod pace;
 mod ptb;
 mod reseed;
+mod rng;
 mod seed;
 mod sim_state;
 mod sui_client;
@@ -143,6 +146,14 @@ fn main() -> Result<()> {
             funded = (raised >= seed::DEMO_FUNDING_GOAL),
             "SIM-M3 funding pass complete"
         );
+        return Ok(());
+    }
+
+    // --daemon: SIM-M4 activity generator — RESEED + one weighted-random action
+    // per tick (the continuous traffic loop). Requires a seeded genesis.
+    if cli.daemon {
+        daemon::run(&client, &gasf, &cfg, &users, cli.cycles)
+            .context("running the activity daemon")?;
         return Ok(());
     }
 

@@ -138,9 +138,19 @@ impl<'a> Seeder<'a> {
             format!("@{}", self.admin_cap),
             "5000u64".into(),
         ])?;
+        // Shrink the wrap cooldown too (SIM-D8 lists min_wrap_duration_ms among the
+        // accelerated time params) so the SIM-M4 daemon can wrap freshly-acquired
+        // shares within the soak instead of waiting the 1-hour production default.
+        self.exec(&[
+            "--move-call".into(),
+            format!("{}::protocol::admin_set_min_wrap_duration_ms", self.gally),
+            format!("@{}", self.config_id),
+            format!("@{}", self.admin_cap),
+            "5000u64".into(),
+        ])?;
         st.time_warped = true;
         st.save(&self.sim_path)?;
-        info!("AdminCap time-warp applied: dispute window / compensation grace / vouch timeout → 5s");
+        info!("AdminCap time-warp applied: dispute window / compensation grace / vouch timeout / min-wrap → 5s");
         Ok(())
     }
 

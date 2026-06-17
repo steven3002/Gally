@@ -24,6 +24,12 @@ pub struct Cli {
     /// SIM-M3: full genesis — seed an asset in every lifecycle state (+ K validators,
     /// AdminCap time-warp, non-zero yield index), then exit.
     pub seed_all: bool,
+    /// SIM-M4: the activity daemon — continuous weighted-random mock-transaction
+    /// loop driving real `gally_core` activity from the fake-user cohort.
+    pub daemon: bool,
+    /// Bound the daemon (and the re-seed loop) to N ticks, then exit (`None` =
+    /// run forever). Used for CI-style soaks.
+    pub cycles: Option<u64>,
 }
 
 impl Cli {
@@ -48,6 +54,12 @@ impl Cli {
                 "--once" => cli.once = true,
                 "--fund" => cli.fund = true,
                 "--seed-all" => cli.seed_all = true,
+                "--daemon" => cli.daemon = true,
+                "--cycles" => {
+                    let v = it.next().ok_or_else(|| anyhow!("--cycles requires a value"))?;
+                    cli.cycles =
+                        Some(v.parse().map_err(|_| anyhow!("--cycles '{v}' is not a u64"))?);
+                }
                 "-h" | "--help" => {
                     print_help();
                     std::process::exit(0);
@@ -68,7 +80,9 @@ fn print_help() {
          --check     connect, read the faucet, report, then exit\n\
          --once      run one re-seed tick, then exit\n\
          --fund      seed a vouched FUNDING asset + run the user claim+contribute loop, then exit (SIM-M3)\n\
-         --seed-all  full genesis: an asset in every lifecycle state + K validators + yield index (SIM-M3)\n\n\
+         --seed-all  full genesis: an asset in every lifecycle state + K validators + yield index (SIM-M3)\n\
+         --daemon    activity daemon: continuous weighted-random protocol traffic (SIM-M4)\n\
+         --cycles N  run exactly N ticks then exit (CI-style soak; default: run forever)\n\n\
          Config (env / config.toml): RPC_URL, FAUCET_URL, OPERATOR_KEY, GALLY_PACKAGE_ID,\n\
          FAUCET_PACKAGE_ID, MOCK_FAUCET_ID, USDC_TREASURY_CAP_ID, USER_COUNT, TICK_INTERVAL_MS,\n\
          RESEED_AMOUNT, GAS_THRESHOLD_MIST, USER_KEYS_PATH, PACE."
