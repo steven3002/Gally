@@ -1,8 +1,10 @@
 //! Checkpoint/event ingestion loop.
 //!
-//! BI-M1 is the skeleton: it polls events from the `gally_core` package, archives them in
-//! `raw_events`, and advances the cursor — there are no typed handlers yet (those land in
-//! BI-M2..BI-M4). Every event currently falls through [`dispatch`] to a `warn!` stub.
+//! The loop polls events from the `gally_core` package, archives the raw payload in
+//! `raw_events`, advances the cursor, and routes each event to its typed handler via
+//! [`route_event`]. BI-M2 wires the governance + asset-lifecycle feeds; the remaining feeds
+//! (validator, position, yield, tranche, dispute) land in BI-M3/BI-M4 and currently fall
+//! through to the `raw_events`-only path (guard rail R7).
 
 pub mod event_types;
 pub mod handlers;
@@ -18,6 +20,7 @@ use tracing::{debug, warn};
 
 use crate::db::queries::{self, RawEventInsert};
 use crate::sui_client::{EventId, SuiClient, SuiEvent};
+use handlers::{asset, governance, position, validator, EventMeta};
 
 /// `gally_core` modules that emit events (`share` emits none — `logic_flow.md §10.3`).
 const EVENT_MODULES: [&str; 5] = ["protocol", "validator", "asset", "accumulator", "dispute"];
@@ -25,14 +28,94 @@ const EVENT_MODULES: [&str; 5] = ["protocol", "validator", "asset", "accumulator
 /// Page size for `suix_queryEvents` backfill.
 const PAGE_LIMIT: usize = 50;
 
-/// Route an event type to its handler. In BI-M1 no handlers are wired yet, so every event
-/// type falls through to the `warn!` stub. Returns `true` if the type is handled.
-pub fn dispatch(event_type: &str) -> bool {
-    match event_type {
-        // Typed handlers (handle_governance / handle_asset_created / …) are wired in BI-M2..BI-M4.
-        _ => {
-            warn!(%event_type, "unhandled event type (BI-M1 skeleton archives raw payload only)");
-            false
+/// The `StructNameEvent` part of a full `MoveEventType` (`<pkg>::<module>::<Struct>`).
+pub fn short_event_name(event_type: &str) -> &str {
+    event_type.rsplit("::").next().unwrap_or(event_type)
+}
+
+/// Route one event to its typed handler by struct short name. Returns `Ok(true)` if a handler
+/// processed it, `Ok(false)` if the type is unknown / not yet wired (already archived in
+/// `raw_events`; logged, never an error — guard rail R7). A handler error is returned so the
+/// caller can log it and continue without crashing the loop.
+pub async fn route_event(pool: &PgPool, ev: &SuiEvent) -> Result<bool> {
+    let meta = EventMeta::from_event(ev);
+    let payload = &ev.parsed_json;
+    match short_event_name(&ev.event_type) {
+        // ---- governance feed (BI-M2) ----
+        name @ ("ProtocolInitializedEvent"
+        | "ProtocolParamChangedEvent"
+        | "ProtocolTreasuryChangedEvent"
+        | "EmergencyStopTriggeredEvent"
+        | "ProtocolResumedEvent") => {
+            governance::handle_governance(pool, &meta, name, payload).await?;
+            Ok(true)
+        }
+        // ---- asset-lifecycle feed (BI-M2) ----
+        "AssetCreatedEvent" => {
+            asset::handle_asset_created(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        "AssetVouchedEvent" => {
+            asset::handle_asset_vouched(pool, payload).await?;
+            Ok(true)
+        }
+        "AssetStateChangedEvent" => {
+            asset::handle_asset_state_change(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        "AssetClosedEvent" => {
+            asset::handle_asset_closed(pool, payload).await?;
+            Ok(true)
+        }
+        "AssetOperationalEvent" => {
+            asset::handle_asset_operational(pool, payload).await?;
+            Ok(true)
+        }
+        "RaiseFinalizedEvent" => {
+            asset::handle_raise_finalized(pool, payload).await?;
+            Ok(true)
+        }
+        // CANCELLED=3 arrives via AssetStateChangedEvent; this is archived in raw_events only (§4).
+        "AssetCancelledEvent" => {
+            debug!("AssetCancelledEvent: no-op (CANCELLED state arrives via AssetStateChangedEvent)");
+            Ok(true)
+        }
+        // ---- validator registry feed (BI-M3) ----
+        "ValidatorRegisteredEvent" => {
+            validator::handle_validator_registered(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        "StakeAddedEvent" => {
+            validator::handle_stake_added(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        "StakeWithdrawnEvent" => {
+            validator::handle_stake_withdrawn(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        "ValidatorStatusChangedEvent" => {
+            validator::handle_validator_status(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        // ---- position ledger feed (BI-M3) ----
+        "CapitalContributedEvent" => {
+            position::handle_capital_contributed(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        name @ ("SharesClaimedEvent"
+        | "SharesWrappedEvent"
+        | "SharesUnwrappedEvent"
+        | "YieldClaimedEvent"
+        | "ShareRedeemedEvent"
+        | "ContributionRefundedEvent") => {
+            position::handle_position_event(pool, &meta, name, payload).await?;
+            Ok(true)
+        }
+        // Known but not yet wired (yield/tranche/dispute → BI-M4) or a genuinely new type:
+        // archived in raw_events, never fatal (R7).
+        other => {
+            warn!(event_type = %other, "no typed handler yet; archived in raw_events only");
+            Ok(false)
         }
     }
 }
@@ -67,7 +150,12 @@ pub async fn run(pool: PgPool, sui: SuiClient, package_id: String, poll_secs: u6
                     let count = page.data.len();
                     for ev in &page.data {
                         store_event(&pool, ev).await?;
-                        dispatch(&ev.event_type);
+                        // A typed-handler failure is logged, not propagated: the raw payload is
+                        // already archived, so the loop must keep advancing (R7 / §9.8).
+                        if let Err(e) = route_event(&pool, ev).await {
+                            warn!(event_type = %ev.event_type, error = %e,
+                                  "typed handler failed; raw payload retained, continuing");
+                        }
                     }
                     if let Some(nc) = page.next_cursor {
                         let seq: i32 = nc.event_seq.parse().unwrap_or(0);
