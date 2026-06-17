@@ -134,6 +134,8 @@ pub struct RaiseProgressRow {
 
 /// One `position_events` row (`§2.10`); the `/portfolio/:address` item (shape `§6.4`).
 /// `index_at_claim` is read via `::text` (NUMERIC → string), preserving full u128 precision.
+/// BI-M6 unions this feed with `raise_progress` (contributions), so the keyset cursor uses the
+/// globally-unique `(timestamp_ms, tx_digest, event_seq)` rather than the per-table `id`.
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct PositionEventRow {
     #[serde(skip_serializing)]
@@ -149,6 +151,45 @@ pub struct PositionEventRow {
     pub total_wrapped_after: Option<i64>,
     pub index_at_claim: Option<String>,
     pub tx_digest: String,
+    /// Event index within the tx; with `tx_digest` it forms the union-stable keyset tiebreaker.
+    #[serde(skip_serializing)]
+    pub event_seq: i32,
+}
+
+/// The per-asset holding fold for one address (`§2.17` grouped by `asset_id` for a fixed actor);
+/// the `holdings` item inside `GET /address/:address` (shape `§6.7`). Not a table — a GROUP BY
+/// over `position_events`. `share_count` is the deeds fold; `wrapped` the wrapped fold.
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct HoldingRow {
+    pub asset_id: String,
+    #[serde(serialize_with = "string_amount")]
+    pub share_count: i64,
+    #[serde(serialize_with = "string_amount")]
+    pub wrapped: i64,
+    pub yield_claimed_index: Option<String>,
+}
+
+/// One `GET /portfolio/:address/assets` summary row — distinct asset the address has touched, with
+/// activity bounds + count, folded over `position_events` ∪ `raise_progress` (`m6.md`). Counts are
+/// small JSON numbers (not USDC amounts).
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct PortfolioAssetSummary {
+    pub asset_id: String,
+    pub first_seen_ms: i64,
+    pub last_seen_ms: i64,
+    pub event_count: i64,
+}
+
+/// One `raw_events` row for `GET /tx/:digest` (shape `§6.8`). `payload` is read as text
+/// (`payload::text`) and re-parsed in the route — avoids enabling sqlx's `json` feature just to
+/// decode JSONB back to a `Value`.
+#[derive(Debug, Clone, FromRow)]
+pub struct RawEventRow {
+    pub event_seq: i32,
+    pub event_type: String,
+    pub timestamp_ms: i64,
+    pub checkpoint_seq: i64,
+    pub payload: String,
 }
 
 /// The aggregated per-actor holder fold (`§2.17`) for one asset — **not a table**, computed by a
@@ -247,6 +288,11 @@ pub struct DisputeRow {
     pub bounty: Option<i64>,
     pub votes_guilty: i32,
     pub votes_innocent: i32,
+    /// `m6.md` names the list-feed tallies `votes_*_after` (the latest `JurorVotedEvent`'s running
+    /// count). These are additive aliases of `votes_guilty`/`votes_innocent` (the §6.5 names) — both
+    /// are the monotone `MAX(votes_*_after)`, so the list satisfies §6.5 *and* the m6 wording.
+    pub votes_guilty_after: i32,
+    pub votes_innocent_after: i32,
 }
 
 /// Validator track record (BI-M5) — DB-derived counts embedded in `GET /validators/:pool_id`

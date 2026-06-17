@@ -7,9 +7,10 @@ use serde_json::Value;
 use sqlx::{PgPool, QueryBuilder};
 
 use crate::db::models::{
-    AssetRow, AssetStateChangeRow, DisputeRow, GovernanceRow, HolderFoldRow, JuryVoteRow,
-    PositionEventRow, RaiseProgressRow, StakeEventRow, StatusChangeRow, TrancheRow,
-    ValidatorPoolRow, ValidatorTrackRecord, WrapRatioRow, YieldIndexRow,
+    AssetRow, AssetStateChangeRow, DisputeRow, GovernanceRow, HolderFoldRow, HoldingRow,
+    JuryVoteRow, PortfolioAssetSummary, PositionEventRow, RaiseProgressRow, RawEventRow,
+    StakeEventRow, StatusChangeRow, TrancheRow, ValidatorPoolRow, ValidatorTrackRecord,
+    WrapRatioRow, YieldIndexRow,
 };
 use crate::ingestion::event_types::{
     AssetCreatedEvent, AssetStateChangedEvent, AssetVouchedEvent, CapitalContributedEvent,
@@ -636,52 +637,162 @@ pub async fn list_raise_progress(
     Ok(qb.build_query_as::<RaiseProgressRow>().fetch_all(pool).await?)
 }
 
-/// `GET /portfolio/:address` — the actor's position events ascending by `(timestamp_ms, id)` with
-/// optional `?asset_id=` / `?event_type=` filters.
+/// `GET /portfolio/:address` — the actor's economic activity ascending by `(timestamp_ms,
+/// tx_digest, event_seq)`, UNION-ing `position_events` with `raise_progress` so a pure contributor
+/// (only `CapitalContributedEvent`) appears too (`m6.md`). Contributions are projected into the
+/// §6.4 shape as `event_type = 'CapitalContributed'`, `actor = contributor`, with the deed/wrap-only
+/// columns null. Optional `?asset_id=` / `?event_type=` filters apply to the merged feed. The
+/// per-table `id` is not globally unique across the union, so the keyset is the Sui-unique
+/// `(timestamp_ms, tx_digest, event_seq)`.
 pub async fn list_portfolio(
     pool: &PgPool,
     actor: &str,
     asset_id: Option<&str>,
     event_type: Option<&str>,
-    cursor: Option<(i64, i64)>,
+    cursor: Option<(i64, String, i64)>,
     limit: i64,
 ) -> Result<Vec<PositionEventRow>> {
     let mut qb = QueryBuilder::new(
         "SELECT id, timestamp_ms, event_type, asset_id, actor, amount, share_object_id, \
-         total_wrapped_after, index_at_claim::text AS index_at_claim, tx_digest \
-         FROM position_events WHERE actor = ",
+           total_wrapped_after, index_at_claim, tx_digest, event_seq FROM ( \
+           SELECT id, timestamp_ms, event_type, asset_id, actor, amount, share_object_id, \
+             total_wrapped_after, index_at_claim::text AS index_at_claim, tx_digest, event_seq \
+             FROM position_events WHERE actor = ",
     );
     qb.push_bind(actor.to_string());
+    qb.push(
+        " UNION ALL \
+           SELECT id, timestamp_ms, 'CapitalContributed' AS event_type, asset_id, \
+             contributor AS actor, amount, NULL AS share_object_id, NULL::bigint AS total_wrapped_after, \
+             NULL::text AS index_at_claim, tx_digest, event_seq \
+             FROM raise_progress WHERE contributor = ",
+    );
+    qb.push_bind(actor.to_string());
+    qb.push(") u WHERE TRUE");
     if let Some(a) = asset_id {
         qb.push(" AND asset_id = ").push_bind(a.to_string());
     }
     if let Some(t) = event_type {
         qb.push(" AND event_type = ").push_bind(t.to_string());
     }
-    if let Some((ts, id)) = cursor {
-        qb.push(" AND (timestamp_ms, id) > (")
+    if let Some((ts, tx, seq)) = cursor {
+        qb.push(" AND (timestamp_ms, tx_digest, event_seq) > (")
             .push_bind(ts)
             .push(", ")
-            .push_bind(id)
+            .push_bind(tx)
+            .push(", ")
+            .push_bind(seq)
             .push(")");
     }
-    qb.push(" ORDER BY timestamp_ms ASC, id ASC LIMIT ")
+    qb.push(" ORDER BY timestamp_ms ASC, tx_digest ASC, event_seq ASC LIMIT ")
         .push_bind(limit + 1);
     Ok(qb.build_query_as::<PositionEventRow>().fetch_all(pool).await?)
 }
 
-/// `GET /portfolio/:address/assets` — distinct asset ids the actor has interacted with
-/// (`position_events` + `raise_progress`, so a pure contributor is included).
-pub async fn list_portfolio_assets(pool: &PgPool, actor: &str) -> Result<Vec<String>> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT asset_id FROM position_events WHERE actor = $1 \
-         UNION SELECT asset_id FROM raise_progress WHERE contributor = $1 \
-         ORDER BY 1",
+/// `GET /portfolio/:address/assets` — per-asset activity summary (first/last seen + event count)
+/// across `position_events` ∪ `raise_progress`, so a pure contributor is included (`m6.md`).
+pub async fn list_portfolio_assets(
+    pool: &PgPool,
+    actor: &str,
+) -> Result<Vec<PortfolioAssetSummary>> {
+    Ok(sqlx::query_as::<_, PortfolioAssetSummary>(
+        "SELECT asset_id, MIN(ts) AS first_seen_ms, MAX(ts) AS last_seen_ms, \
+           COUNT(*)::bigint AS event_count FROM ( \
+             SELECT asset_id, timestamp_ms AS ts FROM position_events WHERE actor = $1 \
+             UNION ALL \
+             SELECT asset_id, timestamp_ms AS ts FROM raise_progress WHERE contributor = $1 \
+           ) u GROUP BY asset_id ORDER BY asset_id ASC",
     )
     .bind(actor)
     .fetch_all(pool)
+    .await?)
+}
+
+/// `GET /address/:address` `holdings` — the §2.17 signed fold grouped by `asset_id` for one actor,
+/// keyset-paginated by `asset_id` (the §6.7 holdings collection is paginated when large). Filtered
+/// to live positions (`share_count + wrapped > 0`).
+pub async fn list_address_holdings(
+    pool: &PgPool,
+    actor: &str,
+    cursor: Option<String>,
+    limit: i64,
+) -> Result<Vec<HoldingRow>> {
+    let mut qb = QueryBuilder::new(
+        "SELECT asset_id, share_count, wrapped, yield_claimed_index FROM ( \
+           SELECT asset_id, \
+             COALESCE(SUM(CASE event_type WHEN 'SharesClaimed' THEN amount \
+                                          WHEN 'SharesUnwrapped' THEN amount \
+                                          WHEN 'SharesWrapped' THEN -amount \
+                                          WHEN 'ShareRedeemed' THEN -amount ELSE 0 END), 0)::bigint AS share_count, \
+             COALESCE(SUM(CASE event_type WHEN 'SharesWrapped' THEN amount \
+                                          WHEN 'SharesUnwrapped' THEN -amount ELSE 0 END), 0)::bigint AS wrapped, \
+             (array_agg(index_at_claim::text ORDER BY timestamp_ms DESC, id DESC) \
+                FILTER (WHERE event_type = 'YieldClaimed'))[1] AS yield_claimed_index \
+           FROM position_events WHERE actor = ",
+    );
+    qb.push_bind(actor.to_string());
+    qb.push(" GROUP BY asset_id) h WHERE (h.share_count + h.wrapped) > 0");
+    if let Some(asset_id) = cursor {
+        qb.push(" AND h.asset_id > ").push_bind(asset_id);
+    }
+    qb.push(" ORDER BY h.asset_id ASC LIMIT ").push_bind(limit + 1);
+    Ok(qb.build_query_as::<HoldingRow>().fetch_all(pool).await?)
+}
+
+/// `GET /address/:address` `roles` — the derived role set (`§6.7`; no role table). Each role is one
+/// EXISTS/lookup; emitted in the §6.7 order: investor, entity, validator, challenger, admin,
+/// treasury. `admin` = `ProtocolInitialized.admin`; `treasury` = latest
+/// `ProtocolTreasuryChanged.new_treasury`.
+pub async fn address_roles(pool: &PgPool, addr: &str) -> Result<Vec<String>> {
+    let row: (bool, bool, bool, bool, bool, bool) = sqlx::query_as(
+        "SELECT \
+           (EXISTS(SELECT 1 FROM position_events WHERE actor = $1) \
+             OR EXISTS(SELECT 1 FROM raise_progress WHERE contributor = $1)) AS investor, \
+           EXISTS(SELECT 1 FROM assets WHERE entity = $1) AS entity, \
+           EXISTS(SELECT 1 FROM validator_pools WHERE validator = $1) AS validator, \
+           EXISTS(SELECT 1 FROM disputes WHERE challenger = $1) AS challenger, \
+           EXISTS(SELECT 1 FROM governance_events \
+                  WHERE event_type = 'ProtocolInitialized' AND admin = $1) AS admin, \
+           COALESCE($1 = (SELECT new_treasury FROM governance_events \
+                  WHERE event_type = 'ProtocolTreasuryChanged' \
+                  ORDER BY timestamp_ms DESC, id DESC LIMIT 1), FALSE) AS treasury",
+    )
+    .bind(addr)
+    .fetch_one(pool)
     .await?;
-    Ok(rows.into_iter().map(|r| r.0).collect())
+    let mut roles = Vec::new();
+    let (investor, entity, validator, challenger, admin, treasury) = row;
+    if investor {
+        roles.push("investor".to_string());
+    }
+    if entity {
+        roles.push("entity".to_string());
+    }
+    if validator {
+        roles.push("validator".to_string());
+    }
+    if challenger {
+        roles.push("challenger".to_string());
+    }
+    if admin {
+        roles.push("admin".to_string());
+    }
+    if treasury {
+        roles.push("treasury".to_string());
+    }
+    Ok(roles)
+}
+
+/// `GET /tx/:digest` — every archived event sharing `tx_digest`, ascending by `event_seq` (`§6.8`).
+/// Reads `raw_events`; `payload` comes back as text and is re-parsed in the route.
+pub async fn list_raw_events_by_tx(pool: &PgPool, tx_digest: &str) -> Result<Vec<RawEventRow>> {
+    Ok(sqlx::query_as::<_, RawEventRow>(
+        "SELECT event_seq, event_type, timestamp_ms, checkpoint_seq, payload::text AS payload \
+         FROM raw_events WHERE tx_digest = $1 ORDER BY event_seq ASC",
+    )
+    .bind(tx_digest)
+    .fetch_all(pool)
+    .await?)
 }
 
 /// `GET /assets/:id/holders` — the per-actor signed fold over `position_events` (`§2.17`), ranked
@@ -1044,7 +1155,9 @@ pub async fn list_tranches(
 const DISPUTE_SELECT: &str = "SELECT d.dispute_id, d.asset_id, d.target_pool_id, d.challenger, \
     d.bond, d.evidence_hash, d.opened_at_ms, d.resolved_at_ms, d.verdict, d.slashed, d.bounty, \
     COALESCE(MAX(jv.votes_guilty_after), 0)::int AS votes_guilty, \
-    COALESCE(MAX(jv.votes_innocent_after), 0)::int AS votes_innocent \
+    COALESCE(MAX(jv.votes_innocent_after), 0)::int AS votes_innocent, \
+    COALESCE(MAX(jv.votes_guilty_after), 0)::int AS votes_guilty_after, \
+    COALESCE(MAX(jv.votes_innocent_after), 0)::int AS votes_innocent_after \
     FROM disputes d LEFT JOIN jury_votes jv ON jv.dispute_id = d.dispute_id";
 
 /// `GET /disputes` (and, with `asset_id` set, `GET /assets/:id/disputes`) — keyset-paginated

@@ -1,14 +1,27 @@
-//! Thin Sui fullnode JSON-RPC client (`suix_queryEvents` + `sui_getObject`).
+//! Thin Sui fullnode JSON-RPC client (`suix_queryEvents` + object reads) and the BI-M6 object
+//! proxy.
 //!
 //! BI-M1 deliberately avoids the heavy `sui-sdk` git dependency: the indexer needs only a
 //! couple of JSON-RPC methods, and a `reqwest`-based client builds fast and offline. The
 //! wire-type rules it must honor (`u64`/`u128` as JSON strings, `vector<u8>` as byte arrays)
-//! are catalogued in `logic_flow.md §10.2`; typed deserialization lands in BI-M2.
+//! are catalogued in `logic_flow.md §10.2`.
+//!
+//! BI-M6 adds the **object proxy** (`backend.md §4.2`): the frontend reads live object state
+//! through the indexer's host rather than talking to Sui directly. The proxy is split into an
+//! [`ObjectSource`] trait (the three RPC reads it needs) and an [`ObjectProxy`] wrapper that adds
+//! the short-TTL in-memory cache (`logic_flow.md §9.6`). Splitting the two lets the integration
+//! tests drive the proxy with a fixture source that counts calls, without a live node.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tokio::sync::Mutex;
 
 /// Sui event identity (`{txDigest, eventSeq}`). `eventSeq` arrives as a JSON string.
 #[derive(Debug, Clone, Deserialize)]
@@ -39,6 +52,27 @@ pub struct EventPage {
     pub next_cursor: Option<EventId>,
     #[serde(rename = "hasNextPage")]
     pub has_next_page: bool,
+}
+
+/// The three object reads the proxy needs (`backend.md §4.2`/`§4.4`). Each returns the raw Sui RPC
+/// `result` JSON; the proxy decides 404 vs. hit and reshapes. A trait (not a concrete client) so
+/// the API tests can substitute a fixture source that counts calls — see [`ObjectProxy`].
+#[async_trait]
+pub trait ObjectSource: Send + Sync {
+    /// `sui_getObject` with content/type/owner. A non-existent object is **not** an RPC error —
+    /// the result carries `{ data: null, error: { code: "notExists", .. } }` (`ObjectProxy`
+    /// treats absence of `data` as 404).
+    async fn get_object(&self, id: &str) -> Result<Value>;
+    /// `suix_getDynamicFieldObject` — used for the asset's `LegalDocsKey` field (`§4.2`). A plain
+    /// `sui_getObject` does not return dynamic fields.
+    async fn get_dynamic_field_object(
+        &self,
+        parent_id: &str,
+        name_type: &str,
+        name_value: Value,
+    ) -> Result<Value>;
+    /// `suix_getCoinMetadata::<T>` — the per-entity token's `symbol`/`name`/`decimals` (`§4.4`).
+    async fn get_coin_metadata(&self, coin_type: &str) -> Result<Value>;
 }
 
 /// HTTP JSON-RPC client against a single Sui fullnode.
@@ -92,11 +126,187 @@ impl SuiClient {
         let result = self.rpc("suix_queryEvents", params).await?;
         serde_json::from_value(result).context("suix_queryEvents: failed to parse event page")
     }
+}
 
-    /// `sui_getObject` with content + type + owner. Returns the raw RPC `result` (used by the
-    /// object proxy in BI-M6).
-    pub async fn get_object(&self, id: &str) -> Result<Value> {
+#[async_trait]
+impl ObjectSource for SuiClient {
+    async fn get_object(&self, id: &str) -> Result<Value> {
         let opts = json!({ "showType": true, "showContent": true, "showOwner": true });
         self.rpc("sui_getObject", json!([id, opts])).await
+    }
+
+    async fn get_dynamic_field_object(
+        &self,
+        parent_id: &str,
+        name_type: &str,
+        name_value: Value,
+    ) -> Result<Value> {
+        let name = json!({ "type": name_type, "value": name_value });
+        self.rpc("suix_getDynamicFieldObject", json!([parent_id, name]))
+            .await
+    }
+
+    async fn get_coin_metadata(&self, coin_type: &str) -> Result<Value> {
+        self.rpc("suix_getCoinMetadata", json!([coin_type])).await
+    }
+}
+
+/// A short-TTL caching wrapper over an [`ObjectSource`] — the live read path behind
+/// `GET /objects/:id`, `/objects/:id/legal-docs`, and the per-entity token metadata resolution.
+///
+/// Cache (`logic_flow.md §9.6`): keyed on `<kind>:<id>` (`obj:`/`ld:`/`cm:`), TTL from
+/// `OBJECT_CACHE_TTL_SECS`. Eviction is lazy — TTL is checked on read and the stale entry
+/// replaced. Only successful (found) reads are cached; a 404 is re-checked each time.
+pub struct ObjectProxy {
+    source: Arc<dyn ObjectSource>,
+    /// Published `gally_core` package id — needed to build the `LegalDocsKey` dynamic-field name
+    /// type string (`<pkg>::asset::LegalDocsKey`).
+    package_id: String,
+    ttl: Duration,
+    cache: Mutex<HashMap<String, (Instant, Value)>>,
+}
+
+impl ObjectProxy {
+    pub fn new(source: Arc<dyn ObjectSource>, package_id: impl Into<String>, ttl: Duration) -> Self {
+        Self {
+            source,
+            package_id: package_id.into(),
+            ttl,
+            cache: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Return a live (non-stale) cache entry, evicting it if the TTL has elapsed.
+    async fn cached(&self, key: &str) -> Option<Value> {
+        let now = Instant::now();
+        let mut guard = self.cache.lock().await;
+        if let Some((at, v)) = guard.get(key) {
+            if now.duration_since(*at) < self.ttl {
+                return Some(v.clone());
+            }
+            guard.remove(key);
+        }
+        None
+    }
+
+    async fn store(&self, key: &str, v: Value) {
+        self.cache
+            .lock()
+            .await
+            .insert(key.to_string(), (Instant::now(), v));
+    }
+
+    /// `GET /objects/:id` — the raw Sui object read, cached. `None` ⇒ object does not exist (404).
+    pub async fn object(&self, id: &str) -> Result<Option<Value>> {
+        let key = format!("obj:{id}");
+        if let Some(v) = self.cached(&key).await {
+            return Ok(Some(v));
+        }
+        let result = self.source.get_object(id).await?;
+        if !object_present(&result) {
+            return Ok(None);
+        }
+        self.store(&key, result.clone()).await;
+        Ok(Some(result))
+    }
+
+    /// `GET /objects/:id/legal-docs` — the asset's `LegalDocsKey` dynamic field reshaped into the
+    /// §6.9 `[{blob_id, sha256, attested_by}]` array. `None` ⇒ the field (or asset) does not exist.
+    pub async fn legal_docs(&self, asset_id: &str) -> Result<Option<Value>> {
+        let key = format!("ld:{asset_id}");
+        if let Some(v) = self.cached(&key).await {
+            return Ok(Some(v));
+        }
+        let name_type = format!("{}::asset::LegalDocsKey", self.package_id);
+        let result = self
+            .source
+            .get_dynamic_field_object(asset_id, &name_type, json!({}))
+            .await?;
+        if !object_present(&result) {
+            return Ok(None);
+        }
+        let docs = Value::Array(extract_walrus_refs(&result));
+        self.store(&key, docs.clone()).await;
+        Ok(Some(docs))
+    }
+
+    /// Per-entity token metadata for an accumulator (`§4.4`): recover `T` from the accumulator
+    /// object's type string, then resolve `CoinMetadata<T>`. Returns `{ coin_type, symbol, name,
+    /// decimals }`. `None` ⇒ the accumulator does not exist or its type carries no `<T>`.
+    pub async fn token_metadata(&self, accumulator_id: &str) -> Result<Option<Value>> {
+        let obj = match self.object(accumulator_id).await? {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        let coin_type = match obj
+            .pointer("/data/type")
+            .and_then(Value::as_str)
+            .and_then(extract_type_param)
+        {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+        let key = format!("cm:{coin_type}");
+        if let Some(v) = self.cached(&key).await {
+            return Ok(Some(v));
+        }
+        let meta = self.source.get_coin_metadata(&coin_type).await?;
+        let fields = meta.get("data").unwrap_or(&meta); // tolerate `{data:{..}}` or a flat result
+        let out = json!({
+            "coin_type": coin_type,
+            "symbol": fields.get("symbol").cloned().unwrap_or(Value::Null),
+            "name": fields.get("name").cloned().unwrap_or(Value::Null),
+            "decimals": fields.get("decimals").cloned().unwrap_or(Value::Null),
+        });
+        self.store(&key, out.clone()).await;
+        Ok(Some(out))
+    }
+}
+
+/// A `sui_getObject` / dynamic-field result represents an existing object iff its `data` is a
+/// non-null value (a missing object yields `{ data: null, error: {..} }`).
+fn object_present(result: &Value) -> bool {
+    result.get("data").map(|d| !d.is_null()).unwrap_or(false)
+}
+
+/// Extract the single type parameter `T` from a fully-qualified type string, e.g.
+/// `..::accumulator::GlobalYieldAccumulator<0xPKG::entity_token::ENTITY_TOKEN>` → the inner type.
+fn extract_type_param(type_str: &str) -> Option<String> {
+    let start = type_str.find('<')?;
+    let end = type_str.rfind('>')?;
+    (end > start + 1).then(|| type_str[start + 1..end].to_string())
+}
+
+/// Reshape a `LegalDocsKey` dynamic-field object into the §6.9 array. The field value is a
+/// `vector<WalrusRef>` under `data.content.fields.value`; each element's `blob_id`/`sha256` may be
+/// hex strings or raw `vector<u8>` byte arrays (`§10.2`) — both are normalized to hex.
+fn extract_walrus_refs(result: &Value) -> Vec<Value> {
+    let items = result
+        .pointer("/data/content/fields/value")
+        .and_then(Value::as_array);
+    let mut out = Vec::new();
+    if let Some(items) = items {
+        for it in items {
+            let f = it.get("fields").unwrap_or(it);
+            out.push(json!({
+                "blob_id": hexify(f.get("blob_id")),
+                "sha256": hexify(f.get("sha256")),
+                "attested_by": f.get("attested_by").cloned().unwrap_or(Value::Null),
+            }));
+        }
+    }
+    out
+}
+
+/// Normalize a byte-vector-or-string field to a hex string (`§10.2`): pass strings through,
+/// hex-encode `vector<u8>` byte arrays, everything else → `null`.
+fn hexify(v: Option<&Value>) -> Value {
+    match v {
+        Some(Value::String(s)) => Value::String(s.clone()),
+        Some(Value::Array(a)) => {
+            let bytes: Vec<u8> = a.iter().filter_map(|x| x.as_u64().map(|n| n as u8)).collect();
+            Value::String(crate::ingestion::event_types::hex_encode(&bytes))
+        }
+        _ => Value::Null,
     }
 }

@@ -22,6 +22,8 @@ config = "0.14"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 anyhow = "1"
+async-trait = "0.1"
+tower-http = { version = "0.6", features = ["cors"] }
 
 # Single integration-test binary; submodules added per milestone (logic_flow.md §8).
 [[test]]

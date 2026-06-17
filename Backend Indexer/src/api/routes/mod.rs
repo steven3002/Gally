@@ -3,10 +3,12 @@
 
 pub mod health;
 
+pub mod address;
 pub mod assets;
 pub mod disputes;
 pub mod governance;
 pub mod portfolio;
 pub mod proxy;
+pub mod tx;
 pub mod validators;
 pub mod ws;

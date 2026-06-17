@@ -26,6 +26,7 @@ pub struct DisputeListQuery {
     pub verdict: Option<String>,
     pub pool_id: Option<String>,
     pub challenger: Option<String>,
+    pub asset_id: Option<String>,
     pub limit: Option<i64>,
     pub cursor: Option<String>,
 }
@@ -43,7 +44,7 @@ pub async fn list_disputes(
     };
     let rows = queries::list_disputes(
         &state.pool,
-        None,
+        q.asset_id.as_deref(),
         verdict,
         q.pool_id.as_deref(),
         q.challenger.as_deref(),
@@ -84,6 +85,8 @@ pub async fn get_dispute(
         "bounty": d.bounty.map(|v| v.to_string()),
         "votes_guilty": d.votes_guilty,
         "votes_innocent": d.votes_innocent,
+        "votes_guilty_after": d.votes_guilty_after,
+        "votes_innocent_after": d.votes_innocent_after,
         "jury_votes": votes,
     })))
 }

@@ -1,7 +1,15 @@
 //! Startup: load config → connect DB → run migrations → spawn ingestion loop → serve API.
 
+use std::sync::Arc;
+use std::time::Duration;
+
 use anyhow::{Context, Result};
-use gally_indexer::{api, config::Config, db, ingestion, sui_client::SuiClient};
+use gally_indexer::{
+    api,
+    config::Config,
+    db, ingestion,
+    sui_client::{ObjectProxy, SuiClient},
+};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -20,6 +28,14 @@ async fn main() -> Result<()> {
     db::run_migrations(&pool).await?;
     tracing::info!("migrations applied");
 
+    // The object proxy (BI-M6) shares the same fullnode; its own cached client is independent of
+    // the ingestion sweep's client.
+    let objects = Arc::new(ObjectProxy::new(
+        Arc::new(SuiClient::new(config.sui_node_url.clone())),
+        config.gally_package_id.clone(),
+        Duration::from_secs(config.object_cache_ttl_secs),
+    ));
+
     // Ingestion loop runs in the background; the API server runs in the foreground.
     let ingest_pool = pool.clone();
     let sui = SuiClient::new(config.sui_node_url.clone());
@@ -30,7 +46,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    let app = api::router(api::AppState { pool });
+    let app = api::router(api::AppState { pool, objects });
     let listener = tokio::net::TcpListener::bind(&config.api_bind)
         .await
         .with_context(|| format!("failed to bind {}", config.api_bind))?;

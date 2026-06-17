@@ -106,6 +106,20 @@ pub fn decode_cursor_is(token: &str) -> Result<(i64, String), ApiError> {
     }
 }
 
+/// Decode a 3-component `(i64, String, i64)` keyset cursor — the unioned `/portfolio` feed's
+/// `(timestamp_ms, tx_digest, event_seq)` (the per-table `id` is not unique across the union).
+pub fn decode_cursor_isi(token: &str) -> Result<(i64, String, i64), ApiError> {
+    let parts = decode_cursor(token).ok_or_else(bad_cursor)?;
+    match parts.as_slice() {
+        [a, b, c] => Ok((
+            a.parse().map_err(|_| bad_cursor())?,
+            b.clone(),
+            c.parse().map_err(|_| bad_cursor())?,
+        )),
+        _ => Err(bad_cursor()),
+    }
+}
+
 /// Parse an optional integer query param, mapping a non-numeric value to a `400 invalid_param`
 /// (`backend.md §5.1` filter validation). `None`/empty ⇒ no filter. Keeping these params as
 /// `String` in the route's `Query` struct (then parsing here) is what lets a bad value surface as

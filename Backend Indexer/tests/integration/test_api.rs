@@ -3,8 +3,14 @@
 //! §6 response shapes inside the universal `{ data, nextCursor, hasNextPage }` envelope
 //! (`backend.md §5.1.1`).
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::Result;
+use async_trait::async_trait;
 use gally_indexer::ingestion::route_event;
-use gally_indexer::sui_client::{EventId, SuiEvent};
+use gally_indexer::sui_client::{EventId, ObjectProxy, ObjectSource, SuiEvent};
 use gally_indexer::{api, db};
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -31,9 +37,15 @@ fn asset_created(asset_id: &str, entity: &str, goal: &str) -> Value {
     })
 }
 
-/// Serve the app on an ephemeral port and return its base URL.
+/// Serve the app on an ephemeral port and return its base URL. Uses a throwaway object proxy (the
+/// DB-only endpoints never call it); proxy tests use [`serve_with_objects`].
 async fn serve(pool: PgPool) -> String {
-    let app = api::router(api::AppState { pool });
+    serve_with_objects(pool, crate::default_objects()).await
+}
+
+/// Serve the app with a caller-supplied object proxy (BI-M6 proxy tests).
+async fn serve_with_objects(pool: PgPool, objects: Arc<ObjectProxy>) -> String {
+    let app = api::router(api::AppState { pool, objects });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -170,9 +182,9 @@ async fn test_portfolio_cross_asset(pool: PgPool) {
     let assets: Vec<&str> = body["data"].as_array().unwrap().iter().map(|r| r["asset_id"].as_str().unwrap()).collect();
     assert!(assets.contains(&"0xA1") && assets.contains(&"0xA2"), "both assets in portfolio");
 
-    // /portfolio/:addr/assets returns the distinct set.
+    // /portfolio/:addr/assets returns the distinct set as summary objects (BI-M6 shape).
     let (_, distinct) = get_json(&base, "/portfolio/0xH/assets").await;
-    let d: Vec<&str> = distinct["data"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect();
+    let d: Vec<&str> = distinct["data"].as_array().unwrap().iter().map(|x| x["asset_id"].as_str().unwrap()).collect();
     assert_eq!(d, vec!["0xA1", "0xA2"]);
     assert_eq!(distinct["attribution"], "protocol");
 }
@@ -603,4 +615,346 @@ async fn test_index_after_is_string(pool: PgPool) {
     let row = &body["data"][0];
     assert!(row["index_after"].is_string(), "index_after is a JSON string");
     assert_eq!(row["index_after"], "7000000000000000");
+}
+
+// ---------------------------------------------------------------------------
+// BI-M6 — address page, transaction lookup, portfolio completion, disputes, object proxy, CORS
+// ---------------------------------------------------------------------------
+
+/// A fixture [`ObjectSource`] for the object-proxy tests: returns canned RPC results and counts
+/// `get_object` calls so the cache behaviour can be asserted without a live node. `object: None`
+/// models a non-existent object (`{ data: null, .. }`).
+#[derive(Default)]
+struct MockSource {
+    get_object_calls: AtomicUsize,
+    object: Option<Value>,
+    legal_docs: Option<Value>,
+    coin_metadata: Option<Value>,
+}
+
+#[async_trait]
+impl ObjectSource for MockSource {
+    async fn get_object(&self, _id: &str) -> Result<Value> {
+        self.get_object_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(self
+            .object
+            .clone()
+            .unwrap_or_else(|| json!({ "data": null, "error": { "code": "notExists" } })))
+    }
+    async fn get_dynamic_field_object(&self, _p: &str, _t: &str, _v: Value) -> Result<Value> {
+        Ok(self.legal_docs.clone().unwrap_or_else(|| json!({ "data": null })))
+    }
+    async fn get_coin_metadata(&self, _t: &str) -> Result<Value> {
+        Ok(self.coin_metadata.clone().unwrap_or_else(|| json!({ "data": null })))
+    }
+}
+
+/// A pure contributor (only `CapitalContributedEvent`, no share claim) still appears in
+/// `GET /portfolio/:address` — the feed UNIONs `raise_progress` (`m6.md`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_portfolio_includes_contributions(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "CapitalContributedEvent", "0xk", "0", 10, json!({"asset_id":"0xA","contributor":"0xC","amount":"500","raised_after":"500"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/portfolio/0xC").await;
+    assert_eq!(status, 200);
+    let rows = body["data"].as_array().unwrap();
+    assert_eq!(rows.len(), 1, "the contribution is in the portfolio feed");
+    assert_eq!(rows[0]["event_type"], "CapitalContributed");
+    assert_eq!(rows[0]["asset_id"], "0xA");
+    assert_eq!(rows[0]["amount"], "500");
+}
+
+/// An address with contributions + yield claims + wraps returns all event types in one response.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_portfolio_cross_event_types(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "CapitalContributedEvent", "0xk", "0", 10, json!({"asset_id":"0xA","contributor":"0xH","amount":"100","raised_after":"100"}))).await.unwrap();
+    route_event(&pool, &ev("asset", "SharesClaimedEvent", "0xcl", "0", 20, json!({"asset_id":"0xA","holder":"0xH","count":"100","share_object_id":"0xS"}))).await.unwrap();
+    route_event(&pool, &ev("accumulator", "SharesWrappedEvent", "0xw", "0", 30, json!({"asset_id":"0xA","holder":"0xH","count":"50","total_wrapped_after":"50"}))).await.unwrap();
+    route_event(&pool, &ev("accumulator", "YieldClaimedEvent", "0xy", "0", 40, json!({"asset_id":"0xA","holder":"0xH","amount":"5","index_at_claim":"7000000000"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/portfolio/0xH").await;
+    assert_eq!(status, 200);
+    let types: std::collections::HashSet<&str> =
+        body["data"].as_array().unwrap().iter().map(|r| r["event_type"].as_str().unwrap()).collect();
+    for expected in ["CapitalContributed", "SharesClaimed", "SharesWrapped", "YieldClaimed"] {
+        assert!(types.contains(expected), "{expected} present in portfolio feed");
+    }
+}
+
+/// `GET /portfolio/:address/assets` returns the correct `event_count` per asset (across
+/// `position_events` ∪ `raise_progress`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_portfolio_assets_summary(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc1", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc2", "0", 2, asset_created("0xB", "0xE", "1000000000"))).await.unwrap();
+    // 0xH: two events on 0xA (contribution + claim), one on 0xB.
+    route_event(&pool, &ev("asset", "CapitalContributedEvent", "0xk", "0", 10, json!({"asset_id":"0xA","contributor":"0xH","amount":"100","raised_after":"100"}))).await.unwrap();
+    route_event(&pool, &ev("asset", "SharesClaimedEvent", "0xcl", "0", 20, json!({"asset_id":"0xA","holder":"0xH","count":"100","share_object_id":"0xS1"}))).await.unwrap();
+    route_event(&pool, &ev("asset", "SharesClaimedEvent", "0xcl2", "0", 30, json!({"asset_id":"0xB","holder":"0xH","count":"200","share_object_id":"0xS2"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/portfolio/0xH/assets").await;
+    assert_eq!(status, 200);
+    let rows = body["data"].as_array().unwrap();
+    let a = rows.iter().find(|r| r["asset_id"] == "0xA").unwrap();
+    let b = rows.iter().find(|r| r["asset_id"] == "0xB").unwrap();
+    assert_eq!(a["event_count"], 2, "two events on 0xA");
+    assert_eq!(b["event_count"], 1, "one event on 0xB");
+    assert_eq!(a["first_seen_ms"], 10);
+    assert_eq!(a["last_seen_ms"], 20);
+}
+
+/// `GET /disputes?verdict=1` returns only UPHELD disputes.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_dispute_list_filter_verdict(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xvr", "0", 2, json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd1", "0", 10, json!({"dispute_id":"0xD1","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xCH","bond":"1","evidence_sha256":[1]}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd2", "0", 11, json!({"dispute_id":"0xD2","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xCH","bond":"1","evidence_sha256":[2]}))).await.unwrap();
+    // 0xD1 UPHELD (verdict 1); 0xD2 stays open.
+    route_event(&pool, &ev("dispute", "DisputeResolvedEvent", "0xdr", "0", 20, json!({"dispute_id":"0xD1","asset_id":"0xA","target_pool_id":"0xPOOL","verdict":1,"slashed":"1","bounty":"1","challenger":"0xCH"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/disputes?verdict=1").await;
+    assert_eq!(status, 200);
+    let d = body["data"].as_array().unwrap();
+    assert_eq!(d.len(), 1, "only the UPHELD dispute");
+    assert_eq!(d[0]["dispute_id"], "0xD1");
+    assert_eq!(d[0]["verdict"], 1);
+
+    // ?asset_id= also narrows the feed (BI-M6 filter).
+    let (_, by_asset) = get_json(&base, "/disputes?asset_id=0xA").await;
+    assert_eq!(by_asset["data"].as_array().unwrap().len(), 2, "both disputes on 0xA");
+}
+
+/// `GET /disputes/:id` includes a `jury_votes` array with the correct entries.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_dispute_detail_with_votes(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xvr", "0", 2, json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd0", "0", 10, json!({"dispute_id":"0xD","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xCH","bond":"1000000","evidence_sha256":[9]}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "JurorVotedEvent", "0xv0", "0", 20, json!({"dispute_id":"0xD","juror_pool_id":"0xJ1","guilty":true,"votes_guilty_after":"1","votes_innocent_after":"0"}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "JurorVotedEvent", "0xv1", "0", 21, json!({"dispute_id":"0xD","juror_pool_id":"0xJ2","guilty":false,"votes_guilty_after":"1","votes_innocent_after":"1"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/disputes/0xD").await;
+    assert_eq!(status, 200);
+    let votes = body["jury_votes"].as_array().unwrap();
+    assert_eq!(votes.len(), 2, "both juror votes embedded");
+    assert_eq!(votes[0]["juror_pool_id"], "0xJ1");
+    assert_eq!(votes[1]["juror_pool_id"], "0xJ2");
+}
+
+/// `GET /disputes` list includes `votes_guilty_after` from the latest `JurorVotedEvent`.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_dispute_vote_tally_in_list(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xvr", "0", 2, json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd0", "0", 10, json!({"dispute_id":"0xD","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xCH","bond":"1","evidence_sha256":[1]}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "JurorVotedEvent", "0xv0", "0", 20, json!({"dispute_id":"0xD","juror_pool_id":"0xJ1","guilty":true,"votes_guilty_after":"1","votes_innocent_after":"0"}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "JurorVotedEvent", "0xv1", "0", 21, json!({"dispute_id":"0xD","juror_pool_id":"0xJ2","guilty":true,"votes_guilty_after":"2","votes_innocent_after":"0"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/disputes").await;
+    assert_eq!(status, 200);
+    let d = &body["data"][0];
+    assert_eq!(d["votes_guilty_after"], 2, "latest running guilty tally");
+    assert_eq!(d["votes_innocent_after"], 0);
+}
+
+/// `GET /objects/:id` returns the proxied object JSON (fixture source).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_object_proxy_returns_json(pool: PgPool) {
+    let mock = Arc::new(MockSource {
+        object: Some(json!({ "data": { "objectId": "0xOBJ", "type": "0x2::coin::Coin" } })),
+        ..Default::default()
+    });
+    let proxy = Arc::new(ObjectProxy::new(mock, "0xpkg", Duration::from_secs(5)));
+    let base = serve_with_objects(pool, proxy).await;
+    let (status, body) = get_json(&base, "/objects/0xOBJ").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["data"]["objectId"], "0xOBJ");
+}
+
+/// Two `object` reads within the TTL hit the Sui RPC only once.
+#[tokio::test]
+async fn test_object_proxy_caches() {
+    let mock = Arc::new(MockSource {
+        object: Some(json!({ "data": { "objectId": "0xOBJ" } })),
+        ..Default::default()
+    });
+    let proxy = ObjectProxy::new(mock.clone(), "0xpkg", Duration::from_secs(30));
+    assert!(proxy.object("0xOBJ").await.unwrap().is_some());
+    assert!(proxy.object("0xOBJ").await.unwrap().is_some());
+    assert_eq!(
+        mock.get_object_calls.load(Ordering::SeqCst),
+        1,
+        "second read served from cache"
+    );
+}
+
+/// A read after the TTL has elapsed re-hits the Sui RPC.
+#[tokio::test]
+async fn test_object_proxy_cache_expires() {
+    let mock = Arc::new(MockSource {
+        object: Some(json!({ "data": { "objectId": "0xOBJ" } })),
+        ..Default::default()
+    });
+    let proxy = ObjectProxy::new(mock.clone(), "0xpkg", Duration::from_millis(20));
+    assert!(proxy.object("0xOBJ").await.unwrap().is_some());
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    assert!(proxy.object("0xOBJ").await.unwrap().is_some());
+    assert_eq!(
+        mock.get_object_calls.load(Ordering::SeqCst),
+        2,
+        "stale entry re-fetched"
+    );
+}
+
+/// `GET /objects/:id` for a non-existent object → 404.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_object_proxy_404_unknown(pool: PgPool) {
+    let mock = Arc::new(MockSource::default()); // object = None → notExists
+    let proxy = Arc::new(ObjectProxy::new(mock, "0xpkg", Duration::from_secs(5)));
+    let base = serve_with_objects(pool, proxy).await;
+    let (status, body) = get_json(&base, "/objects/0xnonexistent").await;
+    assert_eq!(status, 404);
+    assert_eq!(body["error"], "not_found");
+}
+
+/// A cross-origin request gets an `Access-Control-Allow-Origin` header (default permissive CORS).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_cors_header_present(pool: PgPool) {
+    let base = serve(pool).await;
+    let resp = reqwest::Client::new()
+        .get(format!("{base}/health"))
+        .header("Origin", "http://localhost:3000")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(
+        resp.headers().get("access-control-allow-origin").is_some(),
+        "CORS header present on a cross-origin response"
+    );
+}
+
+/// An address that is the entity of one asset, contributor on it, and challenger of one dispute
+/// returns `roles` containing `entity`, `challenger`, and `investor`; `attribution: protocol`.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_address_roles_derived(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xADDR", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xvr", "0", 2, json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("asset", "CapitalContributedEvent", "0xk", "0", 10, json!({"asset_id":"0xA","contributor":"0xADDR","amount":"100","raised_after":"100"}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd0", "0", 20, json!({"dispute_id":"0xD","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xADDR","bond":"1","evidence_sha256":[1]}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/address/0xADDR").await;
+    assert_eq!(status, 200);
+    let roles: std::collections::HashSet<&str> =
+        body["roles"].as_array().unwrap().iter().map(|r| r.as_str().unwrap()).collect();
+    assert!(roles.contains("entity"), "entity role");
+    assert!(roles.contains("challenger"), "challenger role");
+    assert!(roles.contains("investor"), "investor role");
+    assert!(!roles.contains("validator"), "not a validator operator");
+    assert_eq!(body["attribution"], "protocol");
+}
+
+/// `GET /address/:addr` holdings reflect the §2.17 signed fold across claim/wrap/unwrap, with
+/// `attribution: protocol`.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_address_holdings_fold(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "SharesClaimedEvent", "0xcl", "0", 10, json!({"asset_id":"0xA","holder":"0xH","count":"300","share_object_id":"0xS"}))).await.unwrap();
+    route_event(&pool, &ev("accumulator", "SharesWrappedEvent", "0xw", "0", 20, json!({"asset_id":"0xA","holder":"0xH","count":"100","total_wrapped_after":"100"}))).await.unwrap();
+    route_event(&pool, &ev("accumulator", "SharesUnwrappedEvent", "0xu", "0", 30, json!({"asset_id":"0xA","holder":"0xH","count":"50","share_object_id":"0xS2","total_wrapped_after":"50"}))).await.unwrap();
+    route_event(&pool, &ev("accumulator", "YieldClaimedEvent", "0xy", "0", 40, json!({"asset_id":"0xA","holder":"0xH","amount":"7","index_at_claim":"7000000000"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/address/0xH").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["attribution"], "protocol");
+    let h = &body["holdings"][0];
+    assert_eq!(h["asset_id"], "0xA");
+    // deeds = 300 - 100 + 50 = 250 ; wrapped = 100 - 50 = 50.
+    assert_eq!(h["share_count"], "250");
+    assert_eq!(h["wrapped"], "50");
+    assert_eq!(h["yield_claimed_index"], "7000000000");
+}
+
+/// A finalize tx (`RaiseFinalizedEvent` + `AssetStateChangedEvent`) returns both events under
+/// `GET /tx/:digest`, ordered by `event_seq`, plus the affected objects. Seeds `raw_events`
+/// directly (the typed-handler `route_event` path doesn't archive — the ingestion loop does).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_tx_groups_events(pool: PgPool) {
+    let p0 = json!({ "asset_id": "0xA", "accumulator_id": "0xACC", "total_shares": "1000" });
+    let p1 = json!({ "asset_id": "0xA", "old_state": 1, "new_state": 4 });
+    db::queries::upsert_raw_event(&pool, &db::queries::RawEventInsert {
+        tx_digest: "0xFIN", event_seq: 0, checkpoint_seq: 7, timestamp_ms: 500,
+        event_type: &format!("{PKG}::asset::RaiseFinalizedEvent"), payload: &p0,
+    }).await.unwrap();
+    db::queries::upsert_raw_event(&pool, &db::queries::RawEventInsert {
+        tx_digest: "0xFIN", event_seq: 1, checkpoint_seq: 7, timestamp_ms: 500,
+        event_type: &format!("{PKG}::asset::AssetStateChangedEvent"), payload: &p1,
+    }).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/tx/0xFIN").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["tx_digest"], "0xFIN");
+    assert_eq!(body["checkpoint_seq"], 7);
+    let events = body["events"].as_array().unwrap();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0]["event_seq"], 0);
+    assert_eq!(events[0]["event_type"], "RaiseFinalizedEvent");
+    assert_eq!(events[1]["event_type"], "AssetStateChangedEvent");
+    // affected = union of id/address fields across both payloads.
+    let affected: Vec<&str> = body["affected"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect();
+    assert!(affected.contains(&"0xA") && affected.contains(&"0xACC"));
+
+    // Unknown digest → 404.
+    let (missing, _) = get_json(&base, "/tx/0xNOPE").await;
+    assert_eq!(missing, 404);
+}
+
+/// `GET /objects/:id/legal-docs` reshapes the `LegalDocsKey` dynamic-field read into WalrusRefs
+/// with `blob_id` present (`sha256` byte-arrays hex-encoded).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_legal_docs_dynamic_field(pool: PgPool) {
+    let legal = json!({ "data": { "content": { "fields": { "value": [
+        { "fields": { "blob_id": "blobABC", "sha256": [171, 18], "attested_by": "0xVAL" } }
+    ] } } } });
+    let mock = Arc::new(MockSource { legal_docs: Some(legal), ..Default::default() });
+    let proxy = Arc::new(ObjectProxy::new(mock, "0xpkg", Duration::from_secs(5)));
+    let base = serve_with_objects(pool, proxy).await;
+    let (status, body) = get_json(&base, "/objects/0xASSET/legal-docs").await;
+    assert_eq!(status, 200);
+    let docs = body.as_array().unwrap();
+    assert_eq!(docs.len(), 1);
+    assert_eq!(docs[0]["blob_id"], "blobABC", "blob_id recoverable only via the dynamic field");
+    assert_eq!(docs[0]["sha256"], "ab12", "byte-array sha256 hex-encoded");
+    assert_eq!(docs[0]["attested_by"], "0xVAL");
+}
+
+/// Resolving an accumulator's `CoinMetadata<T>` (fixture source) yields the token `symbol` — the
+/// type `T` is recovered from the accumulator object's type string (`backend.md §4.4`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_token_metadata_symbol(pool: PgPool) {
+    let acc = json!({ "data": {
+        "objectId": "0xACC",
+        "type": "0xPKG::accumulator::GlobalYieldAccumulator<0xTOK::entity_token::ENTITY_TOKEN>"
+    }});
+    let meta = json!({ "decimals": 6, "name": "Gally Token", "symbol": "GALLY" });
+    let mock = Arc::new(MockSource { object: Some(acc), coin_metadata: Some(meta), ..Default::default() });
+    let proxy = Arc::new(ObjectProxy::new(mock, "0xpkg", Duration::from_secs(5)));
+    let base = serve_with_objects(pool, proxy).await;
+    let (status, body) = get_json(&base, "/objects/0xACC/token-metadata").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["symbol"], "GALLY");
+    assert_eq!(body["coin_type"], "0xTOK::entity_token::ENTITY_TOKEN");
+    assert_eq!(body["decimals"], 6);
 }
