@@ -49,6 +49,8 @@ import { Distribution } from "@/components/holders/Distribution";
 import { HolderTable } from "@/components/holders/HolderTable";
 import { WalrusDoc } from "@/components/ui/WalrusDoc";
 import { ContributeAction } from "@/components/tx/ContributeAction";
+import { CrankPanel } from "@/components/tx/CrankPanel";
+import { cranksForAsset, cranksForAccumulator } from "@/lib/mock/cranks";
 import { SolvencyBadge, SolvencyMeter } from "@/components/health/SolvencyBadge";
 import { GraceCountdown } from "@/components/health/GraceCountdown";
 import { DefaultRiskClock } from "@/components/health/DefaultRiskClock";
@@ -99,6 +101,8 @@ export default async function AssetDetailPage({
   const nextDeadline = asset.state === "EXECUTING" ? nextTrancheOf(asset) : undefined;
   // FE-M6 — full three-way revenue split (fee → treasury, investor → index, entity remainder)
   const split = acc && acc.lifetimeInvestorRevenue > 0 ? revenueSplitOf(asset.id) : null;
+  // FE-M7.2 — permissionless cranks applicable to this asset + its accumulator
+  const cranks = [...cranksForAsset(asset), ...cranksForAccumulator(asset)];
 
   /* ----------------------------------------------------------- panels */
 
@@ -587,6 +591,9 @@ export default async function AssetDetailPage({
 
           {/* Compensation stack (default / upheld dispute) */}
           {compStack && <CompensationStack stack={compStack} />}
+
+          {/* Permissionless cranks (keeper maintenance) */}
+          {cranks.length > 0 && <CrankPanel ops={cranks} />}
 
           {/* On-chain refs */}
           <Card className="p-5">

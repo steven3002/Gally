@@ -225,6 +225,11 @@ export const Gauge = (p: P) => (
     <circle cx="12" cy="14" r="1.2" fill="currentColor" stroke="none" />
   </Svg>
 );
+export const Wrench = (p: P) => (
+  <Svg {...p}>
+    <path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 16.8 7.2 20l5.3-5.3a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.3-.7-.7-2.3 2.5-2.5Z" />
+  </Svg>
+);
 
 /* Category glyphs */
 export const CatHousing = (p: P) => (

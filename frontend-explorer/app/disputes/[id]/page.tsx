@@ -13,6 +13,8 @@ import { cn, relTime, shortAddr, shortDate, usd } from "@/lib/format";
 import { Avatar, Card, CardHeader, Stat } from "@/components/ui/primitives";
 import { DisputeStatusPill, KV, Bar } from "@/components/ui/bits";
 import { VoteBar } from "@/components/dispute/DisputeCard";
+import { CrankButton } from "@/components/tx/CrankButton";
+import { cranksForDispute } from "@/lib/mock/cranks";
 import { WalrusDoc } from "@/components/ui/WalrusDoc";
 import { IdLink } from "@/components/ui/IdLink";
 import { ChevronRight, Scale, Shield, Check, Close, Users } from "@/components/ui/icons";
@@ -31,6 +33,7 @@ export default async function DisputeDetailPage({ params }: { params: Promise<{ 
   const evidence = evidenceOf(d.id);
   const open = d.status === "OPEN";
   const upheld = d.status === "UPHELD";
+  const resolveCrank = cranksForDispute(d)[0]; // resolve_dispute when the vote window has elapsed
 
   // Jury roll-call: reconstructed from the JurorVoted events for this asset (§18.3).
   const jurorVotes = eventsForAsset(d.assetId)
@@ -151,10 +154,18 @@ export default async function DisputeDetailPage({ params }: { params: Promise<{ 
           <Card className="p-5">
             <CardHeader title="Resolution" className="px-0 pt-0" />
             {open ? (
-              <p className="mt-3 text-sm text-muted">
-                Voting is in progress. If upheld, the validator&apos;s coverage is slashed into this
-                asset&apos;s compensation pool and the challenger is refunded plus a bounty.
-              </p>
+              <>
+                <p className="mt-3 text-sm text-muted">
+                  Voting is in progress. If upheld, the validator&apos;s coverage is slashed into this
+                  asset&apos;s compensation pool and the challenger is refunded plus a bounty.
+                </p>
+                {resolveCrank && (
+                  <div className="mt-3 flex flex-col items-start gap-1.5">
+                    <CrankButton op={resolveCrank} size="md" />
+                    <p className="text-[11px] text-muted-2">{resolveCrank.reason}</p>
+                  </div>
+                )}
+              </>
             ) : upheld ? (
               <div className="mt-3">
                 <Bar>

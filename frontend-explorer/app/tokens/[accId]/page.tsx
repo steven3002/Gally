@@ -15,6 +15,8 @@ import { HolderTable } from "@/components/holders/HolderTable";
 import { EventList } from "@/components/events/EventList";
 import { SolvencyMeter } from "@/components/health/SolvencyBadge";
 import { GraceCountdown } from "@/components/health/GraceCountdown";
+import { CrankPanel } from "@/components/tx/CrankPanel";
+import { cranksForAccumulator } from "@/lib/mock/cranks";
 import { ChevronRight, Coins, ExternalLink, Lock } from "@/components/ui/icons";
 
 export function generateStaticParams() {
@@ -34,6 +36,7 @@ export default async function TokenPage({ params }: { params: Promise<{ accId: s
   const grace = graceOf(asset);
   const wrapRatio = acc.totalMintedShares ? (acc.totalWrappedShares / acc.totalMintedShares) * 100 : 0;
   const closed = asset.state === "CLOSED";
+  const cranks = cranksForAccumulator(asset);
 
   const holdersPanel =
     holders.length > 0 ? (
@@ -200,6 +203,9 @@ export default async function TokenPage({ params }: { params: Promise<{ accId: s
               </div>
             )}
           </Card>
+
+          {/* Permissionless cranks (keeper maintenance) */}
+          {cranks.length > 0 && <CrankPanel ops={cranks} />}
 
           {/* On-chain refs */}
           <Card className="p-5">

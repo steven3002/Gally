@@ -161,6 +161,7 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
             <ClaimAllAction
               total={claimable}
               positions={claimablePositions}
+              assetIds={holdings.filter((h) => h.pendingYield > 0).map((h) => h.assetId)}
               primaryAssetId={firstClaimable.assetId}
               primaryAssetName={firstClaimable.assetName}
             />

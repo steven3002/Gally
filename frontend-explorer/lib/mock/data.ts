@@ -648,7 +648,9 @@ export const assets: Asset[] = [
       rolloverReserve: 0,
       compensationPool: 367_500,
       wrappingFrozen: true,
-      compensationUnlockMs: NOW + 2 * DAY, // grace window still open
+      // Older default: the grace window has elapsed, so the seized restitution is
+      // now sweepable into the index (the permissionless sweep_compensation crank).
+      compensationUnlockMs: NOW - 2 * DAY,
       tokenSymbol: "gLMS",
     },
   }),
@@ -842,6 +844,22 @@ export const portfolioReceipts = [
     assetName: "Sahel Cotton Trade Facility",
     amount: 15_000,
     state: "FUNDING" as AssetState,
+  },
+  {
+    // Raise finalized — the receipt is now redeemable for GallyShare deeds
+    // (`asset::claim_shares`). Drives the "claim your deeds" alert + action.
+    assetId: "asset11",
+    assetName: "Kigali Logistics Park",
+    amount: 20_000,
+    state: "FUNDED" as AssetState,
+  },
+  {
+    // Raise failed below goal — the receipt is redeemable for a principal refund
+    // (`asset::refund_contribution`, an exit — no pause gate). Drives the refund alert.
+    assetId: "asset10",
+    assetName: "Jos Tin Processing",
+    amount: 8_000,
+    state: "FAILED" as AssetState,
   },
 ];
 

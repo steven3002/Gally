@@ -24,7 +24,7 @@ export type TxIntent =
   | { kind: "unwrap"; assetId: string; assetName: string; amount: number; tokenSymbol?: string } // accumulator::unwrap_coins<T>
   | { kind: "split"; assetId: string; assetName: string; amount: number } // share::split_share
   | { kind: "raise_dispute"; poolId: string; validatorName: string; assetId: string; bond: number } // dispute::initialize_dispute<T>
-  | { kind: "crank"; crank: CrankKind; targetId: string; label: string }; // permissionless cranks
+  | { kind: "crank"; crank: CrankKind; targetId: string; label: string; route?: string }; // permissionless cranks
 
 export type IntentKind = TxIntent["kind"];
 
@@ -95,9 +95,38 @@ export function intentRoute(intent: TxIntent): string | undefined {
     case "raise_dispute":
       return `/validators/${intent.poolId}`;
     case "crank":
-      return undefined;
+      return intent.route;
     default:
       return `/assets/${intent.assetId}`;
+  }
+}
+
+/**
+ * Stable key identifying *which action on which subject* an intent performs.
+ * The optimistic-reconciliation store (`lib/tx/optimistic.ts`) records these on
+ * success so the same action reads as "submitted" across every page that renders
+ * it (and so the matching seeded alert is dismissed). One key per (verb, subject).
+ */
+export function optimisticKey(intent: TxIntent): string {
+  switch (intent.kind) {
+    case "contribute":
+      return `contribute:${intent.assetId}`;
+    case "claim_rewards":
+      return `claim:${intent.assetId}`;
+    case "claim_shares":
+      return `claim_shares:${intent.assetId}`;
+    case "refund":
+      return `refund:${intent.assetId}`;
+    case "wrap":
+      return `wrap:${intent.assetId}`;
+    case "unwrap":
+      return `unwrap:${intent.assetId}`;
+    case "split":
+      return `split:${intent.assetId}`;
+    case "raise_dispute":
+      return `dispute:${intent.poolId}`;
+    case "crank":
+      return `crank:${intent.crank}:${intent.targetId}`;
   }
 }
 

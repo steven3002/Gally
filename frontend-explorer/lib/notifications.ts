@@ -5,6 +5,7 @@ import type { Tone } from "@/lib/format";
 import { NOW, HOUR, usd } from "@/lib/format";
 import { DEMO_WALLET, portfolioReceipts } from "@/lib/mock/data";
 import { holdingsOf } from "@/lib/mock/holders";
+import { readApplied } from "@/lib/tx/optimistic";
 
 /**
  * Notification store (FE-M7.2, spec §4 "Notifications").
@@ -43,8 +44,11 @@ const EVENT = "gally-notif-change";
 
 function seed(): AppNotification[] {
   const out: AppNotification[] = [];
+  // Optimistic reconciliation: an alert is dismissed once its action is submitted
+  // (claim the yield → the "yield ready" alert clears, so the unread count drops).
+  const applied = readApplied();
   for (const h of holdingsOf(DEMO_WALLET)) {
-    if (h.pendingYield > 0) {
+    if (h.pendingYield > 0 && !applied.has(`claim:${h.assetId}`)) {
       out.push({
         id: `seed-claim-${h.assetId}`,
         kind: "alert",
@@ -56,7 +60,7 @@ function seed(): AppNotification[] {
         read: false,
       });
     }
-    if (h.wrapped > 0 && h.state === "COMPENSATING") {
+    if (h.wrapped > 0 && h.state === "COMPENSATING" && !applied.has(`unwrap:${h.assetId}`)) {
       out.push({
         id: `seed-grace-${h.assetId}`,
         kind: "alert",
@@ -71,7 +75,7 @@ function seed(): AppNotification[] {
   }
   for (const r of portfolioReceipts) {
     const finalized = r.state !== "FUNDING" && r.state !== "FAILED" && r.state !== "CANCELLED";
-    if (finalized) {
+    if (finalized && !applied.has(`claim_shares:${r.assetId}`)) {
       out.push({
         id: `seed-deeds-${r.assetId}`,
         kind: "alert",
@@ -82,7 +86,7 @@ function seed(): AppNotification[] {
         tsMs: NOW - 5 * HOUR,
         read: false,
       });
-    } else if (r.state === "FAILED") {
+    } else if (r.state === "FAILED" && !applied.has(`refund:${r.assetId}`)) {
       out.push({
         id: `seed-refund-${r.assetId}`,
         kind: "alert",

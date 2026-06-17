@@ -6,6 +6,7 @@ import {
   Scale,
   Settings,
   Shield,
+  Wrench,
 } from "@/components/ui/icons";
 
 export interface NavItem {
@@ -29,6 +30,7 @@ export const NAV: NavGroup[] = [
       { label: "Validators", href: "/validators", icon: Shield, match: "/validators" },
       { label: "Disputes", href: "/disputes", icon: Scale, match: "/disputes" },
       { label: "Governance", href: "/governance", icon: Settings, match: "/governance" },
+      { label: "Maintenance", href: "/cranks", icon: Wrench, match: "/cranks" },
     ],
   },
   {

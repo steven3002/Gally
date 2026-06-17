@@ -10,8 +10,10 @@ import {
   intentRoute,
   intentSummary,
   intentVerb,
+  optimisticKey,
   type TxIntent,
 } from "@/lib/tx/intents";
+import { applyOptimistic, useOptimistic } from "@/lib/tx/optimistic";
 import { cn, num, shortDigest } from "@/lib/format";
 import { Alert, Check, Close, Wallet } from "@/components/ui/icons";
 
@@ -39,6 +41,12 @@ export interface ActionButtonProps {
   disabledReason?: string | null;
   block?: boolean;
   className?: string;
+  /** Run after a successful execution (in addition to the built-in optimistic apply). */
+  onSuccess?: (intent: TxIntent) => void;
+  /** Opt out of the optimistic applied-chip reconciliation (default: on). */
+  reconcile?: boolean;
+  /** Label for the applied chip once this action has been submitted. */
+  appliedLabel?: string;
 }
 
 export function ActionButton({
@@ -52,9 +60,13 @@ export function ActionButton({
   disabledReason,
   block,
   className,
+  onSuccess,
+  reconcile = true,
+  appliedLabel,
 }: ActionButtonProps) {
   const { connected, connect } = useWallet();
   const { status, result, run, reset } = useTx();
+  const { isApplied } = useOptimistic();
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(amount?.default ?? amount?.max ?? 0);
 
@@ -66,6 +78,17 @@ export function ActionButton({
   const intent = getIntent(amount ? clamped : 0);
   const verb = label ?? intentVerb(intent);
   const amountValid = !amount || (value >= (amount.min ?? 1) && value <= amount.max);
+  // Optimistic reconciliation: once this action's (verb, subject) has been
+  // submitted, collapse the trigger to an applied chip — across every page.
+  const applied = reconcile && !open && isApplied(optimisticKey(intent));
+
+  async function handleRun() {
+    const res = await run(intent);
+    if (res.ok) {
+      if (reconcile) applyOptimistic(intent);
+      onSuccess?.(intent);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -90,6 +113,25 @@ export function ActionButton({
     block && "w-full justify-center",
     className,
   );
+
+  // Already submitted — the optimistic reflection (reconciled across pages).
+  if (applied) {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-xl font-semibold text-positive",
+          size === "sm" ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm",
+          "border border-positive/30 bg-positive-soft",
+          block && "w-full justify-center",
+          className,
+        )}
+        title="Submitted — your wallet's view updates once the indexer confirms."
+      >
+        <Check className={size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"} />
+        {appliedLabel ?? `${verb} submitted`}
+      </span>
+    );
+  }
 
   // Disabled (state gate) — show the reason.
   if (disabledReason) {
@@ -234,7 +276,7 @@ export function ActionButton({
                   </button>
                 ) : (
                   <button
-                    onClick={() => run(intent)}
+                    onClick={handleRun}
                     disabled={busy || !amountValid}
                     className={cn("inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60", SOLID[tone])}
                   >
