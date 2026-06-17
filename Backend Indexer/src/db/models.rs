@@ -163,3 +163,101 @@ pub struct HolderFoldRow {
     pub acquired_at_ms: Option<i64>,
     pub yield_claimed_index: Option<String>,
 }
+
+// ===========================================================================
+// BI-M4 — yield index / tranche / dispute feeds
+// ===========================================================================
+
+/// One `yield_index_series` row (`§2.11`); the `/assets/:id/yield` item (shape `§6.3`). The
+/// revenue-only split columns are `null` on rollover/compensation rows; `routed_to_rollover` is set
+/// only on compensation. `index_after` (u128) is read via `::text` for exact precision.
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct YieldIndexRow {
+    #[serde(skip_serializing)]
+    pub id: i64,
+    pub timestamp_ms: i64,
+    pub event_type: String, // 'revenue' | 'rollover' | 'compensation'
+    #[serde(serialize_with = "opt_string_amount")]
+    pub gross: Option<i64>,
+    #[serde(serialize_with = "opt_string_amount")]
+    pub fee: Option<i64>,
+    #[serde(serialize_with = "opt_string_amount")]
+    pub investor_portion: Option<i64>,
+    #[serde(serialize_with = "opt_string_amount")]
+    pub entity_portion: Option<i64>,
+    pub routed_to_rollover: Option<bool>,
+    pub index_after: String,
+    #[serde(serialize_with = "string_amount")]
+    pub unwrapped_supply: i64,
+    pub tx_digest: String,
+}
+
+/// The `/assets/:id/wrap-ratio` item — the `total_wrapped_after` series drawn from wrap/unwrap
+/// `position_events` rows (`§2.10`; the data lives nowhere else). Ascending by `(timestamp_ms, id)`.
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct WrapRatioRow {
+    #[serde(skip_serializing)]
+    pub id: i64,
+    pub timestamp_ms: i64,
+    pub event_type: String, // 'SharesWrapped' | 'SharesUnwrapped'
+    #[serde(serialize_with = "opt_string_amount")]
+    pub total_wrapped_after: Option<i64>,
+    pub tx_digest: String,
+}
+
+/// One `tranche_events` row (`§2.12`); the `/assets/:id/tranches` item. Only the columns the
+/// subtype carries are populated (`blob_id`/`sha256` for proof_submitted; `validator`/`pool_id`
+/// for approved; `amount`/`escrow_after` for released).
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct TrancheRow {
+    #[serde(skip_serializing)]
+    pub id: i64,
+    pub timestamp_ms: i64,
+    pub event_type: String, // 'proof_submitted' | 'approved' | 'released'
+    pub tranche_index: i32,
+    pub blob_id: Option<String>,
+    pub sha256: Option<String>,
+    pub validator: Option<String>,
+    pub pool_id: Option<String>,
+    #[serde(serialize_with = "opt_string_amount")]
+    pub amount: Option<i64>,
+    #[serde(serialize_with = "opt_string_amount")]
+    pub escrow_after: Option<i64>,
+    pub tx_digest: String,
+}
+
+/// One `disputes` row joined with its running vote tallies (`§2.13`/`§2.14`); the dispute item
+/// (shape `§6.5`). `verdict` is `null` while open; `votes_guilty`/`votes_innocent` are the latest
+/// tallies (`MAX(votes_*_after)`).
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct DisputeRow {
+    pub dispute_id: String,
+    pub asset_id: String,
+    pub target_pool_id: String,
+    pub challenger: String,
+    #[serde(serialize_with = "string_amount")]
+    pub bond: i64,
+    pub evidence_hash: String,
+    pub opened_at_ms: i64,
+    pub resolved_at_ms: Option<i64>,
+    pub verdict: Option<i16>,
+    #[serde(serialize_with = "opt_string_amount")]
+    pub slashed: Option<i64>,
+    #[serde(serialize_with = "opt_string_amount")]
+    pub bounty: Option<i64>,
+    pub votes_guilty: i32,
+    pub votes_innocent: i32,
+}
+
+/// One `jury_votes` row (`§2.14`); embedded in `GET /disputes/:id`.
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct JuryVoteRow {
+    #[serde(skip_serializing)]
+    pub id: i64,
+    pub timestamp_ms: i64,
+    pub juror_pool_id: String,
+    pub guilty: bool,
+    pub votes_guilty_after: i32,
+    pub votes_innocent_after: i32,
+    pub tx_digest: String,
+}

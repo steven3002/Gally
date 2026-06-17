@@ -11,7 +11,10 @@ use crate::api::extractors::{
     clamp_limit, decode_cursor_ii, decode_cursor_is, encode_cursor, ApiError, Page,
 };
 use crate::api::AppState;
-use crate::db::models::{AssetRow, AssetStateChangeRow, RaiseProgressRow};
+use crate::db::models::{
+    AssetRow, AssetStateChangeRow, DisputeRow, RaiseProgressRow, TrancheRow, WrapRatioRow,
+    YieldIndexRow,
+};
 use crate::db::queries;
 
 /// `GET /assets` query params: optional `?state=` (int) / `?entity=` (address) filters plus the
@@ -182,4 +185,92 @@ fn pct_of_supply(holding: i64, goal: i64) -> String {
         return "0.00".to_string();
     }
     format!("{:.2}", holding as f64 * 100.0 / goal as f64)
+}
+
+// ===========================================================================
+// BI-M4 — yield curve / wrap-ratio / tranches / per-asset disputes
+// ===========================================================================
+
+/// `GET /assets/:asset_id/yield` — the index curve ascending by `(timestamp_ms, id)` (shape
+/// `logic_flow.md §6.3`).
+pub async fn yield_curve(
+    State(state): State<AppState>,
+    Path(asset_id): Path<String>,
+    Query(q): Query<HistoryQuery>,
+) -> Result<Json<Page<YieldIndexRow>>, ApiError> {
+    let limit = clamp_limit(q.limit);
+    let cursor = match q.cursor.as_deref() {
+        Some(tok) => Some(decode_cursor_ii(tok)?),
+        None => None,
+    };
+    let rows = queries::list_yield_index(&state.pool, &asset_id, cursor, limit)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(Page::from_overfetch(
+        rows,
+        limit,
+        |r: &YieldIndexRow| encode_cursor(&[&r.timestamp_ms.to_string(), &r.id.to_string()]),
+    )))
+}
+
+/// `GET /assets/:asset_id/wrap-ratio` — the `total_wrapped_after` series from wrap/unwrap
+/// `position_events`, ascending by `(timestamp_ms, id)`.
+pub async fn wrap_ratio(
+    State(state): State<AppState>,
+    Path(asset_id): Path<String>,
+    Query(q): Query<HistoryQuery>,
+) -> Result<Json<Page<WrapRatioRow>>, ApiError> {
+    let limit = clamp_limit(q.limit);
+    let cursor = match q.cursor.as_deref() {
+        Some(tok) => Some(decode_cursor_ii(tok)?),
+        None => None,
+    };
+    let rows = queries::list_wrap_ratio(&state.pool, &asset_id, cursor, limit)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(Page::from_overfetch(
+        rows,
+        limit,
+        |r: &WrapRatioRow| encode_cursor(&[&r.timestamp_ms.to_string(), &r.id.to_string()]),
+    )))
+}
+
+/// `GET /assets/:asset_id/tranches` — the milestone timeline ordered by `(tranche_index, id)`.
+/// Keyset cursor magnitude is `(tranche_index, id)` (`queries::list_tranches`).
+pub async fn tranches(
+    State(state): State<AppState>,
+    Path(asset_id): Path<String>,
+    Query(q): Query<HistoryQuery>,
+) -> Result<Json<Page<TrancheRow>>, ApiError> {
+    let limit = clamp_limit(q.limit);
+    let cursor = match q.cursor.as_deref() {
+        Some(tok) => Some(decode_cursor_ii(tok)?),
+        None => None,
+    };
+    let rows = queries::list_tranches(&state.pool, &asset_id, cursor, limit)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(Page::from_overfetch(rows, limit, |r: &TrancheRow| {
+        encode_cursor(&[&(r.tranche_index as i64).to_string(), &r.id.to_string()])
+    })))
+}
+
+/// `GET /assets/:asset_id/disputes` — disputes targeting this asset, ordered by `(opened_at_ms,
+/// dispute_id)` (shape `logic_flow.md §6.5`).
+pub async fn asset_disputes(
+    State(state): State<AppState>,
+    Path(asset_id): Path<String>,
+    Query(q): Query<HistoryQuery>,
+) -> Result<Json<Page<DisputeRow>>, ApiError> {
+    let limit = clamp_limit(q.limit);
+    let cursor = match q.cursor.as_deref() {
+        Some(tok) => Some(decode_cursor_is(tok)?),
+        None => None,
+    };
+    let rows = queries::list_disputes(&state.pool, Some(&asset_id), None, None, cursor, limit)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(Page::from_overfetch(rows, limit, |r: &DisputeRow| {
+        encode_cursor(&[&r.opened_at_ms.to_string(), &r.dispute_id])
+    })))
 }

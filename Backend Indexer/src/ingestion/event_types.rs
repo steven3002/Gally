@@ -306,6 +306,170 @@ pub struct ShareRedeemedEvent {
     pub total_minted_after: u64,
 }
 
+// ---------------------------------------------------------------------------
+// Yield-index feed (`asset` + `accumulator` modules — `§10.3`)
+// ---------------------------------------------------------------------------
+
+/// `asset` module (NOT `accumulator` — a §10.1 module-placement drift). `index_after` is a `u128`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RevenueDepositedEvent {
+    pub asset_id: String,
+    #[serde(deserialize_with = "de_u64")]
+    pub gross: u64,
+    #[serde(deserialize_with = "de_u64")]
+    pub fee: u64,
+    #[serde(deserialize_with = "de_u64")]
+    pub investor_portion: u64,
+    #[serde(deserialize_with = "de_u64")]
+    pub entity_portion: u64,
+    #[serde(deserialize_with = "de_u128")]
+    pub index_after: u128,
+    #[serde(deserialize_with = "de_u64")]
+    pub unwrapped_supply: u64,
+}
+
+/// `accumulator` module. `amount` is captured but not stored (`§2.11` has no amount column —
+/// retained in `raw_events`); only `index_after`/`unwrapped_supply` land in `yield_index_series`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RolloverSweptEvent {
+    pub asset_id: String,
+    #[serde(deserialize_with = "de_u64")]
+    pub amount: u64,
+    #[serde(deserialize_with = "de_u128")]
+    pub index_after: u128,
+    #[serde(deserialize_with = "de_u64")]
+    pub unwrapped_supply: u64,
+}
+
+/// `accumulator` module. Carries the extra `routed_to_rollover: bool` (a §10.1 catalog/code
+/// drift). `amount` is captured but not stored (see [`RolloverSweptEvent`]).
+#[derive(Debug, Clone, Deserialize)]
+pub struct CompensationSweptEvent {
+    pub asset_id: String,
+    #[serde(deserialize_with = "de_u64")]
+    pub amount: u64,
+    #[serde(deserialize_with = "de_u128")]
+    pub index_after: u128,
+    #[serde(deserialize_with = "de_u64")]
+    pub unwrapped_supply: u64,
+    pub routed_to_rollover: bool,
+}
+
+/// `accumulator` module. Admin reclaims truncation residue at closure (`§2.16`); code-only (§10.1).
+#[derive(Debug, Clone, Deserialize)]
+pub struct DustSweptEvent {
+    pub asset_id: String,
+    #[serde(deserialize_with = "de_u64")]
+    pub amount: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Tranche / milestone feed (`asset` module — `§10.3`)
+// ---------------------------------------------------------------------------
+
+/// `asset` module. `blob_id` and `sha256` are `vector<u8>` (hex-encode for storage, §10.2);
+/// [`Self::blob_id_hex`] / [`Self::sha256_hex`] produce the stored form.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MilestoneProofSubmittedEvent {
+    pub asset_id: String,
+    #[serde(deserialize_with = "de_u64")]
+    pub tranche: u64,
+    #[serde(default)]
+    pub blob_id: Vec<u8>,
+    #[serde(default)]
+    pub sha256: Vec<u8>,
+}
+
+impl MilestoneProofSubmittedEvent {
+    pub fn blob_id_hex(&self) -> String {
+        hex_encode(&self.blob_id)
+    }
+    pub fn sha256_hex(&self) -> String {
+        hex_encode(&self.sha256)
+    }
+}
+
+/// `asset` module.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MilestoneApprovedEvent {
+    pub asset_id: String,
+    #[serde(deserialize_with = "de_u64")]
+    pub tranche: u64,
+    pub validator: String,
+    pub pool_id: String,
+}
+
+/// `asset` module.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TrancheReleasedEvent {
+    pub asset_id: String,
+    #[serde(deserialize_with = "de_u64")]
+    pub tranche: u64,
+    #[serde(deserialize_with = "de_u64")]
+    pub amount: u64,
+    #[serde(deserialize_with = "de_u64")]
+    pub escrow_after: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Dispute feed (`dispute` module — `§10.3`, verdict integers `§11.3`)
+// ---------------------------------------------------------------------------
+
+/// `dispute` module. Field is `evidence_sha256` (not `evidence_hash`) — a §10.1 drift; it is a
+/// `vector<u8>` hex-encoded into `disputes.evidence_hash` ([`Self::evidence_hex`]).
+#[derive(Debug, Clone, Deserialize)]
+pub struct DisputeOpenedEvent {
+    pub dispute_id: String,
+    pub asset_id: String,
+    pub target_pool_id: String,
+    pub challenger: String,
+    #[serde(deserialize_with = "de_u64")]
+    pub bond: u64,
+    #[serde(default)]
+    pub evidence_sha256: Vec<u8>,
+}
+
+impl DisputeOpenedEvent {
+    pub fn evidence_hex(&self) -> String {
+        hex_encode(&self.evidence_sha256)
+    }
+}
+
+/// `dispute` module. `votes_*_after` are running tallies (`u64` on the wire); stored as `INT`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct JurorVotedEvent {
+    pub dispute_id: String,
+    pub juror_pool_id: String,
+    pub guilty: bool,
+    #[serde(deserialize_with = "de_u64")]
+    pub votes_guilty_after: u64,
+    #[serde(deserialize_with = "de_u64")]
+    pub votes_innocent_after: u64,
+}
+
+/// `dispute` module. `verdict` is a `u8` (§11.3: 1 UPHELD | 2 REJECTED | 3 EXPIRED).
+#[derive(Debug, Clone, Deserialize)]
+pub struct DisputeResolvedEvent {
+    pub dispute_id: String,
+    pub asset_id: String,
+    pub target_pool_id: String,
+    pub verdict: u8,
+    #[serde(deserialize_with = "de_u64")]
+    pub slashed: u64,
+    #[serde(deserialize_with = "de_u64")]
+    pub bounty: u64,
+    pub challenger: String,
+}
+
+/// `dispute` module. Code-only event (not in §18.3, §10.1) → `juror_rewards` (`§2.15`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct JurorRewardClaimedEvent {
+    pub dispute_id: String,
+    pub juror_pool_id: String,
+    #[serde(deserialize_with = "de_u64")]
+    pub amount: u64,
+}
+
 /// Lowercase-hex encode a byte slice (`vector<u8>` storage form, §10.2). Dependency-free.
 pub fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
@@ -354,5 +518,41 @@ mod tests {
         let e: AssetVouchedEvent = serde_json::from_value(v).unwrap();
         assert_eq!(e.coverage, 20_000_000_000);
         assert_eq!(e.doc_hashes_hex(), vec!["09090909".to_string(), "ff0010".to_string()]);
+    }
+
+    #[test]
+    fn revenue_u128_index_from_string() {
+        // index_after is a u128 — arrives as a JSON string (§10.2).
+        let v = json!({
+            "asset_id": "0xa", "gross": "10000000", "fee": "100000",
+            "investor_portion": "7000000", "entity_portion": "2900000",
+            "index_after": "340282366920938463463374607431768211455", "unwrapped_supply": "1000000"
+        });
+        let e: RevenueDepositedEvent = serde_json::from_value(v).unwrap();
+        assert_eq!(e.investor_portion, 7_000_000);
+        assert_eq!(e.index_after, u128::MAX);
+    }
+
+    #[test]
+    fn compensation_carries_routed_flag() {
+        let v = json!({
+            "asset_id": "0xa", "amount": "500", "index_after": "9",
+            "unwrapped_supply": "100", "routed_to_rollover": true
+        });
+        let e: CompensationSweptEvent = serde_json::from_value(v).unwrap();
+        assert!(e.routed_to_rollover);
+        assert_eq!(e.index_after, 9);
+    }
+
+    #[test]
+    fn dispute_evidence_byte_array_hex_encodes() {
+        // evidence_sha256 (vector<u8>) arrives as a byte-int array (§10.2).
+        let v = json!({
+            "dispute_id": "0xd", "asset_id": "0xa", "target_pool_id": "0xp",
+            "challenger": "0xc", "bond": "1000000", "evidence_sha256": [222, 173, 190, 239]
+        });
+        let e: DisputeOpenedEvent = serde_json::from_value(v).unwrap();
+        assert_eq!(e.bond, 1_000_000);
+        assert_eq!(e.evidence_hex(), "deadbeef");
     }
 }

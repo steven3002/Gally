@@ -7,11 +7,13 @@ use serde_json::Value;
 use sqlx::{PgPool, QueryBuilder};
 
 use crate::db::models::{
-    AssetRow, AssetStateChangeRow, GovernanceRow, HolderFoldRow, PositionEventRow,
-    RaiseProgressRow, StakeEventRow, StatusChangeRow, ValidatorPoolRow,
+    AssetRow, AssetStateChangeRow, DisputeRow, GovernanceRow, HolderFoldRow, JuryVoteRow,
+    PositionEventRow, RaiseProgressRow, StakeEventRow, StatusChangeRow, TrancheRow,
+    ValidatorPoolRow, WrapRatioRow, YieldIndexRow,
 };
 use crate::ingestion::event_types::{
     AssetCreatedEvent, AssetStateChangedEvent, AssetVouchedEvent, CapitalContributedEvent,
+    DisputeOpenedEvent, DisputeResolvedEvent, JurorRewardClaimedEvent, JurorVotedEvent,
     RaiseFinalizedEvent, ValidatorRegisteredEvent,
 };
 use crate::ingestion::handlers::EventMeta;
@@ -731,4 +733,376 @@ pub async fn asset_goal(pool: &PgPool, asset_id: &str) -> Result<Option<i64>> {
         .fetch_optional(pool)
         .await?;
     Ok(row.map(|r| r.0))
+}
+
+// ===========================================================================
+// BI-M4 write paths — yield index / tranche / dispute feeds
+// ===========================================================================
+
+/// One `yield_index_series` row; the handler fills only the columns its subtype carries (`§2.11`).
+/// `index_after` (u128) is bound as text and cast `::numeric`.
+#[derive(Default)]
+pub struct YieldIndexInsert<'a> {
+    pub event_type: &'a str, // 'revenue' | 'rollover' | 'compensation'
+    pub asset_id: &'a str,
+    pub gross: Option<i64>,
+    pub fee: Option<i64>,
+    pub investor_portion: Option<i64>,
+    pub entity_portion: Option<i64>,
+    pub routed_to_rollover: Option<bool>,
+    pub index_after: u128,
+    pub unwrapped_supply: i64,
+}
+
+/// Idempotent insert of one yield-index event (upsert on `(tx_digest, event_seq)`, R6).
+pub async fn insert_yield_index(
+    pool: &PgPool,
+    meta: &EventMeta,
+    y: &YieldIndexInsert<'_>,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO yield_index_series \
+            (tx_digest, event_seq, checkpoint_seq, timestamp_ms, event_type, asset_id, \
+             gross, fee, investor_portion, entity_portion, routed_to_rollover, \
+             index_after, unwrapped_supply) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::numeric,$13) \
+         ON CONFLICT (tx_digest, event_seq) DO NOTHING",
+    )
+    .bind(&meta.tx_digest)
+    .bind(meta.event_seq)
+    .bind(meta.checkpoint_seq)
+    .bind(meta.timestamp_ms)
+    .bind(y.event_type)
+    .bind(y.asset_id)
+    .bind(y.gross)
+    .bind(y.fee)
+    .bind(y.investor_portion)
+    .bind(y.entity_portion)
+    .bind(y.routed_to_rollover)
+    .bind(y.index_after.to_string())
+    .bind(y.unwrapped_supply)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// `DustSweptEvent` → one `dust_sweeps` row (`§2.16`, idempotent on `(tx_digest, event_seq)`).
+pub async fn insert_dust_sweep(
+    pool: &PgPool,
+    meta: &EventMeta,
+    asset_id: &str,
+    amount: i64,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO dust_sweeps \
+            (tx_digest, event_seq, checkpoint_seq, timestamp_ms, asset_id, amount) \
+         VALUES ($1,$2,$3,$4,$5,$6) \
+         ON CONFLICT (tx_digest, event_seq) DO NOTHING",
+    )
+    .bind(&meta.tx_digest)
+    .bind(meta.event_seq)
+    .bind(meta.checkpoint_seq)
+    .bind(meta.timestamp_ms)
+    .bind(asset_id)
+    .bind(amount)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// One `tranche_events` row; the handler fills only the columns its subtype carries (`§2.12`).
+#[derive(Default)]
+pub struct TrancheInsert<'a> {
+    pub event_type: &'a str, // 'proof_submitted' | 'approved' | 'released'
+    pub asset_id: &'a str,
+    pub tranche_index: i32,
+    pub blob_id: Option<String>,
+    pub sha256: Option<String>,
+    pub validator: Option<&'a str>,
+    pub pool_id: Option<&'a str>,
+    pub amount: Option<i64>,
+    pub escrow_after: Option<i64>,
+}
+
+/// Idempotent insert of one tranche event (upsert on `(tx_digest, event_seq)`, R6).
+pub async fn insert_tranche_event(
+    pool: &PgPool,
+    meta: &EventMeta,
+    t: &TrancheInsert<'_>,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO tranche_events \
+            (tx_digest, event_seq, checkpoint_seq, timestamp_ms, event_type, asset_id, \
+             tranche_index, blob_id, sha256, validator, pool_id, amount, escrow_after) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) \
+         ON CONFLICT (tx_digest, event_seq) DO NOTHING",
+    )
+    .bind(&meta.tx_digest)
+    .bind(meta.event_seq)
+    .bind(meta.checkpoint_seq)
+    .bind(meta.timestamp_ms)
+    .bind(t.event_type)
+    .bind(t.asset_id)
+    .bind(t.tranche_index)
+    .bind(&t.blob_id)
+    .bind(&t.sha256)
+    .bind(t.validator)
+    .bind(t.pool_id)
+    .bind(t.amount)
+    .bind(t.escrow_after)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// `DisputeOpenedEvent` → insert the `disputes` row (idempotent on `dispute_id`). `evidence_sha256`
+/// (`vector<u8>`) is hex-encoded into `evidence_hash`. Resolution columns stay NULL until resolved.
+pub async fn insert_dispute_opened(
+    pool: &PgPool,
+    meta: &EventMeta,
+    e: &DisputeOpenedEvent,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO disputes \
+            (dispute_id, asset_id, target_pool_id, challenger, bond, evidence_hash, \
+             opened_at_ms, opened_tx) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) \
+         ON CONFLICT (dispute_id) DO NOTHING",
+    )
+    .bind(&e.dispute_id)
+    .bind(&e.asset_id)
+    .bind(&e.target_pool_id)
+    .bind(&e.challenger)
+    .bind(e.bond as i64)
+    .bind(e.evidence_hex())
+    .bind(meta.timestamp_ms)
+    .bind(&meta.tx_digest)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// `JurorVotedEvent` → one `jury_votes` row (`§2.14`, idempotent on `(tx_digest, event_seq)`).
+pub async fn insert_jury_vote(pool: &PgPool, meta: &EventMeta, e: &JurorVotedEvent) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO jury_votes \
+            (tx_digest, event_seq, checkpoint_seq, timestamp_ms, dispute_id, juror_pool_id, \
+             guilty, votes_guilty_after, votes_innocent_after) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) \
+         ON CONFLICT (tx_digest, event_seq) DO NOTHING",
+    )
+    .bind(&meta.tx_digest)
+    .bind(meta.event_seq)
+    .bind(meta.checkpoint_seq)
+    .bind(meta.timestamp_ms)
+    .bind(&e.dispute_id)
+    .bind(&e.juror_pool_id)
+    .bind(e.guilty)
+    .bind(e.votes_guilty_after as i32)
+    .bind(e.votes_innocent_after as i32)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// `DisputeResolvedEvent` → UPDATE the `disputes` row's resolution columns in place (the
+/// denormalized dispute status: `verdict` / `slashed` / `bounty` / `resolved_at_ms` /
+/// `resolved_tx`). Idempotent — keyed on `dispute_id`, last write wins.
+pub async fn apply_dispute_resolved(
+    pool: &PgPool,
+    meta: &EventMeta,
+    e: &DisputeResolvedEvent,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE disputes SET verdict = $1, slashed = $2, bounty = $3, \
+             resolved_at_ms = $4, resolved_tx = $5 WHERE dispute_id = $6",
+    )
+    .bind(e.verdict as i16)
+    .bind(e.slashed as i64)
+    .bind(e.bounty as i64)
+    .bind(meta.timestamp_ms)
+    .bind(&meta.tx_digest)
+    .bind(&e.dispute_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// `JurorRewardClaimedEvent` → one `juror_rewards` row (`§2.15`, idempotent on `(tx_digest,
+/// event_seq)`).
+pub async fn insert_juror_reward(
+    pool: &PgPool,
+    meta: &EventMeta,
+    e: &JurorRewardClaimedEvent,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO juror_rewards \
+            (tx_digest, event_seq, checkpoint_seq, timestamp_ms, dispute_id, juror_pool_id, amount) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7) \
+         ON CONFLICT (tx_digest, event_seq) DO NOTHING",
+    )
+    .bind(&meta.tx_digest)
+    .bind(meta.event_seq)
+    .bind(meta.checkpoint_seq)
+    .bind(meta.timestamp_ms)
+    .bind(&e.dispute_id)
+    .bind(&e.juror_pool_id)
+    .bind(e.amount as i64)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+// ===========================================================================
+// BI-M4 read paths — yield curve / wrap-ratio / tranches / disputes
+// ===========================================================================
+
+/// `GET /assets/:id/yield` — the index curve ascending by `(timestamp_ms, id)`. `index_after` is
+/// read via `::text` (NUMERIC → string, full u128 precision).
+pub async fn list_yield_index(
+    pool: &PgPool,
+    asset_id: &str,
+    cursor: Option<(i64, i64)>,
+    limit: i64,
+) -> Result<Vec<YieldIndexRow>> {
+    let mut qb = QueryBuilder::new(
+        "SELECT id, timestamp_ms, event_type, gross, fee, investor_portion, entity_portion, \
+         routed_to_rollover, index_after::text AS index_after, unwrapped_supply, tx_digest \
+         FROM yield_index_series WHERE asset_id = ",
+    );
+    qb.push_bind(asset_id.to_string());
+    if let Some((ts, id)) = cursor {
+        qb.push(" AND (timestamp_ms, id) > (")
+            .push_bind(ts)
+            .push(", ")
+            .push_bind(id)
+            .push(")");
+    }
+    qb.push(" ORDER BY timestamp_ms ASC, id ASC LIMIT ")
+        .push_bind(limit + 1);
+    Ok(qb.build_query_as::<YieldIndexRow>().fetch_all(pool).await?)
+}
+
+/// `GET /assets/:id/wrap-ratio` — the `total_wrapped_after` series drawn from the wrap/unwrap
+/// `position_events` rows (the only place that figure lives, `§2.10`), ascending by
+/// `(timestamp_ms, id)`.
+pub async fn list_wrap_ratio(
+    pool: &PgPool,
+    asset_id: &str,
+    cursor: Option<(i64, i64)>,
+    limit: i64,
+) -> Result<Vec<WrapRatioRow>> {
+    let mut qb = QueryBuilder::new(
+        "SELECT id, timestamp_ms, event_type, total_wrapped_after, tx_digest \
+         FROM position_events \
+         WHERE event_type IN ('SharesWrapped','SharesUnwrapped') AND asset_id = ",
+    );
+    qb.push_bind(asset_id.to_string());
+    if let Some((ts, id)) = cursor {
+        qb.push(" AND (timestamp_ms, id) > (")
+            .push_bind(ts)
+            .push(", ")
+            .push_bind(id)
+            .push(")");
+    }
+    qb.push(" ORDER BY timestamp_ms ASC, id ASC LIMIT ")
+        .push_bind(limit + 1);
+    Ok(qb.build_query_as::<WrapRatioRow>().fetch_all(pool).await?)
+}
+
+/// `GET /assets/:id/tranches` — the milestone timeline ordered by `(tranche_index, id)`. `id`
+/// (BIGSERIAL) increments in ingestion order, which is chronological (the sweep is ascending), so
+/// `(tranche_index, id)` is equivalent to the spec's `(tranche_index, timestamp_ms)` ordering and
+/// gives a stable, unique 2-component keyset. Cursor magnitude is `(tranche_index, id)`.
+pub async fn list_tranches(
+    pool: &PgPool,
+    asset_id: &str,
+    cursor: Option<(i64, i64)>,
+    limit: i64,
+) -> Result<Vec<TrancheRow>> {
+    let mut qb = QueryBuilder::new(
+        "SELECT id, timestamp_ms, event_type, tranche_index, blob_id, sha256, validator, \
+         pool_id, amount, escrow_after, tx_digest FROM tranche_events WHERE asset_id = ",
+    );
+    qb.push_bind(asset_id.to_string());
+    if let Some((tranche, id)) = cursor {
+        qb.push(" AND (tranche_index > ")
+            .push_bind(tranche as i32)
+            .push(" OR (tranche_index = ")
+            .push_bind(tranche as i32)
+            .push(" AND id > ")
+            .push_bind(id)
+            .push("))");
+    }
+    qb.push(" ORDER BY tranche_index ASC, id ASC LIMIT ")
+        .push_bind(limit + 1);
+    Ok(qb.build_query_as::<TrancheRow>().fetch_all(pool).await?)
+}
+
+/// Shared SELECT for `disputes` rows + the running vote tallies (`MAX(votes_*_after)`, monotonic,
+/// `§2.14`). `dispute_id` is the PK, so `GROUP BY` it lets every `d.*` column ride along.
+const DISPUTE_SELECT: &str = "SELECT d.dispute_id, d.asset_id, d.target_pool_id, d.challenger, \
+    d.bond, d.evidence_hash, d.opened_at_ms, d.resolved_at_ms, d.verdict, d.slashed, d.bounty, \
+    COALESCE(MAX(jv.votes_guilty_after), 0)::int AS votes_guilty, \
+    COALESCE(MAX(jv.votes_innocent_after), 0)::int AS votes_innocent \
+    FROM disputes d LEFT JOIN jury_votes jv ON jv.dispute_id = d.dispute_id";
+
+/// `GET /disputes` (and, with `asset_id` set, `GET /assets/:id/disputes`) — keyset-paginated
+/// dispute list ordered by `(opened_at_ms, dispute_id)` with optional `?asset_id=` / `?verdict=` /
+/// `?pool_id=` filters. Fetches `limit + 1` for `hasNextPage`.
+pub async fn list_disputes(
+    pool: &PgPool,
+    asset_id: Option<&str>,
+    verdict: Option<i16>,
+    pool_id: Option<&str>,
+    cursor: Option<(i64, String)>,
+    limit: i64,
+) -> Result<Vec<DisputeRow>> {
+    let mut qb = QueryBuilder::new(DISPUTE_SELECT);
+    qb.push(" WHERE TRUE");
+    if let Some(a) = asset_id {
+        qb.push(" AND d.asset_id = ").push_bind(a.to_string());
+    }
+    if let Some(v) = verdict {
+        qb.push(" AND d.verdict = ").push_bind(v);
+    }
+    if let Some(p) = pool_id {
+        qb.push(" AND d.target_pool_id = ").push_bind(p.to_string());
+    }
+    if let Some((ts, id)) = cursor {
+        qb.push(" AND (d.opened_at_ms, d.dispute_id) > (")
+            .push_bind(ts)
+            .push(", ")
+            .push_bind(id)
+            .push(")");
+    }
+    qb.push(" GROUP BY d.dispute_id ORDER BY d.opened_at_ms ASC, d.dispute_id ASC LIMIT ")
+        .push_bind(limit + 1);
+    Ok(qb.build_query_as::<DisputeRow>().fetch_all(pool).await?)
+}
+
+/// `GET /disputes/:dispute_id` — the dispute row + vote tallies (None if unknown).
+pub async fn get_dispute(pool: &PgPool, dispute_id: &str) -> Result<Option<DisputeRow>> {
+    let sql = format!("{DISPUTE_SELECT} WHERE d.dispute_id = $1 GROUP BY d.dispute_id");
+    Ok(sqlx::query_as::<_, DisputeRow>(&sql)
+        .bind(dispute_id)
+        .fetch_optional(pool)
+        .await?)
+}
+
+/// All `jury_votes` for one dispute, ascending by `(timestamp_ms, id)`, capped at `limit`.
+pub async fn list_jury_votes(
+    pool: &PgPool,
+    dispute_id: &str,
+    limit: i64,
+) -> Result<Vec<JuryVoteRow>> {
+    Ok(sqlx::query_as::<_, JuryVoteRow>(
+        "SELECT id, timestamp_ms, juror_pool_id, guilty, votes_guilty_after, \
+         votes_innocent_after, tx_digest FROM jury_votes WHERE dispute_id = $1 \
+         ORDER BY timestamp_ms ASC, id ASC LIMIT $2",
+    )
+    .bind(dispute_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?)
 }

@@ -268,3 +268,115 @@ async fn test_holders_ledger_fold(pool: PgPool) {
     // Never-claimed-yield holders report index 0 (§2.17).
     assert_eq!(data[0]["yield_claimed_index"], "0");
 }
+
+// ---------------------------------------------------------------------------
+// BI-M4 — yield curve, wrap-ratio, disputes
+// ---------------------------------------------------------------------------
+
+/// `GET /assets/:id/yield` returns the index curve ascending by timestamp.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_yield_series_order(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    // Insert out of order; expect ascending output.
+    route_event(&pool, &ev("asset", "RevenueDepositedEvent", "0xr2", "0", 30, json!({
+        "asset_id":"0xA","gross":"20","fee":"2","investor_portion":"14","entity_portion":"4","index_after":"3000000000","unwrapped_supply":"100"
+    }))).await.unwrap();
+    route_event(&pool, &ev("asset", "RevenueDepositedEvent", "0xr1", "0", 20, json!({
+        "asset_id":"0xA","gross":"10","fee":"1","investor_portion":"7","entity_portion":"2","index_after":"1000000000","unwrapped_supply":"100"
+    }))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/assets/0xA/yield").await;
+    assert_eq!(status, 200);
+    let idx: Vec<&str> = body["data"].as_array().unwrap().iter().map(|r| r["index_after"].as_str().unwrap()).collect();
+    assert_eq!(idx, vec!["1000000000", "3000000000"], "yield curve ascending by timestamp");
+    // §9.1: u64 amounts serialized as strings; event_type tagged 'revenue'.
+    assert_eq!(body["data"][0]["event_type"], "revenue");
+    assert_eq!(body["data"][0]["gross"], "10");
+}
+
+/// `GET /assets/:id/wrap-ratio` returns the `total_wrapped_after` series from wrap/unwrap events.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_wrap_ratio_series(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("accumulator", "SharesWrappedEvent", "0xw", "0", 10, json!({"asset_id":"0xA","holder":"0xH","count":"400","total_wrapped_after":"400"}))).await.unwrap();
+    route_event(&pool, &ev("accumulator", "SharesUnwrappedEvent", "0xu", "0", 20, json!({"asset_id":"0xA","holder":"0xH","count":"150","share_object_id":"0xS","total_wrapped_after":"250"}))).await.unwrap();
+    // A YieldClaimed for the same asset must NOT appear in the wrap-ratio series.
+    route_event(&pool, &ev("accumulator", "YieldClaimedEvent", "0xy", "0", 30, json!({"asset_id":"0xA","holder":"0xH","amount":"5","index_at_claim":"7000000000"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/assets/0xA/wrap-ratio").await;
+    assert_eq!(status, 200);
+    let series: Vec<&str> = body["data"].as_array().unwrap().iter().map(|r| r["total_wrapped_after"].as_str().unwrap()).collect();
+    assert_eq!(series, vec!["400", "250"], "wrap-ratio series ascending, wrap+unwrap only");
+    let types: Vec<&str> = body["data"].as_array().unwrap().iter().map(|r| r["event_type"].as_str().unwrap()).collect();
+    assert_eq!(types, vec!["SharesWrapped", "SharesUnwrapped"]);
+}
+
+/// `GET /disputes/:id` returns the dispute + all 3 juror vote rows, and the rolled-up tallies.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_jury_votes_count(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xvr", "0", 2, json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd0", "0", 10, json!({"dispute_id":"0xD","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xCH","bond":"1000000","evidence_sha256":[1,2,3]}))).await.unwrap();
+    for (i, (juror, guilty, g, n)) in [("0xJ1", true, "1", "0"), ("0xJ2", true, "2", "0"), ("0xJ3", false, "2", "1")].iter().enumerate() {
+        route_event(&pool, &ev("dispute", "JurorVotedEvent", &format!("0xv{i}"), "0", 20 + i as i64, json!({
+            "dispute_id":"0xD","juror_pool_id":juror,"guilty":guilty,"votes_guilty_after":g,"votes_innocent_after":n
+        }))).await.unwrap();
+    }
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/disputes/0xD").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["dispute_id"], "0xD");
+    assert!(body["verdict"].is_null(), "still open");
+    assert_eq!(body["bond"], "1000000");
+    assert_eq!(body["votes_guilty"], 2, "rolled-up guilty tally");
+    assert_eq!(body["votes_innocent"], 1, "rolled-up innocent tally");
+    let votes = body["jury_votes"].as_array().unwrap();
+    assert_eq!(votes.len(), 3, "all three juror votes returned");
+    let jurors: Vec<&str> = votes.iter().map(|v| v["juror_pool_id"].as_str().unwrap()).collect();
+    assert_eq!(jurors, vec!["0xJ1", "0xJ2", "0xJ3"], "votes ascending by timestamp");
+
+    // 404 for an unknown dispute id.
+    let (missing, _) = get_json(&base, "/disputes/0xNOPE").await;
+    assert_eq!(missing, 404);
+}
+
+/// `GET /disputes?pool_id=<id>` returns only disputes targeting that pool.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_dispute_filter_by_pool(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xv1", "0", 2, json!({"pool_id":"0xP1","validator":"0xVAL","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xv2", "0", 3, json!({"pool_id":"0xP2","validator":"0xVAL2","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd1", "0", 10, json!({"dispute_id":"0xD1","asset_id":"0xA","target_pool_id":"0xP1","challenger":"0xCH","bond":"1","evidence_sha256":[1]}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd2", "0", 20, json!({"dispute_id":"0xD2","asset_id":"0xA","target_pool_id":"0xP2","challenger":"0xCH","bond":"1","evidence_sha256":[2]}))).await.unwrap();
+    // Resolve 0xD2 REJECTED so we can also exercise ?verdict=.
+    route_event(&pool, &ev("dispute", "DisputeResolvedEvent", "0xdr", "0", 30, json!({"dispute_id":"0xD2","asset_id":"0xA","target_pool_id":"0xP2","verdict":2,"slashed":"0","bounty":"0","challenger":"0xCH"}))).await.unwrap();
+
+    let base = serve(pool).await;
+
+    // Unfiltered: both disputes.
+    let (_, all) = get_json(&base, "/disputes").await;
+    assert_eq!(all["data"].as_array().unwrap().len(), 2);
+
+    // ?pool_id= narrows to the targeted pool.
+    let (status, body) = get_json(&base, "/disputes?pool_id=0xP1").await;
+    assert_eq!(status, 200);
+    let d = body["data"].as_array().unwrap();
+    assert_eq!(d.len(), 1, "only the dispute targeting 0xP1");
+    assert_eq!(d[0]["dispute_id"], "0xD1");
+    assert_eq!(d[0]["target_pool_id"], "0xP1");
+    assert!(d[0]["verdict"].is_null());
+
+    // ?verdict= narrows to resolved verdict.
+    let (_, rejected) = get_json(&base, "/disputes?verdict=2").await;
+    let r = rejected["data"].as_array().unwrap();
+    assert_eq!(r.len(), 1);
+    assert_eq!(r[0]["dispute_id"], "0xD2");
+    assert_eq!(r[0]["verdict"], 2);
+
+    // Per-asset variant returns both (same asset).
+    let (_, by_asset) = get_json(&base, "/assets/0xA/disputes").await;
+    assert_eq!(by_asset["data"].as_array().unwrap().len(), 2);
+}

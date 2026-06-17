@@ -553,3 +553,290 @@ async fn test_position_wrap_unwrap_cycle(pool: PgPool) {
     assert_eq!(rows[0], ("SharesWrapped".to_string(), Some(400), Some(400), None));
     assert_eq!(rows[1], ("SharesUnwrapped".to_string(), Some(150), Some(250), Some("0xSHARE".to_string())));
 }
+
+// ---------------------------------------------------------------------------
+// BI-M4 — yield index
+// ---------------------------------------------------------------------------
+
+/// `index_after` is a u128 — stored as NUMERIC(39,0) with no precision loss (use u128::MAX). The
+/// revenue split columns are persisted; rollover/compensation leave them NULL.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_revenue_deposited_index_precision(pool: PgPool) {
+    route(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await;
+    let big = "340282366920938463463374607431768211455"; // u128::MAX, 39 digits
+    route(&pool, &ev("asset", "RevenueDepositedEvent", "0xrev", "0", 10, json!({
+        "asset_id": "0xA", "gross": "10000000", "fee": "100000",
+        "investor_portion": "7000000", "entity_portion": "2900000",
+        "index_after": big, "unwrapped_supply": "1000000"
+    }))).await;
+
+    let row: (String, Option<i64>, Option<i64>, Option<i64>, Option<i64>, String, i64) = sqlx::query_as(
+        "SELECT event_type, gross, fee, investor_portion, entity_portion, index_after::text, \
+         unwrapped_supply FROM yield_index_series WHERE asset_id = $1",
+    )
+    .bind("0xA")
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "revenue");
+    assert_eq!(row.1, Some(10_000_000));
+    assert_eq!(row.2, Some(100_000));
+    assert_eq!(row.3, Some(7_000_000));
+    assert_eq!(row.4, Some(2_900_000));
+    assert_eq!(row.5, big.to_string(), "u128 index round-trips exactly via NUMERIC");
+    assert_eq!(row.6, 1_000_000);
+}
+
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_rollover_event_stored(pool: PgPool) {
+    route(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await;
+    route(&pool, &ev("accumulator", "RolloverSweptEvent", "0xro", "0", 10, json!({
+        "asset_id": "0xA", "amount": "500000", "index_after": "8000000000", "unwrapped_supply": "1000000"
+    }))).await;
+
+    let row: (String, Option<i64>, String, Option<bool>) = sqlx::query_as(
+        "SELECT event_type, gross, index_after::text, routed_to_rollover FROM yield_index_series WHERE asset_id = $1",
+    )
+    .bind("0xA")
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "rollover", "event_type tagged rollover");
+    assert_eq!(row.1, None, "revenue split columns NULL for rollover");
+    assert_eq!(row.2, "8000000000");
+    assert_eq!(row.3, None);
+}
+
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_compensation_event_stored(pool: PgPool) {
+    route(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await;
+    route(&pool, &ev("accumulator", "CompensationSweptEvent", "0xco", "0", 10, json!({
+        "asset_id": "0xA", "amount": "500000", "index_after": "9000000000",
+        "unwrapped_supply": "1000000", "routed_to_rollover": false
+    }))).await;
+
+    let row: (String, Option<bool>) =
+        sqlx::query_as("SELECT event_type, routed_to_rollover FROM yield_index_series WHERE asset_id = $1")
+            .bind("0xA")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(row.0, "compensation", "event_type tagged compensation");
+    assert_eq!(row.1, Some(false));
+}
+
+/// `CompensationSweptEvent.routed_to_rollover = true` is persisted (regression for the §10.1 extra
+/// field).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_compensation_routed_to_rollover(pool: PgPool) {
+    route(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await;
+    route(&pool, &ev("accumulator", "CompensationSweptEvent", "0xco", "0", 10, json!({
+        "asset_id": "0xA", "amount": "500000", "index_after": "9000000000",
+        "unwrapped_supply": "1000000", "routed_to_rollover": true
+    }))).await;
+
+    let routed: (Option<bool>,) =
+        sqlx::query_as("SELECT routed_to_rollover FROM yield_index_series WHERE asset_id = $1")
+            .bind("0xA")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(routed.0, Some(true), "routed_to_rollover flag stored");
+}
+
+// ---------------------------------------------------------------------------
+// BI-M4 — tranches
+// ---------------------------------------------------------------------------
+
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_tranche_proof_then_approved_then_released(pool: PgPool) {
+    route(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await;
+    // tranche 0: proof (byte-array hashes) → approved → released.
+    route(&pool, &ev("asset", "MilestoneProofSubmittedEvent", "0xt1", "0", 10, json!({
+        "asset_id": "0xA", "tranche": "0", "blob_id": [222, 173], "sha256": [190, 239]
+    }))).await;
+    route(&pool, &ev("asset", "MilestoneApprovedEvent", "0xt2", "0", 20, json!({
+        "asset_id": "0xA", "tranche": "0", "validator": "0xVAL", "pool_id": "0xPOOL"
+    }))).await;
+    route(&pool, &ev("asset", "TrancheReleasedEvent", "0xt3", "0", 30, json!({
+        "asset_id": "0xA", "tranche": "0", "amount": "250000000", "escrow_after": "750000000"
+    }))).await;
+
+    let rows: Vec<(String, i32, Option<String>, Option<String>, Option<String>, Option<i64>)> = sqlx::query_as(
+        "SELECT event_type, tranche_index, blob_id, sha256, validator, amount FROM tranche_events \
+         WHERE asset_id = $1 ORDER BY tranche_index ASC, id ASC",
+    )
+    .bind("0xA")
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 3, "three tranche events for tranche 0");
+    assert_eq!(rows[0].0, "proof_submitted");
+    assert_eq!(rows[0].1, 0);
+    assert_eq!(rows[0].2, Some("dead".to_string()), "blob_id hex-encoded");
+    assert_eq!(rows[0].3, Some("beef".to_string()), "sha256 hex-encoded");
+    assert_eq!(rows[1].0, "approved");
+    assert_eq!(rows[1].4, Some("0xVAL".to_string()));
+    assert_eq!(rows[2].0, "released");
+    assert_eq!(rows[2].5, Some(250_000_000));
+}
+
+// ---------------------------------------------------------------------------
+// BI-M4 — disputes
+// ---------------------------------------------------------------------------
+
+/// Seed an asset + validator pool so the dispute FKs (`asset_id`, `target_pool_id`) resolve.
+async fn seed_asset_and_pool(pool: &PgPool) {
+    route(pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await;
+    route(pool, &ev("validator", "ValidatorRegisteredEvent", "0xvr", "0", 2,
+        json!({ "pool_id": "0xPOOL", "validator": "0xVAL", "stake": "5000000000" }))).await;
+}
+
+/// DisputeOpened + 3 JurorVoted + DisputeResolved(UPHELD) → one `disputes` row, verdict=1, the
+/// resolution columns set, and 3 `jury_votes` rows.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_dispute_lifecycle_upheld(pool: PgPool) {
+    seed_asset_and_pool(&pool).await;
+    route(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd0", "0", 10, json!({
+        "dispute_id": "0xD", "asset_id": "0xA", "target_pool_id": "0xPOOL",
+        "challenger": "0xCH", "bond": "1000000", "evidence_sha256": [1, 2, 3, 4]
+    }))).await;
+    for (i, (juror, guilty, g, n)) in [("0xJ1", true, "1", "0"), ("0xJ2", true, "2", "0"), ("0xJ3", false, "2", "1")].iter().enumerate() {
+        route(&pool, &ev("dispute", "JurorVotedEvent", &format!("0xv{i}"), "0", 20 + i as i64, json!({
+            "dispute_id": "0xD", "juror_pool_id": juror, "guilty": guilty,
+            "votes_guilty_after": g, "votes_innocent_after": n
+        }))).await;
+    }
+    route(&pool, &ev("dispute", "DisputeResolvedEvent", "0xdr", "0", 40, json!({
+        "dispute_id": "0xD", "asset_id": "0xA", "target_pool_id": "0xPOOL",
+        "verdict": 1, "slashed": "2000000000", "bounty": "1000000000", "challenger": "0xCH"
+    }))).await;
+
+    let d: (Option<i16>, Option<i64>, Option<i64>, Option<i64>, String) = sqlx::query_as(
+        "SELECT verdict, slashed, bounty, resolved_at_ms, evidence_hash FROM disputes WHERE dispute_id = $1",
+    )
+    .bind("0xD")
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(d.0, Some(1), "UPHELD verdict");
+    assert_eq!(d.1, Some(2_000_000_000), "slashed");
+    assert_eq!(d.2, Some(1_000_000_000), "bounty");
+    assert_eq!(d.3, Some(40), "resolved_at_ms");
+    assert_eq!(d.4, "01020304", "evidence_sha256 hex-encoded into evidence_hash");
+
+    let votes: (i64,) = sqlx::query_as("SELECT count(*) FROM jury_votes WHERE dispute_id = $1")
+        .bind("0xD")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(votes.0, 3, "three jury votes recorded");
+}
+
+/// Same flow with a REJECTED verdict → verdict=2.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_dispute_lifecycle_rejected(pool: PgPool) {
+    seed_asset_and_pool(&pool).await;
+    route(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd0", "0", 10, json!({
+        "dispute_id": "0xD", "asset_id": "0xA", "target_pool_id": "0xPOOL",
+        "challenger": "0xCH", "bond": "1000000", "evidence_sha256": [9]
+    }))).await;
+    route(&pool, &ev("dispute", "DisputeResolvedEvent", "0xdr", "0", 40, json!({
+        "dispute_id": "0xD", "asset_id": "0xA", "target_pool_id": "0xPOOL",
+        "verdict": 2, "slashed": "0", "bounty": "0", "challenger": "0xCH"
+    }))).await;
+
+    let verdict: (Option<i16>,) = sqlx::query_as("SELECT verdict FROM disputes WHERE dispute_id = $1")
+        .bind("0xD")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(verdict.0, Some(2), "REJECTED verdict");
+}
+
+/// JurorRewardClaimed → `juror_rewards`; DustSwept → `dust_sweeps`. Regression guard for the two
+/// code-only events absent from `protocol_flow.md §18.3` (§10.1).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_juror_reward_and_dust_swept_stored(pool: PgPool) {
+    seed_asset_and_pool(&pool).await;
+    route(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd0", "0", 10, json!({
+        "dispute_id": "0xD", "asset_id": "0xA", "target_pool_id": "0xPOOL",
+        "challenger": "0xCH", "bond": "1000000", "evidence_sha256": [1]
+    }))).await;
+    route(&pool, &ev("dispute", "JurorRewardClaimedEvent", "0xjr", "0", 50, json!({
+        "dispute_id": "0xD", "juror_pool_id": "0xJ1", "amount": "333333"
+    }))).await;
+    route(&pool, &ev("accumulator", "DustSweptEvent", "0xds", "0", 60, json!({
+        "asset_id": "0xA", "amount": "7"
+    }))).await;
+
+    let reward: (String, i64) =
+        sqlx::query_as("SELECT juror_pool_id, amount FROM juror_rewards WHERE dispute_id = $1")
+            .bind("0xD")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(reward, ("0xJ1".to_string(), 333_333));
+
+    let dust: (i64,) = sqlx::query_as("SELECT amount FROM dust_sweeps WHERE asset_id = $1")
+        .bind("0xA")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(dust.0, 7);
+}
+
+/// Feeding a fixture containing **all 36** known event types (`logic_flow.md §10.3`) produces zero
+/// "unhandled" results — `route_event` returns `Ok(true)` for every one (it returns `Ok(false)`
+/// exactly when it would `warn!` for an unhandled type, R7). FK order: pool + asset + dispute first.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_no_unhandled_event_types(pool: PgPool) {
+    // (module, struct, payload) in dependency order. AssetCreated makes 0xA; ValidatorRegistered
+    // makes 0xPOOL; DisputeOpened makes 0xD — everything FK-ing those comes after.
+    let big = "340282366920938463463374607431768211455";
+    let events: Vec<(&str, &str, Value)> = vec![
+        ("protocol", "ProtocolInitializedEvent", json!({"config_id":"0xCFG","admin":"0xADM"})),
+        ("protocol", "ProtocolParamChangedEvent", json!({"name":"min_stake","old_value":"1","new_value":"2"})),
+        ("protocol", "ProtocolTreasuryChangedEvent", json!({"old_treasury":"0xT1","new_treasury":"0xT2"})),
+        ("protocol", "EmergencyStopTriggeredEvent", json!({"config_id":"0xCFG"})),
+        ("protocol", "ProtocolResumedEvent", json!({"config_id":"0xCFG"})),
+        ("validator", "ValidatorRegisteredEvent", json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000"})),
+        ("asset", "AssetCreatedEvent", asset_created("0xA", "0xE", "1000000000")),
+        ("asset", "AssetStateChangedEvent", json!({"asset_id":"0xA","old_state":0,"new_state":1})),
+        ("asset", "AssetVouchedEvent", json!({"asset_id":"0xA","pool_id":"0xPOOL","validator":"0xVAL","coverage":"20000000000","doc_hashes":[[9,9,9]]})),
+        ("asset", "AssetCancelledEvent", json!({"asset_id":"0xA"})),
+        ("asset", "CapitalContributedEvent", json!({"asset_id":"0xA","contributor":"0xINV","amount":"100","raised_after":"100"})),
+        ("asset", "RaiseFinalizedEvent", json!({"asset_id":"0xA","accumulator_id":"0xACC","total_shares":"1000000000"})),
+        ("asset", "RaiseAbortedEvent", json!({"asset_id":"0xA","raised":"100"})),
+        ("asset", "ContributionRefundedEvent", json!({"asset_id":"0xA","contributor":"0xINV","amount":"100"})),
+        ("asset", "SharesClaimedEvent", json!({"asset_id":"0xA","holder":"0xH","count":"100","share_object_id":"0xSH"})),
+        ("asset", "MilestoneProofSubmittedEvent", json!({"asset_id":"0xA","tranche":"0","blob_id":[1],"sha256":[2]})),
+        ("asset", "MilestoneApprovedEvent", json!({"asset_id":"0xA","tranche":"0","validator":"0xVAL","pool_id":"0xPOOL"})),
+        ("asset", "TrancheReleasedEvent", json!({"asset_id":"0xA","tranche":"0","amount":"10","escrow_after":"90"})),
+        ("asset", "AssetOperationalEvent", json!({"asset_id":"0xA","accumulator_id":"0xACC"})),
+        ("asset", "EntityDefaultedEvent", json!({"asset_id":"0xA","tranche_missed":"1","collateral_seized":"5","escrow_seized":"5"})),
+        ("asset", "AssetClosedEvent", json!({"asset_id":"0xA","reason":1})),
+        ("asset", "RevenueDepositedEvent", json!({"asset_id":"0xA","gross":"10","fee":"1","investor_portion":"7","entity_portion":"2","index_after":big,"unwrapped_supply":"100"})),
+        ("validator", "StakeAddedEvent", json!({"pool_id":"0xPOOL","depositor":"0xDEP","amount":"1","stake_after":"5000000001"})),
+        ("validator", "StakeWithdrawnEvent", json!({"pool_id":"0xPOOL","validator":"0xVAL","amount":"1","stake_after":"5000000000"})),
+        ("validator", "ValidatorStatusChangedEvent", json!({"pool_id":"0xPOOL","old_status":0,"new_status":1,"dispute_id":null})),
+        ("accumulator", "RolloverSweptEvent", json!({"asset_id":"0xA","amount":"5","index_after":"8000000000","unwrapped_supply":"100"})),
+        ("accumulator", "YieldClaimedEvent", json!({"asset_id":"0xA","holder":"0xH","amount":"5","index_at_claim":"7000000000"})),
+        ("accumulator", "CompensationSweptEvent", json!({"asset_id":"0xA","amount":"5","index_after":"9000000000","unwrapped_supply":"100","routed_to_rollover":false})),
+        ("accumulator", "SharesWrappedEvent", json!({"asset_id":"0xA","holder":"0xH","count":"10","total_wrapped_after":"10"})),
+        ("accumulator", "SharesUnwrappedEvent", json!({"asset_id":"0xA","holder":"0xH","count":"5","share_object_id":"0xSH","total_wrapped_after":"5"})),
+        ("accumulator", "ShareRedeemedEvent", json!({"asset_id":"0xA","holder":"0xH","count":"5","total_minted_after":"999999995"})),
+        ("accumulator", "DustSweptEvent", json!({"asset_id":"0xA","amount":"3"})),
+        ("dispute", "DisputeOpenedEvent", json!({"dispute_id":"0xD","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xCH","bond":"1000000","evidence_sha256":[1,2]})),
+        ("dispute", "JurorVotedEvent", json!({"dispute_id":"0xD","juror_pool_id":"0xJ1","guilty":true,"votes_guilty_after":"1","votes_innocent_after":"0"})),
+        ("dispute", "DisputeResolvedEvent", json!({"dispute_id":"0xD","asset_id":"0xA","target_pool_id":"0xPOOL","verdict":2,"slashed":"0","bounty":"0","challenger":"0xCH"})),
+        ("dispute", "JurorRewardClaimedEvent", json!({"dispute_id":"0xD","juror_pool_id":"0xJ1","amount":"500"})),
+    ];
+    assert_eq!(events.len(), 36, "fixture covers all 36 event types (§10.3)");
+
+    for (i, (module, struct_name, payload)) in events.iter().enumerate() {
+        let e = ev(module, struct_name, &format!("0xall{i}"), "0", 100 + i as i64, payload.clone());
+        let handled = route_event(&pool, &e).await.expect("handler must not error");
+        assert!(handled, "{struct_name} must be handled (no unhandled-event warning)");
+    }
+}

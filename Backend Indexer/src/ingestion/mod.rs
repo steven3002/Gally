@@ -2,9 +2,10 @@
 //!
 //! The loop polls events from the `gally_core` package, archives the raw payload in
 //! `raw_events`, advances the cursor, and routes each event to its typed handler via
-//! [`route_event`]. BI-M2 wires the governance + asset-lifecycle feeds; the remaining feeds
-//! (validator, position, yield, tranche, dispute) land in BI-M3/BI-M4 and currently fall
-//! through to the `raw_events`-only path (guard rail R7).
+//! [`route_event`]. As of BI-M4 all 36 `gally_core` event types (`logic_flow.md §10.3`) are
+//! wired — governance + asset-lifecycle (BI-M2), validator + position (BI-M3), and yield-index +
+//! tranche + dispute (BI-M4). The `warn!` fall-through now fires only for a genuinely new
+//! (future) type, which is still archived in `raw_events` and never fatal (guard rail R7).
 
 pub mod event_types;
 pub mod handlers;
@@ -20,7 +21,7 @@ use tracing::{debug, warn};
 
 use crate::db::queries::{self, RawEventInsert};
 use crate::sui_client::{EventId, SuiClient, SuiEvent};
-use handlers::{asset, governance, position, validator, EventMeta};
+use handlers::{asset, dispute, governance, position, tranche, validator, yield_index, EventMeta};
 
 /// `gally_core` modules that emit events (`share` emits none — `logic_flow.md §10.3`).
 const EVENT_MODULES: [&str; 5] = ["protocol", "validator", "asset", "accumulator", "dispute"];
@@ -111,10 +112,55 @@ pub async fn route_event(pool: &PgPool, ev: &SuiEvent) -> Result<bool> {
             position::handle_position_event(pool, &meta, name, payload).await?;
             Ok(true)
         }
-        // Known but not yet wired (yield/tranche/dispute → BI-M4) or a genuinely new type:
-        // archived in raw_events, never fatal (R7).
+        // FAILED=2 arrives via AssetStateChangedEvent; the asset has no raise-aborted table/column,
+        // so this is an explicit no-op (full payload archived in raw_events, §4 / §11.5).
+        "RaiseAbortedEvent" => {
+            debug!("RaiseAbortedEvent: no-op (FAILED state arrives via AssetStateChangedEvent)");
+            Ok(true)
+        }
+        // DEFAULTED collapses into COMPENSATING=6 via AssetStateChangedEvent (§11.5); the seizure
+        // figures have no typed destination column, so this is an explicit no-op (archived raw).
+        "EntityDefaultedEvent" => {
+            debug!("EntityDefaultedEvent: no-op (DEFAULTED collapses into COMPENSATING state-change)");
+            Ok(true)
+        }
+        // ---- yield-index feed (BI-M4) ----
+        name @ ("RevenueDepositedEvent" | "RolloverSweptEvent" | "CompensationSweptEvent") => {
+            yield_index::handle_yield_index(pool, &meta, name, payload).await?;
+            Ok(true)
+        }
+        "DustSweptEvent" => {
+            yield_index::handle_dust_swept(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        // ---- tranche / milestone feed (BI-M4) ----
+        name @ ("MilestoneProofSubmittedEvent"
+        | "MilestoneApprovedEvent"
+        | "TrancheReleasedEvent") => {
+            tranche::handle_tranche_event(pool, &meta, name, payload).await?;
+            Ok(true)
+        }
+        // ---- dispute feed (BI-M4) ----
+        "DisputeOpenedEvent" => {
+            dispute::handle_dispute_opened(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        "JurorVotedEvent" => {
+            dispute::handle_juror_voted(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        "DisputeResolvedEvent" => {
+            dispute::handle_dispute_resolved(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        "JurorRewardClaimedEvent" => {
+            dispute::handle_juror_reward(pool, &meta, payload).await?;
+            Ok(true)
+        }
+        // All 36 known event types are now wired (BI-M4). This only fires for a genuinely new
+        // (future) type: archived in raw_events, never fatal (R7).
         other => {
-            warn!(event_type = %other, "no typed handler yet; archived in raw_events only");
+            warn!(event_type = %other, "no typed handler; archived in raw_events only");
             Ok(false)
         }
     }
