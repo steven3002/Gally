@@ -380,3 +380,227 @@ async fn test_dispute_filter_by_pool(pool: PgPool) {
     let (_, by_asset) = get_json(&base, "/assets/0xA/disputes").await;
     assert_eq!(by_asset["data"].as_array().unwrap().len(), 2);
 }
+
+// ---------------------------------------------------------------------------
+// BI-M5 — REST hardening, filter validation, validator track record
+// ---------------------------------------------------------------------------
+
+/// `GET /assets`: every USDC field (`goal`, `collateral`, `coverage`) serialized as a JSON string
+/// (`§9.1`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_amounts_are_strings(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetVouchedEvent", "0xv", "0", 2, json!({"asset_id":"0xA","pool_id":"0xP","validator":"0xVAL","coverage":"20000000000","doc_hashes":[]}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/assets").await;
+    assert_eq!(status, 200);
+    let a = &body["data"][0];
+    assert!(a["goal"].is_string(), "goal is a string");
+    assert!(a["collateral"].is_string(), "collateral is a string");
+    assert!(a["coverage"].is_string(), "coverage is a string");
+}
+
+/// 60 assets + `?limit=50`: page 1 = 50 items, `hasNextPage=true`, non-null `nextCursor`; the cursor
+/// fetches the remaining 10 with `hasNextPage=false` and `nextCursor=null`.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_pagination_cursor(pool: PgPool) {
+    for i in 0..60i64 {
+        route_event(&pool, &ev("asset", "AssetCreatedEvent", &format!("0xtx{i}"), "0", 1000 + i,
+            asset_created(&format!("0xASSET{i:02}"), "0xE", "1000000000"))).await.unwrap();
+    }
+
+    let base = serve(pool).await;
+    let (status, p1) = get_json(&base, "/assets?limit=50").await;
+    assert_eq!(status, 200);
+    assert_eq!(p1["data"].as_array().unwrap().len(), 50, "first page = 50");
+    assert_eq!(p1["hasNextPage"], true);
+    let cursor = p1["nextCursor"].as_str().expect("non-null cursor on a full page");
+
+    let (_, p2) = get_json(&base, &format!("/assets?limit=50&cursor={cursor}")).await;
+    assert_eq!(p2["data"].as_array().unwrap().len(), 10, "remaining 10");
+    assert_eq!(p2["hasNextPage"], false);
+    assert!(p2["nextCursor"].is_null());
+}
+
+/// `GET /assets?state=4` returns only EXECUTING assets (state 4; 3 = CANCELLED, `§11.1`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_filter_by_state(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc1", "0", 1, asset_created("0xEXEC", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc2", "0", 2, asset_created("0xCANC", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetStateChangedEvent", "0xs1", "0", 10, json!({"asset_id":"0xEXEC","old_state":0,"new_state":4}))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetStateChangedEvent", "0xs2", "0", 11, json!({"asset_id":"0xCANC","old_state":0,"new_state":3}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/assets?state=4").await;
+    assert_eq!(status, 200);
+    let d = body["data"].as_array().unwrap();
+    assert_eq!(d.len(), 1, "only the EXECUTING asset");
+    assert_eq!(d[0]["asset_id"], "0xEXEC");
+    assert_eq!(d[0]["current_state"], 4);
+}
+
+/// `GET /assets?entity=0x...` returns only that entity's assets.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_filter_by_entity(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xa1", "0", 1, asset_created("0xA1", "0xALICE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xa2", "0", 2, asset_created("0xA2", "0xALICE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xb1", "0", 3, asset_created("0xB1", "0xBOB", "1000000000"))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/assets?entity=0xALICE").await;
+    assert_eq!(status, 200);
+    let d = body["data"].as_array().unwrap();
+    assert_eq!(d.len(), 2, "only Alice's assets");
+    assert!(d.iter().all(|a| a["entity"] == "0xALICE"));
+}
+
+/// `GET /assets/0xdeadbeef` → HTTP 404 with `{ "error": "not_found" }`.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_unknown_asset_404(pool: PgPool) {
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/assets/0xdeadbeef").await;
+    assert_eq!(status, 404);
+    assert_eq!(body["error"], "not_found");
+    assert_eq!(body["id"], "0xdeadbeef");
+}
+
+/// `GET /assets?state=notanumber` → HTTP 400 with `{ "error": "invalid_param" }` (filter validation,
+/// not axum's default deserialization error).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_invalid_state_param_400(pool: PgPool) {
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/assets?state=notanumber").await;
+    assert_eq!(status, 400);
+    assert_eq!(body["error"], "invalid_param");
+    assert_eq!(body["param"], "state");
+}
+
+/// `GET /validators/:id` includes a `track_record` with the five DB-derived counts (`m5.md`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_validator_track_record(pool: PgPool) {
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xvr", "0", 1, json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc1", "0", 2, asset_created("0xA1", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc2", "0", 3, asset_created("0xA2", "0xE", "1000000000"))).await.unwrap();
+    // Both vouched by 0xPOOL (assets_vouched = 2).
+    route_event(&pool, &ev("asset", "AssetVouchedEvent", "0xv1", "0", 4, json!({"asset_id":"0xA1","pool_id":"0xPOOL","validator":"0xVAL","coverage":"1","doc_hashes":[]}))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetVouchedEvent", "0xv2", "0", 5, json!({"asset_id":"0xA2","pool_id":"0xPOOL","validator":"0xVAL","coverage":"1","doc_hashes":[]}))).await.unwrap();
+    // 0xA2 defaults → COMPENSATING (6): assets_defaulted = 1.
+    route_event(&pool, &ev("asset", "AssetStateChangedEvent", "0xsd", "0", 6, json!({"asset_id":"0xA2","old_state":4,"new_state":6}))).await.unwrap();
+    // 3 milestone approvals carrying pool_id (milestones_approved = 3).
+    for t in 0..3i64 {
+        route_event(&pool, &ev("asset", "MilestoneApprovedEvent", &format!("0xm{t}"), "0", 10 + t,
+            json!({"asset_id":"0xA1","tranche":t.to_string(),"validator":"0xVAL","pool_id":"0xPOOL"}))).await.unwrap();
+    }
+    // 2 disputes target the pool; one UPHELD (disputes_filed_against = 2, disputes_upheld = 1).
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd1", "0", 20, json!({"dispute_id":"0xD1","asset_id":"0xA1","target_pool_id":"0xPOOL","challenger":"0xCH","bond":"1","evidence_sha256":[1]}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd2", "0", 21, json!({"dispute_id":"0xD2","asset_id":"0xA1","target_pool_id":"0xPOOL","challenger":"0xCH","bond":"1","evidence_sha256":[2]}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeResolvedEvent", "0xdr", "0", 22, json!({"dispute_id":"0xD2","asset_id":"0xA1","target_pool_id":"0xPOOL","verdict":1,"slashed":"1","bounty":"1","challenger":"0xCH"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/validators/0xPOOL").await;
+    assert_eq!(status, 200);
+    let tr = &body["track_record"];
+    assert_eq!(tr["assets_vouched"], 2);
+    assert_eq!(tr["milestones_approved"], 3);
+    assert_eq!(tr["assets_defaulted"], 1);
+    assert_eq!(tr["disputes_filed_against"], 2);
+    assert_eq!(tr["disputes_upheld"], 1);
+}
+
+/// `GET /validators?status=1` returns only FROZEN pools.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_validator_filter_by_status(pool: PgPool) {
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xr1", "0", 1, json!({"pool_id":"0xP1","validator":"0xV1","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xr2", "0", 2, json!({"pool_id":"0xP2","validator":"0xV2","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorStatusChangedEvent", "0xsc", "0", 10, json!({"pool_id":"0xP1","old_status":0,"new_status":1,"dispute_id":null}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/validators?status=1").await;
+    assert_eq!(status, 200);
+    let d = body["data"].as_array().unwrap();
+    assert_eq!(d.len(), 1, "only the FROZEN pool");
+    assert_eq!(d[0]["pool_id"], "0xP1");
+    assert_eq!(d[0]["current_status"], 1);
+}
+
+/// `GET /validators?validator=0x...` returns only pools with that operator address.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_validator_filter_by_address(pool: PgPool) {
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xr1", "0", 1, json!({"pool_id":"0xP1","validator":"0xALICE","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xr2", "0", 2, json!({"pool_id":"0xP2","validator":"0xALICE","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xr3", "0", 3, json!({"pool_id":"0xP3","validator":"0xBOB","stake":"5000000000"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/validators?validator=0xALICE").await;
+    assert_eq!(status, 200);
+    let d = body["data"].as_array().unwrap();
+    assert_eq!(d.len(), 2, "only Alice's pools");
+    assert!(d.iter().all(|p| p["validator"] == "0xALICE"));
+}
+
+/// `GET /disputes?challenger=0x...` returns only disputes filed by that address.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_dispute_filter_by_challenger(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xvr", "0", 2, json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd1", "0", 10, json!({"dispute_id":"0xD1","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xALICE","bond":"1","evidence_sha256":[1]}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd2", "0", 11, json!({"dispute_id":"0xD2","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xBOB","bond":"1","evidence_sha256":[2]}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/disputes?challenger=0xALICE").await;
+    assert_eq!(status, 200);
+    let d = body["data"].as_array().unwrap();
+    assert_eq!(d.len(), 1, "only Alice's dispute");
+    assert_eq!(d[0]["dispute_id"], "0xD1");
+    assert_eq!(d[0]["challenger"], "0xALICE");
+}
+
+/// A pool with 5 `MilestoneApprovedEvent` rows reports `track_record.milestones_approved = 5`.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_track_record_milestones_approved(pool: PgPool) {
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xvr", "0", 1, json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000"}))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 2, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    for t in 0..5i64 {
+        route_event(&pool, &ev("asset", "MilestoneApprovedEvent", &format!("0xm{t}"), "0", 10 + t,
+            json!({"asset_id":"0xA","tranche":t.to_string(),"validator":"0xVAL","pool_id":"0xPOOL"}))).await.unwrap();
+    }
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/validators/0xPOOL").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["track_record"]["milestones_approved"], 5);
+}
+
+/// `GET /governance?type=ProtocolParamChangedEvent` returns only that event type. The stored name is
+/// normalized (`ProtocolParamChanged`); the filter accepts the suffixed form too.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_governance_filter_by_type(pool: PgPool) {
+    route_event(&pool, &ev("protocol", "ProtocolInitializedEvent", "0xg1", "0", 1, json!({"config_id":"0xCFG","admin":"0xADM"}))).await.unwrap();
+    route_event(&pool, &ev("protocol", "ProtocolParamChangedEvent", "0xg2", "0", 2, json!({"name":"min_stake","old_value":"5","new_value":"6"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/governance?type=ProtocolParamChangedEvent").await;
+    assert_eq!(status, 200);
+    let d = body["data"].as_array().unwrap();
+    assert_eq!(d.len(), 1, "only ProtocolParamChanged");
+    assert_eq!(d[0]["event_type"], "ProtocolParamChanged");
+    assert_eq!(d[0]["param_name"], "min_stake");
+}
+
+/// `GET /assets/:id/yield`: `index_after` (u128) serialized as a JSON string.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_index_after_is_string(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xc", "0", 1, asset_created("0xA", "0xE", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "RevenueDepositedEvent", "0xrev", "0", 10, json!({
+        "asset_id":"0xA","gross":"10","fee":"1","investor_portion":"7","entity_portion":"2",
+        "index_after":"7000000000000000","unwrapped_supply":"100"
+    }))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, body) = get_json(&base, "/assets/0xA/yield").await;
+    assert_eq!(status, 200);
+    let row = &body["data"][0];
+    assert!(row["index_after"].is_string(), "index_after is a JSON string");
+    assert_eq!(row["index_after"], "7000000000000000");
+}

@@ -8,7 +8,9 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::api::extractors::{clamp_limit, decode_cursor_is, encode_cursor, ApiError, Page};
+use crate::api::extractors::{
+    clamp_limit, decode_cursor_is, encode_cursor, parse_opt_i16, ApiError, Page,
+};
 use crate::api::AppState;
 use crate::db::models::ValidatorPoolRow;
 use crate::db::queries;
@@ -18,9 +20,10 @@ use crate::db::queries;
 const DETAIL_HISTORY_LIMIT: i64 = 100;
 
 /// `GET /validators` query params: optional `?status=` / `?validator=` + universal pagination.
+/// `status` is a `String` so a non-numeric value surfaces as `400 invalid_param` (filter validation).
 #[derive(Debug, Deserialize)]
 pub struct ValidatorListQuery {
-    pub status: Option<i16>,
+    pub status: Option<String>,
     pub validator: Option<String>,
     pub limit: Option<i64>,
     pub cursor: Option<String>,
@@ -32,11 +35,12 @@ pub async fn list_validators(
     Query(q): Query<ValidatorListQuery>,
 ) -> Result<Json<Page<ValidatorPoolRow>>, ApiError> {
     let limit = clamp_limit(q.limit);
+    let status = parse_opt_i16("status", q.status.as_deref())?;
     let cursor = match q.cursor.as_deref() {
         Some(tok) => Some(decode_cursor_is(tok)?),
         None => None,
     };
-    let rows = queries::list_validators(&state.pool, q.status, q.validator.as_deref(), cursor, limit)
+    let rows = queries::list_validators(&state.pool, status, q.validator.as_deref(), cursor, limit)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(Page::from_overfetch(rows, limit, |r: &ValidatorPoolRow| {
@@ -53,7 +57,10 @@ pub async fn get_validator(
     let pool_row = queries::get_validator_pool(&state.pool, &pool_id)
         .await
         .map_err(ApiError::from)?
-        .ok_or(ApiError::NotFound)?;
+        .ok_or_else(|| ApiError::not_found(&pool_id))?;
+    let track_record = queries::validator_track_record(&state.pool, &pool_id)
+        .await
+        .map_err(ApiError::from)?;
     let stake_events = queries::list_stake_events(&state.pool, &pool_id, DETAIL_HISTORY_LIMIT)
         .await
         .map_err(ApiError::from)?;
@@ -66,6 +73,7 @@ pub async fn get_validator(
         "initial_stake": pool_row.initial_stake.to_string(),
         "current_status": pool_row.current_status,
         "registered_at_ms": pool_row.registered_at_ms,
+        "track_record": track_record,
         "stake_events": stake_events,
         "status_changes": status_changes,
     })))

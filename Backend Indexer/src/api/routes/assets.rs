@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::api::extractors::{
-    clamp_limit, decode_cursor_ii, decode_cursor_is, encode_cursor, ApiError, Page,
+    clamp_limit, decode_cursor_ii, decode_cursor_is, encode_cursor, parse_opt_i16, ApiError, Page,
 };
 use crate::api::AppState;
 use crate::db::models::{
@@ -18,10 +18,11 @@ use crate::db::models::{
 use crate::db::queries;
 
 /// `GET /assets` query params: optional `?state=` (int) / `?entity=` (address) filters plus the
-/// universal `?limit=` / `?cursor=`.
+/// universal `?limit=` / `?cursor=`. `state` is taken as a `String` so a non-numeric value surfaces
+/// as `400 invalid_param` (filter validation) rather than axum's default deserialization error.
 #[derive(Debug, Deserialize)]
 pub struct AssetListQuery {
-    pub state: Option<i16>,
+    pub state: Option<String>,
     pub entity: Option<String>,
     pub limit: Option<i64>,
     pub cursor: Option<String>,
@@ -34,11 +35,12 @@ pub async fn list_assets(
     Query(q): Query<AssetListQuery>,
 ) -> Result<Json<Page<AssetRow>>, ApiError> {
     let limit = clamp_limit(q.limit);
+    let state_filter = parse_opt_i16("state", q.state.as_deref())?;
     let cursor = match q.cursor.as_deref() {
         Some(tok) => Some(decode_cursor_is(tok)?),
         None => None,
     };
-    let rows = queries::list_assets(&state.pool, q.state, q.entity.as_deref(), cursor, limit)
+    let rows = queries::list_assets(&state.pool, state_filter, q.entity.as_deref(), cursor, limit)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(Page::from_overfetch(rows, limit, |r: &AssetRow| {
@@ -55,7 +57,7 @@ pub async fn get_asset(
         .await
         .map_err(ApiError::from)?
         .map(Json)
-        .ok_or(ApiError::NotFound)
+        .ok_or_else(|| ApiError::not_found(&asset_id))
 }
 
 /// `GET /assets/:asset_id/history` query params: universal `?limit=` / `?cursor=`.
@@ -132,7 +134,7 @@ pub async fn holders(
     let goal = queries::asset_goal(&state.pool, &asset_id)
         .await
         .map_err(ApiError::from)?
-        .ok_or(ApiError::NotFound)?;
+        .ok_or_else(|| ApiError::not_found(&asset_id))?;
 
     let limit = clamp_limit(q.limit);
     let cursor = match q.cursor.as_deref() {
@@ -267,7 +269,7 @@ pub async fn asset_disputes(
         Some(tok) => Some(decode_cursor_is(tok)?),
         None => None,
     };
-    let rows = queries::list_disputes(&state.pool, Some(&asset_id), None, None, cursor, limit)
+    let rows = queries::list_disputes(&state.pool, Some(&asset_id), None, None, None, cursor, limit)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(Page::from_overfetch(rows, limit, |r: &DisputeRow| {

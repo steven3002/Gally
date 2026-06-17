@@ -8,7 +8,9 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::api::extractors::{clamp_limit, decode_cursor_is, encode_cursor, ApiError, Page};
+use crate::api::extractors::{
+    clamp_limit, decode_cursor_is, encode_cursor, parse_opt_i16, ApiError, Page,
+};
 use crate::api::AppState;
 use crate::db::models::DisputeRow;
 use crate::db::queries;
@@ -16,12 +18,14 @@ use crate::db::queries;
 /// Embedded vote-log cap for the detail view.
 const DETAIL_VOTES_LIMIT: i64 = 100;
 
-/// `GET /disputes` query params: optional `?verdict=` (int) / `?pool_id=` (target pool) filters
-/// plus the universal `?limit=` / `?cursor=`.
+/// `GET /disputes` query params: optional `?verdict=` (int) / `?pool_id=` (target pool) /
+/// `?challenger=` (filer address) filters plus the universal `?limit=` / `?cursor=`. `verdict` is a
+/// `String` so a non-numeric value surfaces as `400 invalid_param` (filter validation).
 #[derive(Debug, Deserialize)]
 pub struct DisputeListQuery {
-    pub verdict: Option<i16>,
+    pub verdict: Option<String>,
     pub pool_id: Option<String>,
+    pub challenger: Option<String>,
     pub limit: Option<i64>,
     pub cursor: Option<String>,
 }
@@ -32,6 +36,7 @@ pub async fn list_disputes(
     Query(q): Query<DisputeListQuery>,
 ) -> Result<Json<Page<DisputeRow>>, ApiError> {
     let limit = clamp_limit(q.limit);
+    let verdict = parse_opt_i16("verdict", q.verdict.as_deref())?;
     let cursor = match q.cursor.as_deref() {
         Some(tok) => Some(decode_cursor_is(tok)?),
         None => None,
@@ -39,8 +44,9 @@ pub async fn list_disputes(
     let rows = queries::list_disputes(
         &state.pool,
         None,
-        q.verdict,
+        verdict,
         q.pool_id.as_deref(),
+        q.challenger.as_deref(),
         cursor,
         limit,
     )
@@ -60,7 +66,7 @@ pub async fn get_dispute(
     let d = queries::get_dispute(&state.pool, &dispute_id)
         .await
         .map_err(ApiError::from)?
-        .ok_or(ApiError::NotFound)?;
+        .ok_or_else(|| ApiError::not_found(&dispute_id))?;
     let votes = queries::list_jury_votes(&state.pool, &dispute_id, DETAIL_VOTES_LIMIT)
         .await
         .map_err(ApiError::from)?;

@@ -249,6 +249,22 @@ pub struct DisputeRow {
     pub votes_innocent: i32,
 }
 
+/// Validator track record (BI-M5) — DB-derived counts embedded in `GET /validators/:pool_id`
+/// (`m5.md`). All are small counts, serialized as JSON numbers (not USDC amounts).
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct ValidatorTrackRecord {
+    /// Distinct assets this pool vouched (`assets.validator_pool_id = pool_id`).
+    pub assets_vouched: i64,
+    /// `MilestoneApprovedEvent`s carrying this `pool_id` (`tranche_events.event_type = 'approved'`).
+    pub milestones_approved: i64,
+    /// This pool's vouched assets now in COMPENSATING (state 6 — the default path; §11.1).
+    pub assets_defaulted: i64,
+    /// Disputes targeting this pool (`disputes.target_pool_id = pool_id`).
+    pub disputes_filed_against: i64,
+    /// Of those, the ones UPHELD (`verdict = 1`, §11.3).
+    pub disputes_upheld: i64,
+}
+
 /// One `jury_votes` row (`§2.14`); embedded in `GET /disputes/:id`.
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct JuryVoteRow {

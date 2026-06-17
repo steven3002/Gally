@@ -4,6 +4,30 @@
 [move]
 version = 4
 
+[pinned.localnet.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "718ae563a42fb4ba0d055588f81c704dcef58c25" }
+use_environment = "localnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.localnet.Sui]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "718ae563a42fb4ba0d055588f81c704dcef58c25" }
+use_environment = "localnet"
+manifest_digest = "CC15CB146CA1113370B03476BFF694B88F43F77D8DEE7C23CC0C78AB0634420D"
+deps = { MoveStdlib = "MoveStdlib" }
+
+[pinned.localnet.gally_core]
+source = { local = "../gally_core" }
+use_environment = "localnet"
+manifest_digest = "EAE83E4C2C7D5B4EF605145EE3703A5AF265593E686986BA5E58EE3F5D5E884F"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.localnet.gally_mock_faucet]
+source = { root = true }
+use_environment = "localnet"
+manifest_digest = "698E18A0B7A16ED970EC0BBD407F7C3042485A759152F7F0A8A77F76164F40C5"
+deps = { gally_core = "gally_core", std = "MoveStdlib", sui = "Sui" }
+
 [pinned.mainnet.MoveStdlib]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "367fd808279bed26f7c64fc63160062a2ee29ab7" }
 use_environment = "mainnet"

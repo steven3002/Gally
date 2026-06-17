@@ -9,7 +9,7 @@ use sqlx::{PgPool, QueryBuilder};
 use crate::db::models::{
     AssetRow, AssetStateChangeRow, DisputeRow, GovernanceRow, HolderFoldRow, JuryVoteRow,
     PositionEventRow, RaiseProgressRow, StakeEventRow, StatusChangeRow, TrancheRow,
-    ValidatorPoolRow, WrapRatioRow, YieldIndexRow,
+    ValidatorPoolRow, ValidatorTrackRecord, WrapRatioRow, YieldIndexRow,
 };
 use crate::ingestion::event_types::{
     AssetCreatedEvent, AssetStateChangedEvent, AssetVouchedEvent, CapitalContributedEvent,
@@ -1049,12 +1049,13 @@ const DISPUTE_SELECT: &str = "SELECT d.dispute_id, d.asset_id, d.target_pool_id,
 
 /// `GET /disputes` (and, with `asset_id` set, `GET /assets/:id/disputes`) — keyset-paginated
 /// dispute list ordered by `(opened_at_ms, dispute_id)` with optional `?asset_id=` / `?verdict=` /
-/// `?pool_id=` filters. Fetches `limit + 1` for `hasNextPage`.
+/// `?pool_id=` / `?challenger=` filters. Fetches `limit + 1` for `hasNextPage`.
 pub async fn list_disputes(
     pool: &PgPool,
     asset_id: Option<&str>,
     verdict: Option<i16>,
     pool_id: Option<&str>,
+    challenger: Option<&str>,
     cursor: Option<(i64, String)>,
     limit: i64,
 ) -> Result<Vec<DisputeRow>> {
@@ -1068,6 +1069,9 @@ pub async fn list_disputes(
     }
     if let Some(p) = pool_id {
         qb.push(" AND d.target_pool_id = ").push_bind(p.to_string());
+    }
+    if let Some(c) = challenger {
+        qb.push(" AND d.challenger = ").push_bind(c.to_string());
     }
     if let Some((ts, id)) = cursor {
         qb.push(" AND (d.opened_at_ms, d.dispute_id) > (")
@@ -1088,6 +1092,25 @@ pub async fn get_dispute(pool: &PgPool, dispute_id: &str) -> Result<Option<Dispu
         .bind(dispute_id)
         .fetch_optional(pool)
         .await?)
+}
+
+/// `GET /validators/:pool_id` track record (`m5.md`) — five DB-derived counts in one round-trip
+/// (`$1` = pool_id, reused). All `count(*)` columns come back as `BIGINT` (i64). No object reads.
+pub async fn validator_track_record(pool: &PgPool, pool_id: &str) -> Result<ValidatorTrackRecord> {
+    Ok(sqlx::query_as::<_, ValidatorTrackRecord>(
+        "SELECT \
+           (SELECT count(*) FROM assets WHERE validator_pool_id = $1) AS assets_vouched, \
+           (SELECT count(*) FROM tranche_events WHERE event_type = 'approved' AND pool_id = $1) \
+             AS milestones_approved, \
+           (SELECT count(*) FROM assets WHERE validator_pool_id = $1 AND current_state = 6) \
+             AS assets_defaulted, \
+           (SELECT count(*) FROM disputes WHERE target_pool_id = $1) AS disputes_filed_against, \
+           (SELECT count(*) FROM disputes WHERE target_pool_id = $1 AND verdict = 1) \
+             AS disputes_upheld",
+    )
+    .bind(pool_id)
+    .fetch_one(pool)
+    .await?)
 }
 
 /// All `jury_votes` for one dispute, ascending by `(timestamp_ms, id)`, capped at `limit`.

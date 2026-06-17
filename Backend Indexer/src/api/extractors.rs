@@ -79,33 +79,70 @@ pub fn decode_cursor(token: &str) -> Option<Vec<String>> {
     Some(s.split('\u{1f}').map(|p| p.to_string()).collect())
 }
 
+/// A malformed cursor is reported as an `invalid_param` on the `cursor` field (`backend.md §5.1.1`
+/// — the client must echo the token verbatim, so a non-round-tripping one is a bad request).
+fn bad_cursor() -> ApiError {
+    ApiError::invalid_param("cursor", "malformed pagination cursor")
+}
+
 /// Decode a 2-component `(i64, i64)` keyset cursor (time-series feeds: `(timestamp_ms, id)`).
 pub fn decode_cursor_ii(token: &str) -> Result<(i64, i64), ApiError> {
-    let parts = decode_cursor(token).ok_or(ApiError::BadCursor)?;
+    let parts = decode_cursor(token).ok_or_else(bad_cursor)?;
     match parts.as_slice() {
         [a, b] => Ok((
-            a.parse().map_err(|_| ApiError::BadCursor)?,
-            b.parse().map_err(|_| ApiError::BadCursor)?,
+            a.parse().map_err(|_| bad_cursor())?,
+            b.parse().map_err(|_| bad_cursor())?,
         )),
-        _ => Err(ApiError::BadCursor),
+        _ => Err(bad_cursor()),
     }
 }
 
 /// Decode a 2-component `(i64, String)` keyset cursor (the `/assets` list: `(created_at_ms, asset_id)`).
 pub fn decode_cursor_is(token: &str) -> Result<(i64, String), ApiError> {
-    let parts = decode_cursor(token).ok_or(ApiError::BadCursor)?;
+    let parts = decode_cursor(token).ok_or_else(bad_cursor)?;
     match parts.as_slice() {
-        [a, b] => Ok((a.parse().map_err(|_| ApiError::BadCursor)?, b.clone())),
-        _ => Err(ApiError::BadCursor),
+        [a, b] => Ok((a.parse().map_err(|_| bad_cursor())?, b.clone())),
+        _ => Err(bad_cursor()),
     }
 }
 
-/// Minimal API error → HTTP status mapping. BI-M5 expands this.
+/// Parse an optional integer query param, mapping a non-numeric value to a `400 invalid_param`
+/// (`backend.md §5.1` filter validation). `None`/empty ⇒ no filter. Keeping these params as
+/// `String` in the route's `Query` struct (then parsing here) is what lets a bad value surface as
+/// our typed error shape rather than axum's default deserialization 400.
+pub fn parse_opt_i16(param: &str, raw: Option<&str>) -> Result<Option<i16>, ApiError> {
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        None => Ok(None),
+        Some(s) => s
+            .parse::<i16>()
+            .map(Some)
+            .map_err(|_| ApiError::invalid_param(param, "expected an integer")),
+    }
+}
+
+/// API error → HTTP status + typed JSON body (`m5.md` error contract): `404 {error:"not_found",id}`,
+/// `400 {error:"invalid_param",param,reason}`, `500 {error:"internal"}` (no internals leaked).
 #[derive(Debug)]
 pub enum ApiError {
-    NotFound,
-    BadCursor,
+    /// Unknown id (carries the looked-up id for the `404` body).
+    NotFound(Option<String>),
+    /// A malformed / out-of-contract query parameter.
+    InvalidParam { param: String, reason: String },
     Internal(anyhow::Error),
+}
+
+impl ApiError {
+    /// `404 not_found` for a specific id.
+    pub fn not_found(id: &str) -> Self {
+        ApiError::NotFound(Some(id.to_string()))
+    }
+    /// `400 invalid_param` for a named query parameter.
+    pub fn invalid_param(param: &str, reason: &str) -> Self {
+        ApiError::InvalidParam {
+            param: param.to_string(),
+            reason: reason.to_string(),
+        }
+    }
 }
 
 impl From<anyhow::Error> for ApiError {
@@ -122,17 +159,21 @@ impl From<sqlx::Error> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let (status, msg) = match self {
-            ApiError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
-            ApiError::BadCursor => (StatusCode::BAD_REQUEST, "invalid cursor".to_string()),
+        let (status, body) = match self {
+            ApiError::NotFound(id) => (
+                StatusCode::NOT_FOUND,
+                json!({ "error": "not_found", "id": id }),
+            ),
+            ApiError::InvalidParam { param, reason } => (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "invalid_param", "param": param, "reason": reason }),
+            ),
             ApiError::Internal(e) => {
+                // Logged server-side; the body never leaks internals (`m5.md`).
                 tracing::error!(error = %e, "internal API error");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal server error".to_string(),
-                )
+                (StatusCode::INTERNAL_SERVER_ERROR, json!({ "error": "internal" }))
             }
         };
-        (status, Json(json!({ "error": msg }))).into_response()
+        (status, Json(body)).into_response()
     }
 }
