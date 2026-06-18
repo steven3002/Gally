@@ -61,7 +61,7 @@ fun setup(): ts::Scenario {
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(&mut s, 0);
         let stake = coin::mint_for_testing<USDC>(STAKE, s.ctx());
-        validator::register_validator(&config, stake, &clock, s.ctx());
+        validator::register_validator_for_testing(&config, stake, &clock, s.ctx());
         clock.destroy_for_testing();
         ts::return_shared(config);
     };
@@ -73,7 +73,7 @@ fun create_default_asset(s: &mut ts::Scenario) {
     s.next_tx(ENTITY);
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(s, 0);
-    asset::create_asset(
+    asset::create_asset_for_testing(
         &config,
         GOAL,
         FUNDING_DEADLINE_MS,
@@ -222,7 +222,7 @@ fun test_create_tranche_sum_mismatch_aborts() {
     s.next_tx(ENTITY);
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(&mut s, 0);
-    asset::create_asset(
+    asset::create_asset_for_testing(
         &config,
         GOAL,
         FUNDING_DEADLINE_MS,
@@ -244,7 +244,7 @@ fun test_create_past_funding_deadline_aborts() {
     s.next_tx(ENTITY);
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(&mut s, FUNDING_DEADLINE_MS); // now == deadline: not future
-    asset::create_asset(
+    asset::create_asset_for_testing(
         &config,
         GOAL,
         FUNDING_DEADLINE_MS,
@@ -266,7 +266,7 @@ fun test_create_zero_revenue_split_aborts() {
     s.next_tx(ENTITY);
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(&mut s, 0);
-    asset::create_asset(
+    asset::create_asset_for_testing(
         &config,
         GOAL,
         FUNDING_DEADLINE_MS,
@@ -288,7 +288,7 @@ fun test_create_low_collateral_aborts() {
     s.next_tx(ENTITY);
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(&mut s, 0);
-    asset::create_asset(
+    asset::create_asset_for_testing(
         &config,
         GOAL,
         FUNDING_DEADLINE_MS,
@@ -310,7 +310,7 @@ fun test_create_nonascending_tranche_deadlines_aborts() {
     s.next_tx(ENTITY);
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(&mut s, 0);
-    asset::create_asset(
+    asset::create_asset_for_testing(
         &config,
         GOAL,
         FUNDING_DEADLINE_MS,
@@ -357,7 +357,7 @@ fun test_vouch_insufficient_free_stake_aborts() {
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(&mut s, 0);
         let stake = coin::mint_for_testing<USDC>(10_000_000_000, s.ctx());
-        validator::register_validator(&config, stake, &clock, s.ctx());
+        validator::register_validator_for_testing(&config, stake, &clock, s.ctx());
         clock.destroy_for_testing();
         ts::return_shared(config);
     };
@@ -910,7 +910,7 @@ fun test_approve_by_non_vouching_pool_aborts() {
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(&mut s, 3_500);
         let stake = coin::mint_for_testing<USDC>(STAKE, s.ctx());
-        validator::register_validator(&config, stake, &clock, s.ctx());
+        validator::register_validator_for_testing(&config, stake, &clock, s.ctx());
         clock.destroy_for_testing();
         ts::return_shared(config);
     };

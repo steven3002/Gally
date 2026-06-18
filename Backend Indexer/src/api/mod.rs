@@ -50,6 +50,10 @@ pub fn router(state: AppState) -> Router {
         .route("/assets/:asset_id/yield", get(routes::assets::yield_curve))
         .route("/assets/:asset_id/wrap-ratio", get(routes::assets::wrap_ratio))
         .route("/assets/:asset_id/tranches", get(routes::assets::tranches))
+        .route(
+            "/assets/:asset_id/accumulator",
+            get(routes::assets::accumulator),
+        )
         .route("/assets/:asset_id/disputes", get(routes::assets::asset_disputes))
         .route("/governance", get(routes::governance::list_governance))
         .route("/validators", get(routes::validators::list_validators))

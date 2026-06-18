@@ -56,7 +56,7 @@ fun register(s: &mut ts::Scenario, who: address, stake: u64): ID {
     {
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(s, 0);
-        validator::register_validator(
+        validator::register_validator_for_testing(
             &config,
             coin::mint_for_testing<USDC>(stake, s.ctx()),
             &clock,
@@ -84,7 +84,7 @@ fun setup(): (ts::Scenario, ID, ID, ID, ID) {
     {
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(&mut s, 0);
-        asset::create_asset(
+        asset::create_asset_for_testing(
             &config,
             GOAL,
             FUNDING_DEADLINE_MS,
@@ -227,7 +227,7 @@ fun open_dispute(s: &mut ts::Scenario, target_id: ID, now_ms: u64): ID {
         let clock = make_clock(s, now_ms);
         let bond = coin::mint_for_testing<USDC>(BOND, s.ctx());
         let evidence = asset::new_walrus_ref(b"fraud", b"sha-fraud", s.ctx());
-        dispute::initialize_dispute<DISPUTE_TOKEN>(
+        dispute::initialize_dispute_for_testing<DISPUTE_TOKEN>(
             &mut asset,
             &mut pool,
             &acc,
@@ -409,6 +409,24 @@ fun test_upheld_operational_stays_operational() {
 }
 
 #[test]
+/// LI-D7: the challenger's `reason` is stored on the dispute and readable. The
+/// `open_dispute` helper routes through `initialize_dispute_for_testing`, which
+/// passes this exact string; a production caller supplies its own.
+fun test_dispute_reason_roundtrip() {
+    let (mut s, target_id, _j1, _j2, _j3) = setup();
+    to_executing(&mut s);
+    let d = open_dispute(&mut s, target_id, 3_000);
+
+    s.next_tx(CHALLENGER);
+    {
+        let dispute = s.take_shared_by_id<Dispute>(d);
+        assert!(dispute::reason(&dispute) == b"Test dispute reason", 0);
+        ts::return_shared(dispute);
+    };
+    s.end();
+}
+
+#[test]
 fun test_bounded_exposure_only_coverage_slashed() {
     // The whole 50k stake is at risk in principle, but a single asset's
     // dispute can only take that asset's 20k coverage.
@@ -524,7 +542,7 @@ fun test_wrong_bond_aborts() {
     let clock = make_clock(&mut s, 3_000);
     let bond = coin::mint_for_testing<USDC>(BOND - 1, s.ctx()); // one unit short
     let evidence = asset::new_walrus_ref(b"f", b"sha-f", s.ctx());
-    dispute::initialize_dispute<DISPUTE_TOKEN>(
+    dispute::initialize_dispute_for_testing<DISPUTE_TOKEN>(
         &mut asset, &mut pool, &acc, &config, bond, evidence, &clock, s.ctx(),
     );
     abort 0

@@ -35,7 +35,7 @@ fun setup_with_validator(stake: u64): ts::Scenario {
         let config = scenario.take_shared<ProtocolConfig>();
         let clock = clock::create_for_testing(scenario.ctx());
         let coin = coin::mint_for_testing<USDC>(stake, scenario.ctx());
-        validator::register_validator(&config, coin, &clock, scenario.ctx());
+        validator::register_validator_for_testing(&config, coin, &clock, scenario.ctx());
         clock.destroy_for_testing();
         ts::return_shared(config);
     };
@@ -108,7 +108,7 @@ fun test_register_while_paused_aborts() {
     let config = scenario.take_shared<ProtocolConfig>();
     let clock = clock::create_for_testing(scenario.ctx());
     let coin = coin::mint_for_testing<USDC>(MIN_STAKE, scenario.ctx());
-    validator::register_validator(&config, coin, &clock, scenario.ctx());
+    validator::register_validator_for_testing(&config, coin, &clock, scenario.ctx());
 
     abort 0
 }

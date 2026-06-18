@@ -34,8 +34,14 @@ const EValidatorNotActive: u64 = 202;
 const EWrongValidatorCap: u64 = 203;
 /// Operation requires a FROZEN pool (slash and unfreeze preconditions).
 const EValidatorNotFrozen: u64 = 204;
+/// A metadata string exceeds its byte cap (Live-Data Parity LI-Q2). Shares the
+/// code with `asset::EMetadataTooLong` for a uniform metadata-validation error.
+const EMetadataTooLong: u64 = 314;
 
 // === Constants ===
+
+/// Byte cap for the validator display name (LI-Q2).
+const MAX_NAME_BYTES: u64 = 96;
 
 /// Pool may vouch, approve milestones, vote, and withdraw free stake.
 const STATUS_ACTIVE: u8 = 0;
@@ -53,6 +59,9 @@ public struct ValidatorPool has key {
     id: UID,
     /// Operator address (informational; authority comes from `ValidatorCap`).
     validator: address,
+    /// Self-asserted display name, set at registration and stake-backed
+    /// (Live-Data Parity LI-D6). UTF-8 by convention; the indexer decodes it.
+    name: vector<u8>,
     /// Total deposited collateral.
     stake: Balance<USDC>,
     /// Portion committed against active vouches. Invariant I-V1: locked <= value(stake).
@@ -79,6 +88,8 @@ public struct ValidatorRegisteredEvent has copy, drop {
     pool_id: ID,
     validator: address,
     stake: u64,
+    /// Self-asserted display name (LI-D6); indexed for the validator registry.
+    name: vector<u8>,
 }
 
 /// Emitted on every top-up. `depositor` may differ from the validator —
@@ -116,16 +127,19 @@ public struct ValidatorStatusChangedEvent has copy, drop {
 public fun register_validator(
     config: &ProtocolConfig,
     stake: Coin<USDC>,
+    name: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     protocol::assert_version(config);
     protocol::assert_not_paused(config);
     assert!(stake.value() >= protocol::min_validator_stake(config), EStakeBelowMin);
+    assert!(name.length() <= MAX_NAME_BYTES, EMetadataTooLong);
 
     let pool = ValidatorPool {
         id: object::new(ctx),
         validator: ctx.sender(),
+        name,
         stake: stake.into_balance(),
         locked: 0,
         active_vouches: 0,
@@ -138,6 +152,7 @@ public fun register_validator(
         pool_id,
         validator: ctx.sender(),
         stake: pool.stake.value(),
+        name: pool.name,
     });
 
     transfer::transfer(ValidatorCap { id: object::new(ctx), pool_id }, ctx.sender());
@@ -198,6 +213,9 @@ public fun withdraw_stake(
 // === View Functions ===
 
 public fun validator(pool: &ValidatorPool): address { pool.validator }
+
+/// Self-asserted display name (LI-D6).
+public fun name(pool: &ValidatorPool): vector<u8> { pool.name }
 
 public fun stake_value(pool: &ValidatorPool): u64 { pool.stake.value() }
 
@@ -294,6 +312,18 @@ public(package) fun slash(
 /// module — which is itself the security property under test).
 public fun new_cap_for_testing(pool_id: ID, ctx: &mut TxContext): ValidatorCap {
     ValidatorCap { id: object::new(ctx), pool_id }
+}
+
+#[test_only]
+/// Registers a validator with a default display name, preserving the pre-M8
+/// signature so existing tests are unchanged by the LI-D6 `name` addition.
+public fun register_validator_for_testing(
+    config: &ProtocolConfig,
+    stake: Coin<USDC>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    register_validator(config, stake, b"Test Validator", clock, ctx);
 }
 
 // === Private Functions ===

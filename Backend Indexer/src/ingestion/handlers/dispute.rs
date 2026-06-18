@@ -11,7 +11,7 @@ use anyhow::Result;
 use serde_json::Value;
 use sqlx::PgPool;
 
-use crate::db::queries;
+use crate::db::queries::{self, AccumulatorBalanceInsert};
 use crate::ingestion::event_types::{
     DisputeOpenedEvent, DisputeResolvedEvent, JurorRewardClaimedEvent, JurorVotedEvent,
 };
@@ -37,7 +37,22 @@ pub async fn handle_dispute_resolved(
     payload: &Value,
 ) -> Result<()> {
     let e: DisputeResolvedEvent = serde_json::from_value(payload.clone())?;
-    queries::apply_dispute_resolved(pool, meta, &e).await
+    queries::apply_dispute_resolved(pool, meta, &e).await?;
+    // BI-M8 (LI-D9): an UPHELD verdict seeds the compensation pool + opens the grace window — fold
+    // the snapshot so wrapped-holder alerts read from the event stream (not an object poll).
+    queries::insert_accumulator_balance(
+        pool,
+        meta,
+        &AccumulatorBalanceInsert {
+            asset_id: &e.asset_id,
+            event_type: "DisputeResolved",
+            compensation_pool_after: Some(e.compensation_pool_after as i64),
+            compensation_unlock_ms: Some(e.compensation_unlock_ms as i64),
+            wrapping_frozen: Some(e.wrapping_frozen),
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 /// `JurorRewardClaimedEvent` → append one `juror_rewards` row (code-only event, §10.1).

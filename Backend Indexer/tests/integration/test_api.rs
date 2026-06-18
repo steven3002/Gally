@@ -1182,3 +1182,248 @@ async fn test_metrics_events_counter(pool: PgPool) {
         "events_processed_total counter reflects 3 AssetCreatedEvent ingests; got:\n{body}"
     );
 }
+
+// ===========================================================================
+// BI-M8 — on-chain metadata + event enrichment (Live-Data Parity)
+// ===========================================================================
+
+/// An `AssetCreatedEvent` with the full M8 metadata block + tranche schedule (`data_parity_plan.md`
+/// §5). Text fields are byte arrays (vector<u8>); the schedule arrives as three parallel vectors.
+fn asset_created_meta(
+    asset_id: &str,
+    name: &str,
+    ticker: &str,
+    category: u8,
+    location: &str,
+) -> Value {
+    json!({
+        "asset_id": asset_id, "entity": "0xENT",
+        "funding_goal": "1000000000", "funding_deadline_ms": "1750000000000",
+        "tranche_count": "2", "revenue_split_bps": "6000", "collateral": "100000000",
+        "name": name.as_bytes(), "ticker": ticker.as_bytes(), "category": category,
+        "location": location.as_bytes(), "entity_name": b"Acme Holdings",
+        "metadata_blob_id": [222, 173, 190, 239], "metadata_sha256": [1, 2, 3, 4],
+        "is_term_financing": true, "return_target": "1300000000",
+        "tranche_amounts": ["400000000", "600000000"],
+        "tranche_deadlines_ms": ["1751000000000", "1752000000000"],
+        "tranche_descriptions": [b"Foundation".to_vec(), b"Roofing".to_vec()]
+    })
+}
+
+/// `AssetCreatedEvent` metadata populates every new column + the tranche schedule (m8 Tests:
+/// `test_ingest_asset_metadata`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_ingest_asset_metadata(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xtm", "0", 100,
+        asset_created_meta("0xMETA", "Lagos Housing", "LHX", 0, "Lagos, NG"))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, a) = get_json(&base, "/assets/0xMETA").await;
+    assert_eq!(status, 200);
+    assert_eq!(a["name"], "Lagos Housing");
+    assert_eq!(a["ticker"], "LHX");
+    assert_eq!(a["category"], 0);
+    assert_eq!(a["location"], "Lagos, NG");
+    assert_eq!(a["entity_name"], "Acme Holdings");
+    assert_eq!(a["metadata_blob_id"], "deadbeef", "vector<u8> blob id hex-encoded");
+    assert_eq!(a["metadata_sha256"], "01020304");
+    assert_eq!(a["is_term_financing"], true);
+    assert_eq!(a["return_target"], "1300000000", "term return target as string (§9.1)");
+}
+
+/// `GET /assets?category=` returns only that category; `?q=` matches on `name` (m8 Tests:
+/// `test_assets_filter_by_category`, `test_assets_name_search`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_assets_filter_by_category_and_name_search(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xt1", "0", 100,
+        asset_created_meta("0xHOUSE", "Lagos Housing Estate", "LHX", 0, "Lagos"))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xt2", "0", 200,
+        asset_created_meta("0xMACH", "Abuja Machinery Fund", "AMF", 1, "Abuja"))).await.unwrap();
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xt3", "0", 300,
+        asset_created_meta("0xTRADE", "Kano Trade Finance", "KTF", 2, "Kano"))).await.unwrap();
+
+    let base = serve(pool).await;
+
+    // ?category=0 → only the Housing asset.
+    let (_, housing) = get_json(&base, "/assets?category=0").await;
+    let ids: Vec<&str> = housing["data"].as_array().unwrap().iter().map(|a| a["asset_id"].as_str().unwrap()).collect();
+    assert_eq!(ids, vec!["0xHOUSE"], "?category=0 returns only Housing");
+
+    // ?category=1 → only the Machinery asset.
+    let (_, mach) = get_json(&base, "/assets?category=1").await;
+    assert_eq!(mach["data"].as_array().unwrap().len(), 1);
+    assert_eq!(mach["data"][0]["asset_id"], "0xMACH");
+
+    // ?q= case-insensitive name substring.
+    let (_, q) = get_json(&base, "/assets?q=machinery").await;
+    let qids: Vec<&str> = q["data"].as_array().unwrap().iter().map(|a| a["asset_id"].as_str().unwrap()).collect();
+    assert_eq!(qids, vec!["0xMACH"], "?q= matches on name (case-insensitive)");
+
+    // Non-numeric category → 400 invalid_param (filter validation).
+    let (bad, _) = get_json(&base, "/assets?category=housing").await;
+    assert_eq!(bad, 400, "non-numeric ?category= is a 400");
+}
+
+/// `/assets/:id/tranches` exposes the full declared schedule incl. unreleased tranches, alongside
+/// the (here empty) event timeline (m8 Tests: `test_tranche_schedule_includes_unreleased`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_tranche_schedule_includes_unreleased(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xts", "0", 100,
+        asset_created_meta("0xSCHED", "Tranche Demo", "TD", 0, "X"))).await.unwrap();
+    // Only tranche 0 is ever touched by an event; tranche 1 stays unreleased.
+    route_event(&pool, &ev("asset", "MilestoneProofSubmittedEvent", "0xpr", "0", 110,
+        json!({"asset_id":"0xSCHED","tranche":"0","blob_id":[1],"sha256":[2]}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, tr) = get_json(&base, "/assets/0xSCHED/tranches").await;
+    assert_eq!(status, 200);
+
+    // Timeline (`data`) has only the touched tranche's event.
+    let evs: Vec<&str> = tr["data"].as_array().unwrap().iter().map(|t| t["event_type"].as_str().unwrap()).collect();
+    assert_eq!(evs, vec!["proof_submitted"], "only tranche 0 emitted an event");
+
+    // Schedule has BOTH tranches, incl. the unreleased one, with amount/deadline/description.
+    let sched = tr["schedule"].as_array().expect("schedule array present");
+    assert_eq!(sched.len(), 2, "full schedule incl. unreleased tranche");
+    assert_eq!(sched[0]["tranche_index"], 0);
+    assert_eq!(sched[0]["amount"], "400000000");
+    assert_eq!(sched[0]["description"], "Foundation");
+    assert_eq!(sched[1]["tranche_index"], 1);
+    assert_eq!(sched[1]["amount"], "600000000");
+    assert_eq!(sched[1]["deadline_ms"], 1752000000000i64);
+    assert_eq!(sched[1]["description"], "Roofing");
+}
+
+/// `/validators/:id` serves the self-asserted `name` + the backend-computed `reputation` (m8
+/// Tests: `test_validator_name_served`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_validator_name_served(pool: PgPool) {
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xvr", "0", 100,
+        json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000","name":b"Sentinel Legal"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, v) = get_json(&base, "/validators/0xPOOL").await;
+    assert_eq!(status, 200);
+    assert_eq!(v["name"], "Sentinel Legal");
+    // Fresh pool: 0 vouches/defaults/disputes ⇒ §8.2 base reputation = 50.
+    assert_eq!(v["reputation"], 50, "base reputation for an empty track record");
+    // The list serves the name too.
+    let (_, list) = get_json(&base, "/validators").await;
+    assert_eq!(list["data"][0]["name"], "Sentinel Legal");
+}
+
+/// `/disputes/:id` serves the challenger's `reason` (m8 Tests: `test_dispute_reason_served`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_dispute_reason_served(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xt", "0", 50,
+        asset_created("0xA", "0xENT", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("validator", "ValidatorRegisteredEvent", "0xv", "0", 60,
+        json!({"pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000","name":b"V"}))).await.unwrap();
+    route_event(&pool, &ev("dispute", "DisputeOpenedEvent", "0xd", "0", 100,
+        json!({"dispute_id":"0xDISP","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xCH",
+               "bond":"1000000","evidence_sha256":[9,9],"reason":b"Forged milestone proof"}))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, d) = get_json(&base, "/disputes/0xDISP").await;
+    assert_eq!(status, 200);
+    assert_eq!(d["reason"], "Forged milestone proof");
+    // The list also carries the reason.
+    let (_, list) = get_json(&base, "/disputes").await;
+    assert_eq!(list["data"][0]["reason"], "Forged milestone proof");
+}
+
+/// Accumulator balances folded from the `*_after` event fields match a deposit→claim→sweep replay,
+/// served from the DB with no object read (m8 Tests: `test_accumulator_balances_from_events`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_accumulator_balances_from_events(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xt", "0", 50,
+        asset_created("0xA", "0xENT", "1000000000"))).await.unwrap();
+    // Revenue: reward_pool=70, rollover=0.
+    route_event(&pool, &ev("asset", "RevenueDepositedEvent", "0xr", "0", 100, json!({
+        "asset_id":"0xA","gross":"100","fee":"10","investor_portion":"70","entity_portion":"20",
+        "index_after":"1000000000","unwrapped_supply":"300",
+        "reward_pool_after":"70","rollover_reserve_after":"0"
+    }))).await.unwrap();
+    // Claim drains reward_pool to 47.
+    route_event(&pool, &ev("accumulator", "YieldClaimedEvent", "0xc", "0", 110, json!({
+        "asset_id":"0xA","holder":"0xC1","amount":"23","index_at_claim":"1000000000",
+        "reward_pool_after":"47"
+    }))).await.unwrap();
+    // Rollover sweep: reward_pool=47, rollover=5.
+    route_event(&pool, &ev("accumulator", "RolloverSweptEvent", "0xs", "0", 120, json!({
+        "asset_id":"0xA","amount":"5","index_after":"1010000000","unwrapped_supply":"300",
+        "reward_pool_after":"47","rollover_reserve_after":"5"
+    }))).await.unwrap();
+
+    let base = serve(pool).await;
+
+    // Dedicated endpoint.
+    let (status, b) = get_json(&base, "/assets/0xA/accumulator").await;
+    assert_eq!(status, 200);
+    assert_eq!(b["reward_pool"], "47", "latest reward_pool from the rollover sweep");
+    assert_eq!(b["rollover_reserve"], "5");
+    assert!(b["compensation_pool"].is_null(), "never defaulted ⇒ null compensation pool");
+
+    // Same balances embedded in the asset detail.
+    let (_, a) = get_json(&base, "/assets/0xA").await;
+    assert_eq!(a["accumulator"]["reward_pool"], "47");
+    assert_eq!(a["accumulator"]["rollover_reserve"], "5");
+}
+
+/// The default path's compensation snapshot (grace window + freeze) is folded and served (LI-Q6).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_accumulator_compensation_from_default(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xt", "0", 50,
+        asset_created("0xA", "0xENT", "1000000000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "EntityDefaultedEvent", "0xdef", "0", 100, json!({
+        "asset_id":"0xA","tranche_missed":"1","collateral_seized":"100000000","escrow_seized":"50000000",
+        "compensation_pool_after":"150000000","compensation_unlock_ms":"1760000000000","wrapping_frozen":true
+    }))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, b) = get_json(&base, "/assets/0xA/accumulator").await;
+    assert_eq!(status, 200);
+    assert_eq!(b["compensation_pool"], "150000000");
+    assert_eq!(b["compensation_unlock_ms"], 1760000000000i64);
+    assert_eq!(b["wrapping_frozen"], true);
+}
+
+/// Backend-served APY matches a hand-checked fixture (m8 Tests: `test_apy_from_yield_series`).
+/// Two revenue deposits of 50 each on a goal of 1000, 30 days apart → fraction 100/1000 = 0.1,
+/// annualized ×(365/30) ×100 ≈ 121.67%.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_apy_from_yield_series(pool: PgPool) {
+    let day_ms = 24 * 60 * 60 * 1000i64;
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xt", "0", 0,
+        asset_created("0xA", "0xENT", "1000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "RevenueDepositedEvent", "0xr1", "0", 0, json!({
+        "asset_id":"0xA","gross":"60","fee":"0","investor_portion":"50","entity_portion":"10",
+        "index_after":"1","unwrapped_supply":"1000","reward_pool_after":"50","rollover_reserve_after":"0"
+    }))).await.unwrap();
+    route_event(&pool, &ev("asset", "RevenueDepositedEvent", "0xr2", "0", 30 * day_ms, json!({
+        "asset_id":"0xA","gross":"60","fee":"0","investor_portion":"50","entity_portion":"10",
+        "index_after":"2","unwrapped_supply":"1000","reward_pool_after":"100","rollover_reserve_after":"0"
+    }))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (status, a) = get_json(&base, "/assets/0xA").await;
+    assert_eq!(status, 200);
+    let apy = a["apy"].as_f64().expect("apy is a number");
+    // 0.1 * (365/30) * 100 = 121.6666…
+    assert!((apy - 121.6667).abs() < 0.01, "APY ≈ 121.67%, got {apy}");
+}
+
+/// A single deposit (or none) cannot be annualized → APY is 0.
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_apy_single_deposit_is_zero(pool: PgPool) {
+    route_event(&pool, &ev("asset", "AssetCreatedEvent", "0xt", "0", 0,
+        asset_created("0xA", "0xENT", "1000"))).await.unwrap();
+    route_event(&pool, &ev("asset", "RevenueDepositedEvent", "0xr1", "0", 0, json!({
+        "asset_id":"0xA","gross":"60","fee":"0","investor_portion":"50","entity_portion":"10",
+        "index_after":"1","unwrapped_supply":"1000","reward_pool_after":"50","rollover_reserve_after":"0"
+    }))).await.unwrap();
+
+    let base = serve(pool).await;
+    let (_, a) = get_json(&base, "/assets/0xA").await;
+    assert_eq!(a["apy"].as_f64().unwrap(), 0.0, "one deposit ⇒ no annualizable window");
+}

@@ -163,6 +163,85 @@ async fn test_full_lifecycle(pool: PgPool) {
     assert_eq!(states, vec![0, 1, 4, 6, 7], "full ordered state history");
 }
 
+/// BI-M8 enriched lifecycle: replays a metadata-bearing, term-financing, multi-tranche asset with a
+/// named validator, a dispute-with-reason, and the accumulator `*_after` snapshots — then asserts
+/// the new fields end-to-end through the REST surface (m8 Tests: `test_full_lifecycle_enriched`).
+#[sqlx::test(migrations = "src/db/migrations")]
+async fn test_full_lifecycle_enriched(pool: PgPool) {
+    let script = vec![
+        ev("validator", "ValidatorRegisteredEvent", "0xe02", 2, json!({
+            "pool_id":"0xPOOL","validator":"0xVAL","stake":"5000000000","name":b"Sentinel Legal"
+        })),
+        // Term-financing asset (LI-D12) with metadata (LI-D3) + a 2-tranche schedule (LI-D8).
+        ev("asset", "AssetCreatedEvent", "0xe03", 3, json!({
+            "asset_id":"0xA","entity":"0xENT","funding_goal":"1000","funding_deadline_ms":"1750000000000",
+            "tranche_count":"2","revenue_split_bps":"7000","collateral":"100000000",
+            "name":b"Lagos Solar Microgrid","ticker":b"LSM","category":4,
+            "location":b"Lagos, NG","entity_name":b"BrightPower Ltd",
+            "metadata_blob_id":[222,173,190,239],"metadata_sha256":[1,2,3,4],
+            "is_term_financing":true,"return_target":"1300",
+            "tranche_amounts":["400","600"],
+            "tranche_deadlines_ms":["1751000000000","1752000000000"],
+            "tranche_descriptions":[b"Panels".to_vec(), b"Inverters".to_vec()]
+        })),
+        ev("asset", "AssetVouchedEvent", "0xe04", 4, json!({
+            "asset_id":"0xA","pool_id":"0xPOOL","validator":"0xVAL","coverage":"2000","doc_hashes":[[1,2,3]]
+        })),
+        ev("asset", "AssetStateChangedEvent", "0xe05", 5, json!({"asset_id":"0xA","old_state":0,"new_state":4})),
+        // Two revenue deposits 30 days apart with post-deposit balances (LI-D9).
+        ev("asset", "RevenueDepositedEvent", "0xe06", 0, json!({
+            "asset_id":"0xA","gross":"60","fee":"0","investor_portion":"50","entity_portion":"10",
+            "index_after":"1","unwrapped_supply":"1000","reward_pool_after":"50","rollover_reserve_after":"0"
+        })),
+        ev("asset", "RevenueDepositedEvent", "0xe07", 30 * 24 * 60 * 60 * 1000, json!({
+            "asset_id":"0xA","gross":"60","fee":"0","investor_portion":"50","entity_portion":"10",
+            "index_after":"2","unwrapped_supply":"1000","reward_pool_after":"100","rollover_reserve_after":"0"
+        })),
+        // A yield claim drains the reward pool to 77 (LI-D9).
+        ev("accumulator", "YieldClaimedEvent", "0xe08", 2_600_000_000, json!({
+            "asset_id":"0xA","holder":"0xC1","amount":"23","index_at_claim":"2","reward_pool_after":"77"
+        })),
+        // Dispute opened with a reason (LI-D7).
+        ev("dispute", "DisputeOpenedEvent", "0xe09", 2_700_000_000, json!({
+            "dispute_id":"0xD","asset_id":"0xA","target_pool_id":"0xPOOL","challenger":"0xCH",
+            "bond":"1000000","evidence_sha256":[9,9],"reason":b"Inverter milestone never delivered".to_vec()
+        })),
+    ];
+    for e in script {
+        route(&pool, &e).await;
+    }
+    let base = crate::spawn(crate::app_state(pool.clone(), crate::default_objects())).await;
+
+    // Asset metadata + term status + backend apy + folded accumulator balances, all from the DB.
+    let (status, a) = get_json(&base, "/assets/0xA").await;
+    assert_eq!(status, 200);
+    assert_eq!(a["name"], "Lagos Solar Microgrid");
+    assert_eq!(a["ticker"], "LSM");
+    assert_eq!(a["category"], 4);
+    assert_eq!(a["entity_name"], "BrightPower Ltd");
+    assert_eq!(a["is_term_financing"], true);
+    assert_eq!(a["return_target"], "1300");
+    assert_eq!(a["accumulator"]["reward_pool"], "77", "latest reward_pool from the yield claim");
+    let apy = a["apy"].as_f64().expect("apy is a number");
+    assert!(apy > 100.0, "two deposits 30d apart annualize to a >100% apy, got {apy}");
+
+    // Full tranche schedule incl. unreleased tranches.
+    let (_, tr) = get_json(&base, "/assets/0xA/tranches").await;
+    let sched = tr["schedule"].as_array().expect("schedule present");
+    assert_eq!(sched.len(), 2, "both scheduled tranches visible (none released yet)");
+    assert_eq!(sched[1]["description"], "Inverters");
+
+    // Validator name + reputation.
+    let (_, v) = get_json(&base, "/validators/0xPOOL").await;
+    assert_eq!(v["name"], "Sentinel Legal");
+    // §8.2: 50 + 3*(1 vouched - 0 defaulted) - 5*(1 dispute filed against) = 48.
+    assert_eq!(v["reputation"], 48, "1 vouch (+3) and 1 open dispute (-5) ⇒ 48");
+
+    // Dispute reason.
+    let (_, d) = get_json(&base, "/disputes/0xD").await;
+    assert_eq!(d["reason"], "Inverter milestone never delivered");
+}
+
 /// The row-count probe tables, in a fixed order, for the idempotency comparison.
 const COUNTED_TABLES: [&str; 8] = [
     "assets",

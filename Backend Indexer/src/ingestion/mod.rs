@@ -123,9 +123,10 @@ pub async fn route_event(pool: &PgPool, ev: &SuiEvent) -> Result<bool> {
             Ok(true)
         }
         // DEFAULTED collapses into COMPENSATING=6 via AssetStateChangedEvent (§11.5); the seizure
-        // figures have no typed destination column, so this is an explicit no-op (archived raw).
+        // figures still have no typed column (archived raw), but BI-M8 folds the event's
+        // compensation-pool/grace-window snapshot into accumulator_balances (LI-D9/LI-Q6).
         "EntityDefaultedEvent" => {
-            debug!("EntityDefaultedEvent: no-op (DEFAULTED collapses into COMPENSATING state-change)");
+            asset::handle_entity_defaulted(pool, &meta, payload).await?;
             Ok(true)
         }
         // ---- yield-index feed (BI-M4) ----

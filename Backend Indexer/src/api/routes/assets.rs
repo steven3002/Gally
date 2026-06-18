@@ -12,8 +12,8 @@ use crate::api::extractors::{
 };
 use crate::api::AppState;
 use crate::db::models::{
-    AssetRow, AssetStateChangeRow, DisputeRow, RaiseProgressRow, TrancheRow, WrapRatioRow,
-    YieldIndexRow,
+    AccumulatorBalancesRow, AssetRow, AssetStateChangeRow, DisputeRow, RaiseProgressRow,
+    TrancheRow, WrapRatioRow, YieldIndexRow,
 };
 use crate::db::queries;
 
@@ -24,40 +24,86 @@ use crate::db::queries;
 pub struct AssetListQuery {
     pub state: Option<String>,
     pub entity: Option<String>,
+    /// BI-M8: `?category=` (LI-D4 enum int) and `?q=` (case-insensitive name search). `category` is a
+    /// `String` so a non-numeric value surfaces as `400 invalid_param` (filter validation).
+    pub category: Option<String>,
+    pub q: Option<String>,
     pub limit: Option<i64>,
     pub cursor: Option<String>,
 }
 
 /// `GET /assets` — keyset-paginated asset list (newest-key-last, ordered by `(created_at_ms,
-/// asset_id)`).
+/// asset_id)`). BI-M8 adds the `?category=` filter and `?q=` name search.
 pub async fn list_assets(
     State(state): State<AppState>,
     Query(q): Query<AssetListQuery>,
 ) -> Result<Json<Page<AssetRow>>, ApiError> {
     let limit = clamp_limit(q.limit);
     let state_filter = parse_opt_i16("state", q.state.as_deref())?;
+    let category = parse_opt_i16("category", q.category.as_deref())?;
     let cursor = match q.cursor.as_deref() {
         Some(tok) => Some(decode_cursor_is(tok)?),
         None => None,
     };
-    let rows = queries::list_assets(&state.pool, state_filter, q.entity.as_deref(), cursor, limit)
-        .await
-        .map_err(ApiError::from)?;
+    let rows = queries::list_assets(
+        &state.pool,
+        state_filter,
+        q.entity.as_deref(),
+        category,
+        q.q.as_deref(),
+        cursor,
+        limit,
+    )
+    .await
+    .map_err(ApiError::from)?;
     Ok(Json(Page::from_overfetch(rows, limit, |r: &AssetRow| {
         encode_cursor(&[&r.created_at_ms.to_string(), &r.asset_id])
     })))
 }
 
-/// `GET /assets/:asset_id` — single asset record (404 if unknown).
+/// `GET /assets/:asset_id` — single asset record (404 if unknown). BI-M8 enriches the record with
+/// the backend-served `apy` (§8.3) and the folded `accumulator` balances (LI-D9), so the explorer's
+/// detail + token pages read everything from the DB (object proxy is a fallback only).
 pub async fn get_asset(
     State(state): State<AppState>,
     Path(asset_id): Path<String>,
-) -> Result<Json<AssetRow>, ApiError> {
-    queries::get_asset(&state.pool, &asset_id)
+) -> Result<Json<Value>, ApiError> {
+    let row = queries::get_asset(&state.pool, &asset_id)
         .await
         .map_err(ApiError::from)?
-        .map(Json)
-        .ok_or_else(|| ApiError::not_found(&asset_id))
+        .ok_or_else(|| ApiError::not_found(&asset_id))?;
+    let apy = queries::compute_apy(&state.pool, &asset_id)
+        .await
+        .map_err(ApiError::from)?;
+    let balances = queries::current_accumulator_balances(&state.pool, &asset_id)
+        .await
+        .map_err(ApiError::from)?;
+    let mut v = serde_json::to_value(&row).map_err(|e| ApiError::from(anyhow::Error::from(e)))?;
+    let obj = v.as_object_mut().expect("AssetRow serializes to an object");
+    obj.insert("apy".to_string(), json!(apy));
+    obj.insert(
+        "accumulator".to_string(),
+        serde_json::to_value(&balances).map_err(|e| ApiError::from(anyhow::Error::from(e)))?,
+    );
+    Ok(Json(v))
+}
+
+/// `GET /assets/:asset_id/accumulator` — the folded current pool balances (LI-D9; shape =
+/// `AccumulatorBalancesRow`). 404 if the asset is unknown; all-`null` fields if no balance event
+/// has landed yet (e.g. a never-defaulted asset's compensation pool).
+pub async fn accumulator(
+    State(state): State<AppState>,
+    Path(asset_id): Path<String>,
+) -> Result<Json<AccumulatorBalancesRow>, ApiError> {
+    // Existence check (same denominator query the holders ledger uses).
+    queries::asset_goal(&state.pool, &asset_id)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(&asset_id))?;
+    let balances = queries::current_accumulator_balances(&state.pool, &asset_id)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(balances))
 }
 
 /// `GET /assets/:asset_id/history` query params: universal `?limit=` / `?cursor=`.
@@ -237,13 +283,16 @@ pub async fn wrap_ratio(
     )))
 }
 
-/// `GET /assets/:asset_id/tranches` — the milestone timeline ordered by `(tranche_index, id)`.
-/// Keyset cursor magnitude is `(tranche_index, id)` (`queries::list_tranches`).
+/// `GET /assets/:asset_id/tranches` — the milestone **timeline** (`data`, ordered by
+/// `(tranche_index, id)`, keyset-paginated as before) **plus** the full declared `schedule` array
+/// (BI-M8, LI-D8), so unreleased tranches are visible. The `schedule` is the small bounded set from
+/// `AssetCreatedEvent` (not paginated); `data` keeps its keyset cursor magnitude `(tranche_index,
+/// id)`.
 pub async fn tranches(
     State(state): State<AppState>,
     Path(asset_id): Path<String>,
     Query(q): Query<HistoryQuery>,
-) -> Result<Json<Page<TrancheRow>>, ApiError> {
+) -> Result<Json<Value>, ApiError> {
     let limit = clamp_limit(q.limit);
     let cursor = match q.cursor.as_deref() {
         Some(tok) => Some(decode_cursor_ii(tok)?),
@@ -252,8 +301,17 @@ pub async fn tranches(
     let rows = queries::list_tranches(&state.pool, &asset_id, cursor, limit)
         .await
         .map_err(ApiError::from)?;
-    Ok(Json(Page::from_overfetch(rows, limit, |r: &TrancheRow| {
+    let schedule = queries::list_tranche_schedule(&state.pool, &asset_id)
+        .await
+        .map_err(ApiError::from)?;
+    let page = Page::from_overfetch(rows, limit, |r: &TrancheRow| {
         encode_cursor(&[&(r.tranche_index as i64).to_string(), &r.id.to_string()])
+    });
+    Ok(Json(json!({
+        "data": page.data,
+        "nextCursor": page.next_cursor,
+        "hasNextPage": page.has_next_page,
+        "schedule": schedule,
     })))
 }
 

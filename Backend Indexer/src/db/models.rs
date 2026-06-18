@@ -40,6 +40,17 @@ pub struct AssetRow {
     pub current_state: i16,
     pub close_reason: Option<i16>,
     pub created_at_ms: i64,
+    // --- BI-M8 on-chain metadata (logic_flow.md §2.4, LI-D3/D5/D12). NULL on pre-M8 rows. ---
+    pub name: Option<String>,
+    pub ticker: Option<String>,
+    pub category: Option<i16>,
+    pub location: Option<String>,
+    pub entity_name: Option<String>,
+    pub metadata_blob_id: Option<String>,
+    pub metadata_sha256: Option<String>,
+    pub is_term_financing: bool,
+    #[serde(serialize_with = "opt_string_amount")]
+    pub return_target: Option<i64>,
     // Not part of the §6.1 item shape, but useful for /tx cross-refs and stable cursors.
     #[serde(skip_serializing)]
     pub created_tx: String,
@@ -89,6 +100,8 @@ pub struct ValidatorPoolRow {
     pub initial_stake: i64,
     pub current_status: i16,
     pub registered_at_ms: i64,
+    /// Self-asserted display name (BI-M8, LI-D6). NULL on pre-M8 pools.
+    pub name: Option<String>,
 }
 
 /// One `validator_stake_events` row (`§2.8`); embedded in `/validators/:pool_id`.
@@ -279,6 +292,8 @@ pub struct DisputeRow {
     #[serde(serialize_with = "string_amount")]
     pub bond: i64,
     pub evidence_hash: String,
+    /// Challenger's short claim (BI-M8, LI-D7). NULL on pre-M8 disputes.
+    pub reason: Option<String>,
     pub opened_at_ms: i64,
     pub resolved_at_ms: Option<i64>,
     pub verdict: Option<i16>,
@@ -322,4 +337,36 @@ pub struct JuryVoteRow {
     pub votes_guilty_after: i32,
     pub votes_innocent_after: i32,
     pub tx_digest: String,
+}
+
+// ===========================================================================
+// BI-M8 — on-chain metadata + event-enrichment feeds
+// ===========================================================================
+
+/// One `tranche_schedule` row (`§2.18`) — the declared schedule emitted in `AssetCreatedEvent`
+/// (LI-D8). Embedded in `GET /assets/:id/tranches` as the `schedule` array so unreleased tranches
+/// are visible (the proof/approve/release timeline stays in `data`, from `tranche_events`).
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct TrancheScheduleRow {
+    pub tranche_index: i32,
+    #[serde(serialize_with = "string_amount")]
+    pub amount: i64,
+    pub deadline_ms: i64,
+    pub description: Option<String>,
+}
+
+/// The folded current accumulator balances for one asset (`§2.19`) — the latest non-NULL value per
+/// pool from the `*_after` event log (LI-D9). Every amount serializes as a string (§9.1). `null`
+/// fields mean no event has reported that pool yet (e.g. a never-defaulted asset's compensation
+/// pool). Served on `GET /assets/:id` (embedded) and `GET /assets/:id/accumulator`.
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct AccumulatorBalancesRow {
+    #[serde(serialize_with = "opt_string_amount")]
+    pub reward_pool: Option<i64>,
+    #[serde(serialize_with = "opt_string_amount")]
+    pub rollover_reserve: Option<i64>,
+    #[serde(serialize_with = "opt_string_amount")]
+    pub compensation_pool: Option<i64>,
+    pub compensation_unlock_ms: Option<i64>,
+    pub wrapping_frozen: Option<bool>,
 }

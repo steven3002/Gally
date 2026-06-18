@@ -849,3 +849,51 @@ async fn test_no_unhandled_event_types(pool: PgPool) {
         assert!(handled, "{struct_name} must be handled (no unhandled-event warning)");
     }
 }
+
+/// BI-M8: the backend reputation formula (`data_parity_plan.md §8.2`, LI-Q5) is a pure function of
+/// the track record. No DB needed — exercises the clamp and the milestone cap directly.
+#[test]
+fn test_reputation_formula() {
+    use gally_indexer::db::models::ValidatorTrackRecord;
+    use gally_indexer::db::queries::compute_reputation;
+
+    // 50 + min(30, 2*8)=16 + 3*(10-1)=27 - 25*0 - 5*1=5 → 88.
+    let good = ValidatorTrackRecord {
+        assets_vouched: 10,
+        milestones_approved: 8,
+        assets_defaulted: 1,
+        disputes_filed_against: 1,
+        disputes_upheld: 0,
+    };
+    assert_eq!(compute_reputation(&good), 88);
+
+    // 50 + 0 + 3*(2-2)=0 - 25*3=75 - 5*3=15 → -40 → clamped to 0.
+    let bad = ValidatorTrackRecord {
+        assets_vouched: 2,
+        milestones_approved: 0,
+        assets_defaulted: 2,
+        disputes_filed_against: 3,
+        disputes_upheld: 3,
+    };
+    assert_eq!(compute_reputation(&bad), 0);
+
+    // Milestone bonus caps at +30 → 50 + 30 = 80.
+    let capped = ValidatorTrackRecord {
+        assets_vouched: 0,
+        milestones_approved: 100,
+        assets_defaulted: 0,
+        disputes_filed_against: 0,
+        disputes_upheld: 0,
+    };
+    assert_eq!(compute_reputation(&capped), 80);
+
+    // Empty record → base 50.
+    let empty = ValidatorTrackRecord {
+        assets_vouched: 0,
+        milestones_approved: 0,
+        assets_defaulted: 0,
+        disputes_filed_against: 0,
+        disputes_upheld: 0,
+    };
+    assert_eq!(compute_reputation(&empty), 50);
+}

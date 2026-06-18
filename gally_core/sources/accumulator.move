@@ -110,6 +110,10 @@ public struct RolloverSweptEvent has copy, drop {
     index_after: u128,
     /// Required for historical APY reconstruction (spec P3).
     unwrapped_supply: u64,
+    /// Post-op pool balances — indexed directly so the explorer reads
+    /// solvency from the event stream, not an object poll (LI-D9).
+    reward_pool_after: u64,
+    rollover_reserve_after: u64,
 }
 
 /// Per-holder earnings history (Flow G).
@@ -118,6 +122,8 @@ public struct YieldClaimedEvent has copy, drop {
     holder: address,
     amount: u64,
     index_at_claim: u128,
+    /// Reward-pool balance after this claim drained the payout (LI-D9).
+    reward_pool_after: u64,
 }
 
 /// Restitution distributed after a grace window (Flow I, decision D5).
@@ -129,6 +135,12 @@ public struct CompensationSweptEvent has copy, drop {
     unwrapped_supply: u64,
     /// True when no unwrapped supply existed and funds went to rollover.
     routed_to_rollover: bool,
+    /// Post-op pool snapshot + grace state (LI-D9): the sweep empties the
+    /// compensation pool and unfreezes wrapping.
+    reward_pool_after: u64,
+    rollover_reserve_after: u64,
+    compensation_pool_after: u64,
+    wrapping_frozen: bool,
 }
 
 /// Wrap-ratio time series (Flow H, spec P3).
@@ -160,6 +172,10 @@ public struct ShareRedeemedEvent has copy, drop {
 public struct DustSweptEvent has copy, drop {
     asset_id: ID,
     amount: u64,
+    /// Both pools are emptied by the sweep — reported for a complete balance
+    /// trail (LI-D9).
+    reward_pool_after: u64,
+    rollover_reserve_after: u64,
 }
 
 // === Public Functions ===
@@ -186,14 +202,18 @@ public fun claim_rewards<T>(
     let payout = pending_payout(acc, share);
     share::set_yield_claimed_index(share, acc.cumulative_yield_index);
 
+    // Drain first so the event reports the post-claim reward-pool balance.
+    let out = coin::take(&mut acc.reward_pool, payout, ctx);
+
     event::emit(YieldClaimedEvent {
         asset_id: acc.asset_id,
         holder: ctx.sender(),
         amount: payout,
         index_at_claim: acc.cumulative_yield_index,
+        reward_pool_after: acc.reward_pool.value(),
     });
 
-    coin::take(&mut acc.reward_pool, payout, ctx)
+    out
 }
 
 /// PERMISSIONLESS rescue of revenue parked while the unwrapped supply was
@@ -234,6 +254,10 @@ public fun sweep_compensation<T>(acc: &mut GlobalYieldAccumulator<T>, clock: &Cl
         index_after: acc.cumulative_yield_index,
         unwrapped_supply: unwrapped_supply(acc),
         routed_to_rollover,
+        reward_pool_after: acc.reward_pool.value(),
+        rollover_reserve_after: acc.rollover_reserve.value(),
+        compensation_pool_after: acc.compensation_pool.value(),
+        wrapping_frozen: acc.wrapping_frozen,
     });
 }
 
@@ -420,7 +444,12 @@ public fun admin_sweep_dust<T>(
     let mut dust = acc.reward_pool.withdraw_all();
     dust.join(acc.rollover_reserve.withdraw_all());
 
-    event::emit(DustSweptEvent { asset_id: acc.asset_id, amount: residue });
+    event::emit(DustSweptEvent {
+        asset_id: acc.asset_id,
+        amount: residue,
+        reward_pool_after: acc.reward_pool.value(),
+        rollover_reserve_after: acc.rollover_reserve.value(),
+    });
 
     coin::from_balance(dust, ctx)
 }
@@ -602,6 +631,8 @@ fun sweep_rollover_internal<T>(acc: &mut GlobalYieldAccumulator<T>) {
         amount,
         index_after: acc.cumulative_yield_index,
         unwrapped_supply: unwrapped_supply(acc),
+        reward_pool_after: acc.reward_pool.value(),
+        rollover_reserve_after: acc.rollover_reserve.value(),
     });
 }
 

@@ -9,7 +9,7 @@ use anyhow::Result;
 use serde_json::Value;
 use sqlx::PgPool;
 
-use crate::db::queries::{self, PositionInsert};
+use crate::db::queries::{self, AccumulatorBalanceInsert, PositionInsert};
 use crate::ingestion::event_types::{
     CapitalContributedEvent, ContributionRefundedEvent, ShareRedeemedEvent, SharesClaimedEvent,
     SharesUnwrappedEvent, SharesWrappedEvent, YieldClaimedEvent,
@@ -96,6 +96,18 @@ pub async fn handle_position_event(
                     actor: &e.holder,
                     amount: Some(e.amount as i64),
                     index_at_claim: Some(e.index_at_claim),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            // BI-M8 (LI-D9): the claim drains the reward pool — fold its post-claim balance.
+            queries::insert_accumulator_balance(
+                pool,
+                meta,
+                &AccumulatorBalanceInsert {
+                    asset_id: &e.asset_id,
+                    event_type: "YieldClaimed",
+                    reward_pool_after: Some(e.reward_pool_after as i64),
                     ..Default::default()
                 },
             )

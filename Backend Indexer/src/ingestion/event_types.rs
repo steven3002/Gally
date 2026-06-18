@@ -50,6 +50,41 @@ where
     }
 }
 
+/// Deserialize a `vector<u64>` (BI-M8): a JSON array whose elements `parsedJson` renders as
+/// **strings** (the §10.2 wire rule applies per element). Used for the `AssetCreatedEvent` tranche
+/// schedule's `tranche_amounts` / `tranche_deadlines_ms` (LI-D8). Also accepts JSON numbers so
+/// hand-written fixtures stay readable.
+pub fn de_vec_u64<'de, D>(d: D) -> Result<Vec<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StrOrNum {
+        Str(String),
+        Num(u64),
+    }
+    Vec::<StrOrNum>::deserialize(d)?
+        .into_iter()
+        .map(|v| match v {
+            StrOrNum::Str(s) => s.parse().map_err(de::Error::custom),
+            StrOrNum::Num(n) => Ok(n),
+        })
+        .collect()
+}
+
+/// Decode an on-chain `vector<u8>` text field (BI-M8) to a `String`. The protocol stores human
+/// metadata (`name`, `ticker`, `location`, `entity_name`, dispute `reason`, validator `name`,
+/// tranche descriptions) as UTF-8 bytes (LI-Q2); we decode lossily for storage. Empty ⇒ `None` so
+/// pre-M8 fixtures (which omit the field) and genuinely-blank fields store SQL `NULL`, not `""`.
+pub fn utf8_opt(bytes: &[u8]) -> Option<String> {
+    if bytes.is_empty() {
+        None
+    } else {
+        Some(String::from_utf8_lossy(bytes).into_owned())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Governance feed (`protocol` module — `§10.3`)
 // ---------------------------------------------------------------------------
@@ -92,6 +127,13 @@ pub struct ProtocolResumedEvent {
 // ---------------------------------------------------------------------------
 
 /// Field is `funding_goal` (not `goal`) — stored in `assets.goal` (§10.1).
+///
+/// BI-M8 adds the on-chain metadata block (LI-D3/D5/D12), the term-status fields (LI-D12), and the
+/// full tranche schedule (LI-D8). Every M8 field is `#[serde(default)]` so the BI-M7 fixtures (and
+/// any pre-M8 archived payload) still deserialize — a missing field is the dual of R7's "extra
+/// fields must not crash". Text fields are `vector<u8>` (LI-Q2 — decode via [`utf8_opt`]); blob/sha
+/// are `vector<u8>` (hex-encode via [`Self::metadata_blob_id_hex`]); the tranche schedule arrives as
+/// three parallel vectors (LI-Q1).
 #[derive(Debug, Clone, Deserialize)]
 pub struct AssetCreatedEvent {
     pub asset_id: String,
@@ -106,6 +148,85 @@ pub struct AssetCreatedEvent {
     pub revenue_split_bps: u64,
     #[serde(deserialize_with = "de_u64")]
     pub collateral: u64,
+    // --- BI-M8 metadata (LI-D3) ---
+    #[serde(default)]
+    pub name: Vec<u8>,
+    #[serde(default)]
+    pub ticker: Vec<u8>,
+    #[serde(default)]
+    pub category: u8,
+    #[serde(default)]
+    pub location: Vec<u8>,
+    #[serde(default)]
+    pub entity_name: Vec<u8>,
+    #[serde(default)]
+    pub metadata_blob_id: Vec<u8>,
+    #[serde(default)]
+    pub metadata_sha256: Vec<u8>,
+    // --- BI-M8 term status (LI-D12) ---
+    #[serde(default)]
+    pub is_term_financing: bool,
+    #[serde(default, deserialize_with = "de_u64")]
+    pub return_target: u64,
+    // --- BI-M8 tranche schedule (LI-D8 / LI-Q1) — three parallel vectors ---
+    #[serde(default, deserialize_with = "de_vec_u64")]
+    pub tranche_amounts: Vec<u64>,
+    #[serde(default, deserialize_with = "de_vec_u64")]
+    pub tranche_deadlines_ms: Vec<u64>,
+    #[serde(default)]
+    pub tranche_descriptions: Vec<Vec<u8>>,
+}
+
+impl AssetCreatedEvent {
+    pub fn name_str(&self) -> Option<String> {
+        utf8_opt(&self.name)
+    }
+    pub fn ticker_str(&self) -> Option<String> {
+        utf8_opt(&self.ticker)
+    }
+    pub fn location_str(&self) -> Option<String> {
+        utf8_opt(&self.location)
+    }
+    pub fn entity_name_str(&self) -> Option<String> {
+        utf8_opt(&self.entity_name)
+    }
+    /// `None` when no blob is attached (empty id), else the hex-encoded WalrusRef id (§10.2).
+    pub fn metadata_blob_id_hex(&self) -> Option<String> {
+        if self.metadata_blob_id.is_empty() {
+            None
+        } else {
+            Some(hex_encode(&self.metadata_blob_id))
+        }
+    }
+    pub fn metadata_sha256_hex(&self) -> Option<String> {
+        if self.metadata_sha256.is_empty() {
+            None
+        } else {
+            Some(hex_encode(&self.metadata_sha256))
+        }
+    }
+    /// `is_term_financing ? Some(return_target) : None` — open-ended raises store NULL (LI-D12).
+    pub fn return_target_opt(&self) -> Option<i64> {
+        if self.is_term_financing {
+            Some(self.return_target as i64)
+        } else {
+            None
+        }
+    }
+    /// The declared schedule as `(tranche_index, amount, deadline_ms, description)` tuples (LI-D8).
+    /// Indexed by position in the parallel vectors; `deadline_ms`/`description` fall back to `0`/`None`
+    /// if a vector is shorter (defensive — the Move code emits them in lockstep).
+    pub fn tranche_schedule(&self) -> Vec<(i32, i64, i64, Option<String>)> {
+        self.tranche_amounts
+            .iter()
+            .enumerate()
+            .map(|(i, &amount)| {
+                let deadline = self.tranche_deadlines_ms.get(i).copied().unwrap_or(0);
+                let desc = self.tranche_descriptions.get(i).and_then(|b| utf8_opt(b));
+                (i as i32, amount as i64, deadline as i64, desc)
+            })
+            .collect()
+    }
 }
 
 /// `doc_hashes` is a `vector<vector<u8>>` (array of byte-arrays). It is **not** stored in the
@@ -173,7 +294,9 @@ pub struct RaiseAbortedEvent {
     pub raised: u64,
 }
 
-/// Routed to `raw_events` only in BI-M2 (no dedicated handler until a later milestone).
+/// BI-M8 folds its `*_after` compensation snapshot (LI-D9) into `accumulator_balances`: the default
+/// seeds the pool, opens the grace window, and freezes wrapping (D5). `tranche_missed`/`*_seized`
+/// remain un-stored (no typed column — archived in `raw_events`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct EntityDefaultedEvent {
     pub asset_id: String,
@@ -183,6 +306,12 @@ pub struct EntityDefaultedEvent {
     pub collateral_seized: u64,
     #[serde(deserialize_with = "de_u64")]
     pub escrow_seized: u64,
+    #[serde(default, deserialize_with = "de_u64")]
+    pub compensation_pool_after: u64,
+    #[serde(default, deserialize_with = "de_u64")]
+    pub compensation_unlock_ms: u64,
+    #[serde(default)]
+    pub wrapping_frozen: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +324,15 @@ pub struct ValidatorRegisteredEvent {
     pub validator: String,
     #[serde(deserialize_with = "de_u64")]
     pub stake: u64,
+    /// Self-asserted display name (LI-D6); `vector<u8>` → [`Self::name_str`] (BI-M8).
+    #[serde(default)]
+    pub name: Vec<u8>,
+}
+
+impl ValidatorRegisteredEvent {
+    pub fn name_str(&self) -> Option<String> {
+        utf8_opt(&self.name)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -283,7 +421,8 @@ pub struct SharesUnwrappedEvent {
     pub total_wrapped_after: u64,
 }
 
-/// `accumulator` module. `index_at_claim` is a `u128` (NUMERIC).
+/// `accumulator` module. `index_at_claim` is a `u128` (NUMERIC). BI-M8: `reward_pool_after` folds
+/// into `accumulator_balances` (LI-D9 — the claim drains the reward pool).
 #[derive(Debug, Clone, Deserialize)]
 pub struct YieldClaimedEvent {
     pub asset_id: String,
@@ -292,6 +431,8 @@ pub struct YieldClaimedEvent {
     pub amount: u64,
     #[serde(deserialize_with = "de_u128")]
     pub index_at_claim: u128,
+    #[serde(default, deserialize_with = "de_u64")]
+    pub reward_pool_after: u64,
 }
 
 /// `accumulator` module. `total_minted_after` is not a `position_events` column (the fold uses
@@ -326,6 +467,13 @@ pub struct RevenueDepositedEvent {
     pub index_after: u128,
     #[serde(deserialize_with = "de_u64")]
     pub unwrapped_supply: u64,
+    /// BI-M8 (LI-D9): post-deposit pool balances. NOTE — the shipped Move struct carries ONLY these
+    /// two `*_after` fields (NOT `compensation_pool_after`, despite plan §5.3's draft). R0/R1: the
+    /// struct wins.
+    #[serde(default, deserialize_with = "de_u64")]
+    pub reward_pool_after: u64,
+    #[serde(default, deserialize_with = "de_u64")]
+    pub rollover_reserve_after: u64,
 }
 
 /// `accumulator` module. `amount` is captured but not stored (`§2.11` has no amount column —
@@ -339,6 +487,11 @@ pub struct RolloverSweptEvent {
     pub index_after: u128,
     #[serde(deserialize_with = "de_u64")]
     pub unwrapped_supply: u64,
+    /// BI-M8 (LI-D9): post-sweep pool balances.
+    #[serde(default, deserialize_with = "de_u64")]
+    pub reward_pool_after: u64,
+    #[serde(default, deserialize_with = "de_u64")]
+    pub rollover_reserve_after: u64,
 }
 
 /// `accumulator` module. Carries the extra `routed_to_rollover: bool` (a §10.1 catalog/code
@@ -353,6 +506,16 @@ pub struct CompensationSweptEvent {
     #[serde(deserialize_with = "de_u64")]
     pub unwrapped_supply: u64,
     pub routed_to_rollover: bool,
+    /// BI-M8 (LI-D9): the sweep empties the compensation pool and unfreezes wrapping — the full
+    /// post-op snapshot.
+    #[serde(default, deserialize_with = "de_u64")]
+    pub reward_pool_after: u64,
+    #[serde(default, deserialize_with = "de_u64")]
+    pub rollover_reserve_after: u64,
+    #[serde(default, deserialize_with = "de_u64")]
+    pub compensation_pool_after: u64,
+    #[serde(default)]
+    pub wrapping_frozen: bool,
 }
 
 /// `accumulator` module. Admin reclaims truncation residue at closure (`§2.16`); code-only (§10.1).
@@ -361,6 +524,11 @@ pub struct DustSweptEvent {
     pub asset_id: String,
     #[serde(deserialize_with = "de_u64")]
     pub amount: u64,
+    /// BI-M8 (LI-D9): both pools are emptied by the sweep — reported for a complete balance trail.
+    #[serde(default, deserialize_with = "de_u64")]
+    pub reward_pool_after: u64,
+    #[serde(default, deserialize_with = "de_u64")]
+    pub rollover_reserve_after: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -427,11 +595,17 @@ pub struct DisputeOpenedEvent {
     pub bond: u64,
     #[serde(default)]
     pub evidence_sha256: Vec<u8>,
+    /// Challenger's short claim (LI-D7); `vector<u8>` → [`Self::reason_str`] (BI-M8).
+    #[serde(default)]
+    pub reason: Vec<u8>,
 }
 
 impl DisputeOpenedEvent {
     pub fn evidence_hex(&self) -> String {
         hex_encode(&self.evidence_sha256)
+    }
+    pub fn reason_str(&self) -> Option<String> {
+        utf8_opt(&self.reason)
     }
 }
 
@@ -459,6 +633,14 @@ pub struct DisputeResolvedEvent {
     #[serde(deserialize_with = "de_u64")]
     pub bounty: u64,
     pub challenger: String,
+    /// BI-M8 (LI-D9): an UPHELD verdict seeds the compensation pool + opens the grace window; folded
+    /// into `accumulator_balances` so wrapped-holder alerts read from the event stream.
+    #[serde(default, deserialize_with = "de_u64")]
+    pub compensation_pool_after: u64,
+    #[serde(default, deserialize_with = "de_u64")]
+    pub compensation_unlock_ms: u64,
+    #[serde(default)]
+    pub wrapping_frozen: bool,
 }
 
 /// `dispute` module. Code-only event (not in §18.3, §10.1) → `juror_rewards` (`§2.15`).
@@ -554,5 +736,89 @@ mod tests {
         let e: DisputeOpenedEvent = serde_json::from_value(v).unwrap();
         assert_eq!(e.bond, 1_000_000);
         assert_eq!(e.evidence_hex(), "deadbeef");
+    }
+
+    // ----- BI-M8 metadata / enrichment -----
+
+    #[test]
+    fn asset_created_metadata_and_schedule_decode() {
+        // vector<u8> text arrives as byte-int arrays; u64 vectors as string arrays (§10.2).
+        let v = json!({
+            "asset_id": "0xA", "entity": "0xE", "funding_goal": "300",
+            "funding_deadline_ms": "1750000000000", "tranche_count": "2",
+            "revenue_split_bps": "7000", "collateral": "100000000",
+            "name": [71, 97, 108, 108, 121],          // "Gally"
+            "ticker": [71, 76, 89],                    // "GLY"
+            "category": 2,
+            "location": [76, 97, 103, 111, 115],       // "Lagos"
+            "entity_name": [65, 99, 109, 101],         // "Acme"
+            "metadata_blob_id": [222, 173], "metadata_sha256": [190, 239],
+            "is_term_financing": true, "return_target": "450",
+            "tranche_amounts": ["100", "200"],
+            "tranche_deadlines_ms": ["1000", "2000"],
+            "tranche_descriptions": [[77, 49], [77, 50]]  // "M1","M2"
+        });
+        let e: AssetCreatedEvent = serde_json::from_value(v).unwrap();
+        assert_eq!(e.name_str().as_deref(), Some("Gally"));
+        assert_eq!(e.ticker_str().as_deref(), Some("GLY"));
+        assert_eq!(e.category, 2);
+        assert_eq!(e.location_str().as_deref(), Some("Lagos"));
+        assert_eq!(e.entity_name_str().as_deref(), Some("Acme"));
+        assert_eq!(e.metadata_blob_id_hex().as_deref(), Some("dead"));
+        assert_eq!(e.metadata_sha256_hex().as_deref(), Some("beef"));
+        assert!(e.is_term_financing);
+        assert_eq!(e.return_target_opt(), Some(450));
+        assert_eq!(
+            e.tranche_schedule(),
+            vec![
+                (0, 100, 1000, Some("M1".to_string())),
+                (1, 200, 2000, Some("M2".to_string())),
+            ]
+        );
+    }
+
+    #[test]
+    fn asset_created_without_metadata_defaults_cleanly() {
+        // The BI-M7 fixture shape (no M8 fields) must still deserialize (the dual of R7).
+        let v = json!({
+            "asset_id": "0xA", "entity": "0xE", "funding_goal": "300",
+            "funding_deadline_ms": "1750000000000", "tranche_count": "1",
+            "revenue_split_bps": "7000", "collateral": "100000000"
+        });
+        let e: AssetCreatedEvent = serde_json::from_value(v).unwrap();
+        assert_eq!(e.name_str(), None);
+        assert_eq!(e.category, 0);
+        assert_eq!(e.metadata_blob_id_hex(), None);
+        assert!(!e.is_term_financing);
+        assert_eq!(e.return_target_opt(), None);
+        assert!(e.tranche_schedule().is_empty());
+    }
+
+    #[test]
+    fn validator_name_and_dispute_reason_decode() {
+        let v = json!({ "pool_id": "0xP", "validator": "0xV", "stake": "5000000000",
+                        "name": [78, 111, 100, 101] }); // "Node"
+        let e: ValidatorRegisteredEvent = serde_json::from_value(v).unwrap();
+        assert_eq!(e.name_str().as_deref(), Some("Node"));
+
+        let v = json!({ "dispute_id": "0xD", "asset_id": "0xA", "target_pool_id": "0xP",
+                        "challenger": "0xC", "bond": "1000000", "evidence_sha256": [1],
+                        "reason": [70, 114, 97, 117, 100] }); // "Fraud"
+        let d: DisputeOpenedEvent = serde_json::from_value(v).unwrap();
+        assert_eq!(d.reason_str().as_deref(), Some("Fraud"));
+    }
+
+    #[test]
+    fn compensation_swept_after_fields_decode() {
+        let v = json!({
+            "asset_id": "0xA", "amount": "500", "index_after": "9", "unwrapped_supply": "100",
+            "routed_to_rollover": false, "reward_pool_after": "10", "rollover_reserve_after": "20",
+            "compensation_pool_after": "0", "wrapping_frozen": false
+        });
+        let e: CompensationSweptEvent = serde_json::from_value(v).unwrap();
+        assert_eq!(e.reward_pool_after, 10);
+        assert_eq!(e.rollover_reserve_after, 20);
+        assert_eq!(e.compensation_pool_after, 0);
+        assert!(!e.wrapping_frozen);
     }
 }

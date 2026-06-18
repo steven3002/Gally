@@ -67,12 +67,17 @@ pub async fn get_validator(
     let status_changes = queries::list_status_changes(&state.pool, &pool_id, DETAIL_HISTORY_LIMIT)
         .await
         .map_err(ApiError::from)?;
+    // BI-M8: serve the self-asserted `name` (LI-D6) and the backend-computed `reputation`
+    // (§8.2/LI-D11) derived from the track record.
+    let reputation = queries::compute_reputation(&track_record);
     Ok(Json(json!({
         "pool_id": pool_row.pool_id,
         "validator": pool_row.validator,
+        "name": pool_row.name,
         "initial_stake": pool_row.initial_stake.to_string(),
         "current_status": pool_row.current_status,
         "registered_at_ms": pool_row.registered_at_ms,
+        "reputation": reputation,
         "track_record": track_record,
         "stake_events": stake_events,
         "status_changes": status_changes,

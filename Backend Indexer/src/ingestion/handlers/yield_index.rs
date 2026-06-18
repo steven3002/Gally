@@ -11,7 +11,7 @@ use anyhow::Result;
 use serde_json::Value;
 use sqlx::PgPool;
 
-use crate::db::queries::{self, YieldIndexInsert};
+use crate::db::queries::{self, AccumulatorBalanceInsert, YieldIndexInsert};
 use crate::ingestion::event_types::{
     CompensationSweptEvent, DustSweptEvent, RevenueDepositedEvent, RolloverSweptEvent,
 };
@@ -43,6 +43,19 @@ pub async fn handle_yield_index(
                     ..Default::default()
                 },
             )
+            .await?;
+            // BI-M8 (LI-D9): fold post-deposit pool balances.
+            queries::insert_accumulator_balance(
+                pool,
+                meta,
+                &AccumulatorBalanceInsert {
+                    asset_id: &e.asset_id,
+                    event_type: "RevenueDeposited",
+                    reward_pool_after: Some(e.reward_pool_after as i64),
+                    rollover_reserve_after: Some(e.rollover_reserve_after as i64),
+                    ..Default::default()
+                },
+            )
             .await
         }
         "RolloverSweptEvent" => {
@@ -55,6 +68,18 @@ pub async fn handle_yield_index(
                     asset_id: &e.asset_id,
                     index_after: e.index_after,
                     unwrapped_supply: e.unwrapped_supply as i64,
+                    ..Default::default()
+                },
+            )
+            .await?;
+            queries::insert_accumulator_balance(
+                pool,
+                meta,
+                &AccumulatorBalanceInsert {
+                    asset_id: &e.asset_id,
+                    event_type: "RolloverSwept",
+                    reward_pool_after: Some(e.reward_pool_after as i64),
+                    rollover_reserve_after: Some(e.rollover_reserve_after as i64),
                     ..Default::default()
                 },
             )
@@ -74,14 +99,41 @@ pub async fn handle_yield_index(
                     ..Default::default()
                 },
             )
+            .await?;
+            // The sweep reports the full post-op snapshot (LI-Q6).
+            queries::insert_accumulator_balance(
+                pool,
+                meta,
+                &AccumulatorBalanceInsert {
+                    asset_id: &e.asset_id,
+                    event_type: "CompensationSwept",
+                    reward_pool_after: Some(e.reward_pool_after as i64),
+                    rollover_reserve_after: Some(e.rollover_reserve_after as i64),
+                    compensation_pool_after: Some(e.compensation_pool_after as i64),
+                    wrapping_frozen: Some(e.wrapping_frozen),
+                    ..Default::default()
+                },
+            )
             .await
         }
         other => anyhow::bail!("handle_yield_index called with non-yield type {other}"),
     }
 }
 
-/// `DustSweptEvent` → one `dust_sweeps` row (`§2.16`).
+/// `DustSweptEvent` → one `dust_sweeps` row (`§2.16`) + the emptied-pool balance fold (LI-D9).
 pub async fn handle_dust_swept(pool: &PgPool, meta: &EventMeta, payload: &Value) -> Result<()> {
     let e: DustSweptEvent = serde_json::from_value(payload.clone())?;
-    queries::insert_dust_sweep(pool, meta, &e.asset_id, e.amount as i64).await
+    queries::insert_dust_sweep(pool, meta, &e.asset_id, e.amount as i64).await?;
+    queries::insert_accumulator_balance(
+        pool,
+        meta,
+        &AccumulatorBalanceInsert {
+            asset_id: &e.asset_id,
+            event_type: "DustSwept",
+            reward_pool_after: Some(e.reward_pool_after as i64),
+            rollover_reserve_after: Some(e.rollover_reserve_after as i64),
+            ..Default::default()
+        },
+    )
+    .await
 }

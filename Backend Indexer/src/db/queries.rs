@@ -7,10 +7,10 @@ use serde_json::Value;
 use sqlx::{PgPool, QueryBuilder};
 
 use crate::db::models::{
-    AssetRow, AssetStateChangeRow, DisputeRow, GovernanceRow, HolderFoldRow, HoldingRow,
-    JuryVoteRow, PortfolioAssetSummary, PositionEventRow, RaiseProgressRow, RawEventRow,
-    StakeEventRow, StatusChangeRow, TrancheRow, ValidatorPoolRow, ValidatorTrackRecord,
-    WrapRatioRow, YieldIndexRow,
+    AccumulatorBalancesRow, AssetRow, AssetStateChangeRow, DisputeRow, GovernanceRow,
+    HolderFoldRow, HoldingRow, JuryVoteRow, PortfolioAssetSummary, PositionEventRow,
+    RaiseProgressRow, RawEventRow, StakeEventRow, StatusChangeRow, TrancheRow, TrancheScheduleRow,
+    ValidatorPoolRow, ValidatorTrackRecord, WrapRatioRow, YieldIndexRow,
 };
 use crate::ingestion::event_types::{
     AssetCreatedEvent, AssetStateChangedEvent, AssetVouchedEvent, CapitalContributedEvent,
@@ -22,7 +22,8 @@ use crate::ingestion::handlers::EventMeta;
 /// Columns selected for every `AssetRow` read (order matches the struct).
 const ASSET_COLS: &str = "asset_id, entity, goal, funding_deadline_ms, tranche_count, \
     revenue_split_bps, collateral, validator_pool_id, coverage, accumulator_id, \
-    current_state, close_reason, created_at_ms, created_tx";
+    current_state, close_reason, created_at_ms, name, ticker, category, location, \
+    entity_name, metadata_blob_id, metadata_sha256, is_term_financing, return_target, created_tx";
 
 /// Read the singleton checkpoint cursor. Returns 0 on a fresh database (logic_flow.md §2.1).
 pub async fn read_cursor(pool: &PgPool) -> Result<i64> {
@@ -168,8 +169,10 @@ pub async fn insert_asset(pool: &PgPool, meta: &EventMeta, e: &AssetCreatedEvent
     sqlx::query(
         "INSERT INTO assets \
             (asset_id, entity, goal, funding_deadline_ms, tranche_count, revenue_split_bps, \
-             collateral, current_state, created_at_ms, created_tx) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9) \
+             collateral, current_state, created_at_ms, created_tx, \
+             name, ticker, category, location, entity_name, metadata_blob_id, metadata_sha256, \
+             is_term_financing, return_target) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) \
          ON CONFLICT (asset_id) DO NOTHING",
     )
     .bind(&e.asset_id)
@@ -181,9 +184,53 @@ pub async fn insert_asset(pool: &PgPool, meta: &EventMeta, e: &AssetCreatedEvent
     .bind(e.collateral as i64)
     .bind(meta.timestamp_ms)
     .bind(&meta.tx_digest)
+    // BI-M8 metadata (LI-D3/D5/D12): vector<u8> → UTF-8/hex (event_types accessors); empty ⇒ NULL.
+    .bind(e.name_str())
+    .bind(e.ticker_str())
+    .bind(e.category as i16)
+    .bind(e.location_str())
+    .bind(e.entity_name_str())
+    .bind(e.metadata_blob_id_hex())
+    .bind(e.metadata_sha256_hex())
+    .bind(e.is_term_financing)
+    .bind(e.return_target_opt())
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Insert the full declared tranche schedule emitted in `AssetCreatedEvent` (`§2.18`, LI-D8). One
+/// row per tranche index, idempotent on `(asset_id, tranche_index)` so the create replay is safe.
+/// A no-op for pre-M8 events (empty schedule).
+pub async fn insert_tranche_schedule(pool: &PgPool, e: &AssetCreatedEvent) -> Result<()> {
+    for (tranche_index, amount, deadline_ms, description) in e.tranche_schedule() {
+        sqlx::query(
+            "INSERT INTO tranche_schedule \
+                (asset_id, tranche_index, amount, deadline_ms, description) \
+             VALUES ($1,$2,$3,$4,$5) \
+             ON CONFLICT (asset_id, tranche_index) DO NOTHING",
+        )
+        .bind(&e.asset_id)
+        .bind(tranche_index)
+        .bind(amount)
+        .bind(deadline_ms)
+        .bind(description)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+/// `GET /assets/:id/tranches` (the `schedule` array, `§2.18`) — the declared schedule ascending by
+/// `tranche_index`. Includes unreleased tranches (the whole point of LI-D8).
+pub async fn list_tranche_schedule(pool: &PgPool, asset_id: &str) -> Result<Vec<TrancheScheduleRow>> {
+    Ok(sqlx::query_as::<_, TrancheScheduleRow>(
+        "SELECT tranche_index, amount, deadline_ms, description \
+         FROM tranche_schedule WHERE asset_id = $1 ORDER BY tranche_index ASC",
+    )
+    .bind(asset_id)
+    .fetch_all(pool)
+    .await?)
 }
 
 /// Insert one `asset_state_changes` row (idempotent on `(tx_digest, event_seq)`). Used both for
@@ -286,6 +333,8 @@ pub async fn list_assets(
     pool: &PgPool,
     state: Option<i16>,
     entity: Option<&str>,
+    category: Option<i16>,
+    q: Option<&str>,
     cursor: Option<(i64, String)>,
     limit: i64,
 ) -> Result<Vec<AssetRow>> {
@@ -296,6 +345,13 @@ pub async fn list_assets(
     }
     if let Some(e) = entity {
         qb.push(" AND entity = ").push_bind(e.to_string());
+    }
+    // BI-M8: ?category= (LI-D4 enum) and ?q= name search (case-insensitive substring on `name`).
+    if let Some(c) = category {
+        qb.push(" AND category = ").push_bind(c);
+    }
+    if let Some(term) = q {
+        qb.push(" AND name ILIKE ").push_bind(format!("%{term}%"));
     }
     if let Some((ts, id)) = cursor {
         qb.push(" AND (created_at_ms, asset_id) > (")
@@ -386,8 +442,9 @@ pub async fn insert_validator_pool(
 ) -> Result<()> {
     sqlx::query(
         "INSERT INTO validator_pools \
-            (pool_id, validator, initial_stake, current_status, registered_at_ms, registered_tx) \
-         VALUES ($1, $2, $3, 0, $4, $5) \
+            (pool_id, validator, initial_stake, current_status, registered_at_ms, registered_tx, \
+             name) \
+         VALUES ($1, $2, $3, 0, $4, $5, $6) \
          ON CONFLICT (pool_id) DO NOTHING",
     )
     .bind(&e.pool_id)
@@ -395,6 +452,7 @@ pub async fn insert_validator_pool(
     .bind(e.stake as i64)
     .bind(meta.timestamp_ms)
     .bind(&meta.tx_digest)
+    .bind(e.name_str()) // BI-M8 (LI-D6): empty ⇒ NULL
     .execute(pool)
     .await?;
     Ok(())
@@ -547,7 +605,7 @@ pub async fn list_validators(
     limit: i64,
 ) -> Result<Vec<ValidatorPoolRow>> {
     let mut qb = QueryBuilder::new(
-        "SELECT pool_id, validator, initial_stake, current_status, registered_at_ms \
+        "SELECT pool_id, validator, initial_stake, current_status, registered_at_ms, name \
          FROM validator_pools WHERE TRUE",
     );
     if let Some(s) = status {
@@ -571,7 +629,7 @@ pub async fn list_validators(
 /// `GET /validators/:pool_id` — the pool record (None if unknown).
 pub async fn get_validator_pool(pool: &PgPool, pool_id: &str) -> Result<Option<ValidatorPoolRow>> {
     Ok(sqlx::query_as::<_, ValidatorPoolRow>(
-        "SELECT pool_id, validator, initial_stake, current_status, registered_at_ms \
+        "SELECT pool_id, validator, initial_stake, current_status, registered_at_ms, name \
          FROM validator_pools WHERE pool_id = $1",
     )
     .bind(pool_id)
@@ -976,8 +1034,8 @@ pub async fn insert_dispute_opened(
     sqlx::query(
         "INSERT INTO disputes \
             (dispute_id, asset_id, target_pool_id, challenger, bond, evidence_hash, \
-             opened_at_ms, opened_tx) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) \
+             opened_at_ms, opened_tx, reason) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) \
          ON CONFLICT (dispute_id) DO NOTHING",
     )
     .bind(&e.dispute_id)
@@ -988,6 +1046,7 @@ pub async fn insert_dispute_opened(
     .bind(e.evidence_hex())
     .bind(meta.timestamp_ms)
     .bind(&meta.tx_digest)
+    .bind(e.reason_str()) // BI-M8 (LI-D7): empty ⇒ NULL
     .execute(pool)
     .await?;
     Ok(())
@@ -1153,7 +1212,8 @@ pub async fn list_tranches(
 /// Shared SELECT for `disputes` rows + the running vote tallies (`MAX(votes_*_after)`, monotonic,
 /// `§2.14`). `dispute_id` is the PK, so `GROUP BY` it lets every `d.*` column ride along.
 const DISPUTE_SELECT: &str = "SELECT d.dispute_id, d.asset_id, d.target_pool_id, d.challenger, \
-    d.bond, d.evidence_hash, d.opened_at_ms, d.resolved_at_ms, d.verdict, d.slashed, d.bounty, \
+    d.bond, d.evidence_hash, d.reason, d.opened_at_ms, d.resolved_at_ms, d.verdict, d.slashed, \
+    d.bounty, \
     COALESCE(MAX(jv.votes_guilty_after), 0)::int AS votes_guilty, \
     COALESCE(MAX(jv.votes_innocent_after), 0)::int AS votes_innocent, \
     COALESCE(MAX(jv.votes_guilty_after), 0)::int AS votes_guilty_after, \
@@ -1241,4 +1301,130 @@ pub async fn list_jury_votes(
     .bind(limit)
     .fetch_all(pool)
     .await?)
+}
+
+// ===========================================================================
+// BI-M8 — accumulator balances (folded from `*_after`), APY, reputation
+// ===========================================================================
+
+/// Milliseconds in a 365-day year — the APY annualization base (`§8.3`).
+const YEAR_MS: f64 = 365.0 * 24.0 * 60.0 * 60.0 * 1000.0;
+
+/// One `accumulator_balances` row to insert — only the columns the emitting event carries are
+/// `Some` (the rest stay NULL; the fold reads the latest non-NULL per column). LI-D9 / `§2.19`.
+#[derive(Default)]
+pub struct AccumulatorBalanceInsert<'a> {
+    pub asset_id: &'a str,
+    pub event_type: &'a str,
+    pub reward_pool_after: Option<i64>,
+    pub rollover_reserve_after: Option<i64>,
+    pub compensation_pool_after: Option<i64>,
+    pub compensation_unlock_ms: Option<i64>,
+    pub wrapping_frozen: Option<bool>,
+}
+
+/// Append one accumulator-balance snapshot (idempotent on `(tx_digest, event_seq)`, R6). Called by
+/// every accumulator-mutating handler with the `*_after` fields its event emits (LI-D9).
+pub async fn insert_accumulator_balance(
+    pool: &PgPool,
+    meta: &EventMeta,
+    b: &AccumulatorBalanceInsert<'_>,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO accumulator_balances \
+            (tx_digest, event_seq, checkpoint_seq, timestamp_ms, asset_id, event_type, \
+             reward_pool_after, rollover_reserve_after, compensation_pool_after, \
+             compensation_unlock_ms, wrapping_frozen) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) \
+         ON CONFLICT (tx_digest, event_seq) DO NOTHING",
+    )
+    .bind(&meta.tx_digest)
+    .bind(meta.event_seq)
+    .bind(meta.checkpoint_seq)
+    .bind(meta.timestamp_ms)
+    .bind(b.asset_id)
+    .bind(b.event_type)
+    .bind(b.reward_pool_after)
+    .bind(b.rollover_reserve_after)
+    .bind(b.compensation_pool_after)
+    .bind(b.compensation_unlock_ms)
+    .bind(b.wrapping_frozen)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Current accumulator balances for one asset (`§2.19`): per column, the value from the
+/// chronologically latest event that reported it (`ORDER BY timestamp_ms DESC, event_seq DESC`).
+/// Order-robust across modules — it never depends on ingestion order. Always returns one row (all
+/// `None` if the asset has no balance events yet). The object proxy is the fallback, not the
+/// primary path (LI-D9 / `backend.md §4.2`).
+pub async fn current_accumulator_balances(
+    pool: &PgPool,
+    asset_id: &str,
+) -> Result<AccumulatorBalancesRow> {
+    Ok(sqlx::query_as::<_, AccumulatorBalancesRow>(
+        "SELECT \
+           (SELECT reward_pool_after FROM accumulator_balances \
+              WHERE asset_id = $1 AND reward_pool_after IS NOT NULL \
+              ORDER BY timestamp_ms DESC, event_seq DESC LIMIT 1) AS reward_pool, \
+           (SELECT rollover_reserve_after FROM accumulator_balances \
+              WHERE asset_id = $1 AND rollover_reserve_after IS NOT NULL \
+              ORDER BY timestamp_ms DESC, event_seq DESC LIMIT 1) AS rollover_reserve, \
+           (SELECT compensation_pool_after FROM accumulator_balances \
+              WHERE asset_id = $1 AND compensation_pool_after IS NOT NULL \
+              ORDER BY timestamp_ms DESC, event_seq DESC LIMIT 1) AS compensation_pool, \
+           (SELECT compensation_unlock_ms FROM accumulator_balances \
+              WHERE asset_id = $1 AND compensation_unlock_ms IS NOT NULL \
+              ORDER BY timestamp_ms DESC, event_seq DESC LIMIT 1) AS compensation_unlock_ms, \
+           (SELECT wrapping_frozen FROM accumulator_balances \
+              WHERE asset_id = $1 AND wrapping_frozen IS NOT NULL \
+              ORDER BY timestamp_ms DESC, event_seq DESC LIMIT 1) AS wrapping_frozen",
+    )
+    .bind(asset_id)
+    .fetch_one(pool)
+    .await?)
+}
+
+/// Backend-served effective APY (`§8.3`, LI-D11), as a percentage. Definition: total investor
+/// distributions ÷ raised principal (`assets.goal`), annualized over the window between the first
+/// and last `RevenueDeposited`. Returns `0.0` when it cannot be annualized (no goal, < 2 deposits,
+/// or a zero-width window) — APY is a derived display metric, never a stored value. The weights are
+/// a v1 heuristic (the frontend stops inventing `apy`); refine alongside LI-Q5.
+pub async fn compute_apy(pool: &PgPool, asset_id: &str) -> Result<f64> {
+    let goal = match asset_goal(pool, asset_id).await? {
+        Some(g) if g > 0 => g,
+        _ => return Ok(0.0),
+    };
+    let rows: Vec<(i64, Option<i64>)> = sqlx::query_as(
+        "SELECT timestamp_ms, investor_portion FROM yield_index_series \
+         WHERE asset_id = $1 AND event_type = 'revenue' ORDER BY timestamp_ms ASC",
+    )
+    .bind(asset_id)
+    .fetch_all(pool)
+    .await?;
+    if rows.len() < 2 {
+        return Ok(0.0);
+    }
+    let first_ts = rows.first().unwrap().0;
+    let last_ts = rows.last().unwrap().0;
+    let window_ms = (last_ts - first_ts) as f64;
+    if window_ms <= 0.0 {
+        return Ok(0.0);
+    }
+    let total_investor: i64 = rows.iter().filter_map(|r| r.1).sum();
+    let yield_fraction = total_investor as f64 / goal as f64;
+    Ok(yield_fraction * (YEAR_MS / window_ms) * 100.0)
+}
+
+/// Backend-served validator reputation (`§8.2`, LI-D11/LI-Q5), clamped to `0..=100`. Pure function
+/// over the DB-derived track record so it is directly unit-testable. The starting weights from the
+/// plan §8.2 are adopted as the v1 resolution of LI-Q5 (tune before any non-test publish).
+pub fn compute_reputation(tr: &ValidatorTrackRecord) -> i64 {
+    let raw = 50
+        + (2 * tr.milestones_approved).min(30)
+        + 3 * (tr.assets_vouched - tr.assets_defaulted)
+        - 25 * tr.disputes_upheld
+        - 5 * tr.disputes_filed_against;
+    raw.clamp(0, 100)
 }

@@ -59,6 +59,10 @@ const EWrongEntityCap: u64 = 311;
 /// parity; metadata is the only on-chain carrier of decimals, so finalize
 /// reads it directly (handoff: template_flow.md §3).
 const EInvalidDecimals: u64 = 312;
+/// Asset `category` byte is outside the defined enum (Live-Data Parity LI-D4).
+const EInvalidCategory: u64 = 313;
+/// A metadata string exceeds its byte cap (Live-Data Parity LI-Q2).
+const EMetadataTooLong: u64 = 314;
 /// `revenue_split_bps` outside [1, 10_000] (mirrors governance code 101).
 const EInvalidBps: u64 = 101;
 /// Tranche operated out of sequence (spec §9 rule 1).
@@ -110,6 +114,19 @@ const CLOSE_REASON_WIND_DOWN: u8 = 3;
 
 const BPS_DENOMINATOR: u64 = 10_000;
 
+// Trustless on-chain metadata (Live-Data Parity LI-D3/LI-D4). The entity
+// self-asserts these at create; they are immutable thereafter.
+//
+// `category` enum — canonical order matches the frontend `Category` union
+// (`lib/types.ts`): 0 Housing · 1 Machinery · 2 Trade Finance · 3 Agriculture ·
+// 4 Energy · 5 Infrastructure. Out-of-range bytes are rejected at create.
+const CATEGORY_COUNT: u8 = 6;
+// Byte caps (LI-Q2) — UTF-8 by convention; bound so gas stays predictable.
+const MAX_NAME_BYTES: u64 = 96;
+const MAX_TICKER_BYTES: u64 = 12;
+const MAX_LOCATION_BYTES: u64 = 96;
+const MAX_ENTITY_NAME_BYTES: u64 = 96;
+
 // === Structs ===
 
 /// One deadline-bound, validator-gated slice of escrowed capital (spec §3.5).
@@ -138,6 +155,19 @@ public struct WalrusRef has copy, drop, store {
 public struct Asset has key {
     id: UID,
     entity: address,
+    // Trustless on-chain metadata (LI-D3): self-asserted at create, immutable.
+    // Small queryable fields inline + emitted in `AssetCreatedEvent`; rich
+    // content (blurb/images) lives behind `metadata_blob` on Walrus.
+    name: vector<u8>,
+    ticker: vector<u8>,
+    /// Project category enum (LI-D4). `< CATEGORY_COUNT`.
+    category: u8,
+    location: vector<u8>,
+    /// Entity's self-asserted display name (LI-D5; there is no Entity object).
+    entity_name: vector<u8>,
+    /// sha256-pinned pointer to the rich metadata JSON on Walrus. `none` when
+    /// the entity supplied no rich content.
+    metadata_blob: Option<WalrusRef>,
     state: u8,
     /// Set at vouch (spec §3.5 implementation note 1).
     validator_pool_id: Option<ID>,
@@ -192,7 +222,10 @@ public struct LegalDocsKey() has copy, drop, store;
 
 // === Events ===
 
-/// Full static config so the indexer never re-reads it (spec §18.3).
+/// Full static config so the indexer never re-reads it (spec §18.3). Extended
+/// by Live-Data Parity (LI-D3/D8/D12): on-chain metadata, term status, and the
+/// full tranche schedule (incl. unreleased tranches) all index without an
+/// object read.
 public struct AssetCreatedEvent has copy, drop {
     asset_id: ID,
     entity: address,
@@ -201,6 +234,21 @@ public struct AssetCreatedEvent has copy, drop {
     tranche_count: u64,
     revenue_split_bps: u64,
     collateral: u64,
+    // metadata (LI-D3)
+    name: vector<u8>,
+    ticker: vector<u8>,
+    category: u8,
+    location: vector<u8>,
+    entity_name: vector<u8>,
+    metadata_blob_id: vector<u8>,
+    metadata_sha256: vector<u8>,
+    // term status (LI-D12)
+    is_term_financing: bool,
+    return_target: u64,
+    // full tranche schedule (LI-D8)
+    tranche_amounts: vector<u64>,
+    tranche_deadlines_ms: vector<u64>,
+    tranche_descriptions: vector<vector<u8>>,
 }
 
 /// Emitted on EVERY transition alongside the specific event — one type
@@ -287,6 +335,11 @@ public struct EntityDefaultedEvent has copy, drop {
     tranche_missed: u64,
     collateral_seized: u64,
     escrow_seized: u64,
+    /// Accumulator compensation snapshot after the seizure (LI-D9): the default
+    /// seeds the pool, opens the grace window, and freezes wrapping (D5).
+    compensation_pool_after: u64,
+    compensation_unlock_ms: u64,
+    wrapping_frozen: bool,
 }
 
 /// Terminal settlement (spec §14, §18.3). `reason`: 1 = return target hit,
@@ -307,6 +360,10 @@ public struct RevenueDepositedEvent has copy, drop {
     entity_portion: u64,
     index_after: u128,
     unwrapped_supply: u64,
+    /// Post-deposit pool balances (LI-D9): the investor portion grows either
+    /// the reward pool (index advance) or the rollover reserve (zero unwrapped).
+    reward_pool_after: u64,
+    rollover_reserve_after: u64,
 }
 
 // === Public Functions ===
@@ -331,6 +388,13 @@ public fun create_asset(
     tranche_descriptions: vector<vector<u8>>,
     tranche_deadlines_ms: vector<u64>,
     revenue_split_bps: u64,
+    name: vector<u8>,
+    ticker: vector<u8>,
+    category: u8,
+    location: vector<u8>,
+    entity_name: vector<u8>,
+    metadata_blob_id: vector<u8>,
+    metadata_sha256: vector<u8>,
     collateral: Coin<USDC>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -343,6 +407,13 @@ public fun create_asset(
         tranche_descriptions,
         tranche_deadlines_ms,
         revenue_split_bps,
+        name,
+        ticker,
+        category,
+        location,
+        entity_name,
+        metadata_blob_id,
+        metadata_sha256,
         false,
         0,
         collateral,
@@ -364,6 +435,13 @@ public fun create_term_asset(
     tranche_descriptions: vector<vector<u8>>,
     tranche_deadlines_ms: vector<u64>,
     revenue_split_bps: u64,
+    name: vector<u8>,
+    ticker: vector<u8>,
+    category: u8,
+    location: vector<u8>,
+    entity_name: vector<u8>,
+    metadata_blob_id: vector<u8>,
+    metadata_sha256: vector<u8>,
     return_target: u64,
     collateral: Coin<USDC>,
     clock: &Clock,
@@ -377,6 +455,13 @@ public fun create_term_asset(
         tranche_descriptions,
         tranche_deadlines_ms,
         revenue_split_bps,
+        name,
+        ticker,
+        category,
+        location,
+        entity_name,
+        metadata_blob_id,
+        metadata_sha256,
         true,
         return_target,
         collateral,
@@ -397,6 +482,13 @@ fun create_asset_internal(
     tranche_descriptions: vector<vector<u8>>,
     tranche_deadlines_ms: vector<u64>,
     revenue_split_bps: u64,
+    name: vector<u8>,
+    ticker: vector<u8>,
+    category: u8,
+    location: vector<u8>,
+    entity_name: vector<u8>,
+    metadata_blob_id: vector<u8>,
+    metadata_sha256: vector<u8>,
     is_term_financing: bool,
     return_target: u64,
     collateral: Coin<USDC>,
@@ -405,6 +497,13 @@ fun create_asset_internal(
 ) {
     protocol::assert_version(config);
     protocol::assert_not_paused(config);
+
+    // Metadata validation (LI-D4/LI-Q2): category in enum range, strings capped.
+    assert!(category < CATEGORY_COUNT, EInvalidCategory);
+    assert!(name.length() <= MAX_NAME_BYTES, EMetadataTooLong);
+    assert!(ticker.length() <= MAX_TICKER_BYTES, EMetadataTooLong);
+    assert!(location.length() <= MAX_LOCATION_BYTES, EMetadataTooLong);
+    assert!(entity_name.length() <= MAX_ENTITY_NAME_BYTES, EMetadataTooLong);
 
     // §7 validation 2: goal > 0 and every dollar belongs to one tranche.
     assert!(funding_goal > 0, EZeroAmount);
@@ -459,9 +558,28 @@ fun create_asset_internal(
     };
     assert!(sum == funding_goal, ETrancheSumMismatch);
 
+    // Rich metadata is optional: an empty blob id means the entity supplied no
+    // Walrus content (the inline fields still stand). `metadata_blob_id` /
+    // `metadata_sha256` have `copy`, so they remain available for the event.
+    let metadata_blob = if (metadata_blob_id.length() > 0) {
+        option::some(WalrusRef {
+            blob_id: metadata_blob_id,
+            sha256: metadata_sha256,
+            attested_by: ctx.sender(),
+        })
+    } else {
+        option::none()
+    };
+
     let asset = Asset {
         id: object::new(ctx),
         entity: ctx.sender(),
+        name,
+        ticker,
+        category,
+        location,
+        entity_name,
+        metadata_blob,
         state: STATE_PENDING_VOUCH,
         validator_pool_id: option::none(),
         coverage_locked: 0,
@@ -489,6 +607,18 @@ fun create_asset_internal(
         tranche_count: n,
         revenue_split_bps,
         collateral: asset.entity_collateral.value(),
+        name: asset.name,
+        ticker: asset.ticker,
+        category: asset.category,
+        location: asset.location,
+        entity_name: asset.entity_name,
+        metadata_blob_id,
+        metadata_sha256,
+        is_term_financing,
+        return_target,
+        tranche_amounts,
+        tranche_deadlines_ms,
+        tranche_descriptions,
     });
 
     transfer::transfer(EntityCap { id: object::new(ctx), asset_id }, ctx.sender());
@@ -897,6 +1027,9 @@ public fun flag_default<T>(
         tranche_missed: asset.next_tranche,
         collateral_seized,
         escrow_seized,
+        compensation_pool_after: accumulator::compensation_pool_value(acc),
+        compensation_unlock_ms: accumulator::compensation_unlock_ms(acc),
+        wrapping_frozen: accumulator::is_wrapping_frozen(acc),
     });
     set_state(asset, STATE_COMPENSATING);
 }
@@ -950,6 +1083,8 @@ public fun deposit_revenue<T>(
         entity_portion,
         index_after,
         unwrapped_supply: accumulator::unwrapped_supply(acc),
+        reward_pool_after: accumulator::reward_pool_value(acc),
+        rollover_reserve_after: accumulator::rollover_reserve_value(acc),
     });
 }
 
@@ -1066,6 +1201,19 @@ public fun is_term_financing(asset: &Asset): bool { asset.is_term_financing }
 
 public fun return_target(asset: &Asset): u64 { asset.return_target }
 
+// On-chain metadata views (LI-D3) — also what the object proxy reads.
+public fun name(asset: &Asset): vector<u8> { asset.name }
+
+public fun ticker(asset: &Asset): vector<u8> { asset.ticker }
+
+public fun category(asset: &Asset): u8 { asset.category }
+
+public fun location(asset: &Asset): vector<u8> { asset.location }
+
+public fun entity_name(asset: &Asset): vector<u8> { asset.entity_name }
+
+public fun metadata_blob(asset: &Asset): Option<WalrusRef> { asset.metadata_blob }
+
 public fun walrus_blob_id(r: &WalrusRef): vector<u8> { r.blob_id }
 
 public fun walrus_sha256(r: &WalrusRef): vector<u8> { r.sha256 }
@@ -1177,6 +1325,80 @@ fun mul_bps(amount: u64, bps: u64): u64 {
 /// M6 is not built yet; tests exercise the dispute freeze through this.
 public fun set_disputed_for_testing(asset: &mut Asset, disputed: bool) {
     set_disputed(asset, disputed);
+}
+
+#[test_only]
+/// Lists an asset with default metadata, preserving the pre-M8 signature so
+/// existing tests are unchanged by the LI-D3 metadata additions. New metadata
+/// behaviour is covered by dedicated tests that call `create_asset` directly.
+public fun create_asset_for_testing(
+    config: &ProtocolConfig,
+    funding_goal: u64,
+    funding_deadline_ms: u64,
+    tranche_amounts: vector<u64>,
+    tranche_descriptions: vector<vector<u8>>,
+    tranche_deadlines_ms: vector<u64>,
+    revenue_split_bps: u64,
+    collateral: Coin<USDC>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    create_asset(
+        config,
+        funding_goal,
+        funding_deadline_ms,
+        tranche_amounts,
+        tranche_descriptions,
+        tranche_deadlines_ms,
+        revenue_split_bps,
+        b"Test Asset",
+        b"TST",
+        0,
+        b"Testland",
+        b"Test Entity",
+        vector[],
+        vector[],
+        collateral,
+        clock,
+        ctx,
+    );
+}
+
+#[test_only]
+/// Term-asset variant of `create_asset_for_testing` (default metadata).
+public fun create_term_asset_for_testing(
+    config: &ProtocolConfig,
+    funding_goal: u64,
+    funding_deadline_ms: u64,
+    tranche_amounts: vector<u64>,
+    tranche_descriptions: vector<vector<u8>>,
+    tranche_deadlines_ms: vector<u64>,
+    revenue_split_bps: u64,
+    return_target: u64,
+    collateral: Coin<USDC>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    create_term_asset(
+        config,
+        funding_goal,
+        funding_deadline_ms,
+        tranche_amounts,
+        tranche_descriptions,
+        tranche_deadlines_ms,
+        revenue_split_bps,
+        b"Test Term Asset",
+        b"TTA",
+        2,
+        b"Testland",
+        b"Test Entity",
+        vector[],
+        vector[],
+        return_target,
+        collateral,
+        clock,
+        ctx,
+    );
 }
 
 #[test_only]

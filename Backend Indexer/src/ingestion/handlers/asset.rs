@@ -9,20 +9,48 @@ use anyhow::Result;
 use serde_json::Value;
 use sqlx::PgPool;
 
-use crate::db::queries;
+use crate::db::queries::{self, AccumulatorBalanceInsert};
 use crate::ingestion::event_types::{
     AssetClosedEvent, AssetCreatedEvent, AssetOperationalEvent, AssetStateChangedEvent,
-    AssetVouchedEvent, RaiseFinalizedEvent,
+    AssetVouchedEvent, EntityDefaultedEvent, RaiseFinalizedEvent,
 };
 use crate::ingestion::handlers::EventMeta;
 
-/// `AssetCreatedEvent` → insert the `assets` row **and** seed the initial PENDING_VOUCH(0→0)
-/// row in `asset_state_changes` (create_asset emits no paired state-change event — `§4`).
+/// `AssetCreatedEvent` → insert the `assets` row (incl. BI-M8 metadata), persist the full declared
+/// tranche schedule (LI-D8, so unreleased tranches are visible), **and** seed the initial
+/// PENDING_VOUCH(0→0) row in `asset_state_changes` (create_asset emits no paired state-change
+/// event — `§4`).
 pub async fn handle_asset_created(pool: &PgPool, meta: &EventMeta, payload: &Value) -> Result<()> {
     let e: AssetCreatedEvent = serde_json::from_value(payload.clone())?;
     queries::insert_asset(pool, meta, &e).await?;
+    queries::insert_tranche_schedule(pool, &e).await?;
     // Seed PENDING_VOUCH using the creation event's own (tx_digest, event_seq) idempotency key.
     queries::insert_state_change(pool, meta, &e.asset_id, 0, 0).await
+}
+
+/// `EntityDefaultedEvent` → fold the compensation-pool snapshot + grace window into
+/// `accumulator_balances` (LI-D9, LI-Q6). DEFAULTED collapses into COMPENSATING via
+/// `AssetStateChangedEvent` (§11.5); the seizure figures still have no typed column (archived in
+/// `raw_events`), but the grace window is now indexable.
+pub async fn handle_entity_defaulted(
+    pool: &PgPool,
+    meta: &EventMeta,
+    payload: &Value,
+) -> Result<()> {
+    let e: EntityDefaultedEvent = serde_json::from_value(payload.clone())?;
+    queries::insert_accumulator_balance(
+        pool,
+        meta,
+        &AccumulatorBalanceInsert {
+            asset_id: &e.asset_id,
+            event_type: "EntityDefaulted",
+            compensation_pool_after: Some(e.compensation_pool_after as i64),
+            compensation_unlock_ms: Some(e.compensation_unlock_ms as i64),
+            wrapping_frozen: Some(e.wrapping_frozen),
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 /// `AssetVouchedEvent` → set `validator_pool_id` + `coverage` on the asset. `doc_hashes` is an

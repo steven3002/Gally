@@ -73,7 +73,7 @@ fun register(s: &mut ts::Scenario, who: address, stake: u64): ID {
     {
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(s, 0);
-        validator::register_validator(
+        validator::register_validator_for_testing(
             &config,
             coin::mint_for_testing<USDC>(stake, s.ctx()),
             &clock,
@@ -102,7 +102,7 @@ fun setup_with(is_term: bool, return_target: u64): (ts::Scenario, ID, ID, ID, ID
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(&mut s, 0);
         if (is_term) {
-            asset::create_term_asset(
+            asset::create_term_asset_for_testing(
                 &config,
                 GOAL,
                 FUNDING_DEADLINE_MS,
@@ -116,7 +116,7 @@ fun setup_with(is_term: bool, return_target: u64): (ts::Scenario, ID, ID, ID, ID
                 s.ctx(),
             );
         } else {
-            asset::create_asset(
+            asset::create_asset_for_testing(
                 &config,
                 GOAL,
                 FUNDING_DEADLINE_MS,
@@ -517,7 +517,7 @@ fun open_dispute(s: &mut ts::Scenario, target_id: ID, now_ms: u64): ID {
         let clock = make_clock(s, now_ms);
         let bond = coin::mint_for_testing<USDC>(BOND, s.ctx());
         let evidence = asset::new_walrus_ref(b"fraud", b"sha-fraud", s.ctx());
-        dispute::initialize_dispute<INT_TOKEN>(
+        dispute::initialize_dispute_for_testing<INT_TOKEN>(
             &mut asset, &mut pool, &acc, &config, bond, evidence, &clock, s.ctx(),
         );
         clock.destroy_for_testing();
@@ -1061,7 +1061,7 @@ fun test_create_term_below_principal_aborts() {
     let config = s.take_shared<ProtocolConfig>();
     let clock = make_clock(&mut s, 0);
     // return_target < funding_goal: rejected at listing.
-    asset::create_term_asset(
+    asset::create_term_asset_for_testing(
         &config, GOAL, FUNDING_DEADLINE_MS,
         vector[GOAL], vector[b"only"], vector[20_000], 5_000,
         GOAL - 1,

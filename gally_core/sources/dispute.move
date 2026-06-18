@@ -48,8 +48,15 @@ const EVotingOpen: u64 = 605;
 const EWrongDisputeObjects: u64 = 606;
 /// Juror-reward claim is only valid on a REJECTED dispute.
 const ENotRejected: u64 = 607;
+/// The dispute `reason` exceeds its byte cap (Live-Data Parity LI-Q2). Shares
+/// the code with `asset::EMetadataTooLong` for a uniform metadata error.
+const EMetadataTooLong: u64 = 314;
 
 // === Constants ===
+
+/// Byte cap for the challenger's `reason` (LI-Q2). Larger than a name — it is
+/// a sentence, but still bounded so gas stays predictable.
+const MAX_REASON_BYTES: u64 = 256;
 
 const STATUS_OPEN: u8 = 0;
 const STATUS_UPHELD: u8 = 1;
@@ -75,6 +82,9 @@ public struct Dispute has key {
     bond: Balance<USDC>,
     /// Content-addressed counter-evidence (sha256-pinned).
     evidence: WalrusRef,
+    /// Challenger's short, bond-backed statement of the claim (Live-Data
+    /// Parity LI-D7). UTF-8 by convention; the full case lives in `evidence`.
+    reason: vector<u8>,
     votes_guilty: u64,
     votes_innocent: u64,
     /// Pools that have voted (and, after a REJECTED verdict, not yet claimed
@@ -97,6 +107,8 @@ public struct DisputeOpenedEvent has copy, drop {
     challenger: address,
     bond: u64,
     evidence_sha256: vector<u8>,
+    /// Challenger's short claim (LI-D7); indexed for the dispute feed.
+    reason: vector<u8>,
 }
 
 /// Running tallies let a frontend track the vote live without polling state.
@@ -116,6 +128,12 @@ public struct DisputeResolvedEvent has copy, drop {
     slashed: u64,
     bounty: u64,
     challenger: address,
+    /// Accumulator compensation snapshot after resolution (LI-D9): an UPHELD
+    /// verdict seeds the pool + opens the grace window; the indexer/frontend
+    /// alert wrapped holders on these (D5).
+    compensation_pool_after: u64,
+    compensation_unlock_ms: u64,
+    wrapping_frozen: bool,
 }
 
 public struct JurorRewardClaimedEvent has copy, drop {
@@ -137,6 +155,7 @@ public fun initialize_dispute<T>(
     config: &ProtocolConfig,
     bond: Coin<USDC>,
     evidence: WalrusRef,
+    reason: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -148,6 +167,7 @@ public fun initialize_dispute<T>(
     assert!(asset::is_executing(asset) || asset::is_operational(asset), EWrongAssetState);
     assert!(asset::coverage_locked(asset) > 0, EWrongAssetState);
     assert!(!asset::is_disputed(asset), EDisputeExists);
+    assert!(reason.length() <= MAX_REASON_BYTES, EMetadataTooLong);
 
     // Bind the objects: the target must be the vouching pool; the accumulator
     // must be the asset's.
@@ -165,6 +185,7 @@ public fun initialize_dispute<T>(
         challenger: ctx.sender(),
         bond: bond.into_balance(),
         evidence,
+        reason,
         votes_guilty: 0,
         votes_innocent: 0,
         voted: vec_set::empty(),
@@ -185,6 +206,7 @@ public fun initialize_dispute<T>(
         challenger: ctx.sender(),
         bond: dispute.bond.value(),
         evidence_sha256: asset::walrus_sha256(&dispute.evidence),
+        reason: dispute.reason,
     });
 
     transfer::share_object(dispute);
@@ -328,6 +350,9 @@ public fun resolve_dispute<T>(
         slashed: slashed_amount,
         bounty: bounty_amount,
         challenger: dispute.challenger,
+        compensation_pool_after: accumulator::compensation_pool_value(acc),
+        compensation_unlock_ms: accumulator::compensation_unlock_ms(acc),
+        wrapping_frozen: accumulator::is_wrapping_frozen(acc),
     });
 }
 
@@ -360,6 +385,9 @@ public fun claim_juror_reward(
 
 public fun status(dispute: &Dispute): u8 { dispute.status }
 
+/// Challenger's short, bond-backed claim (LI-D7).
+public fun reason(dispute: &Dispute): vector<u8> { dispute.reason }
+
 public fun votes_guilty(dispute: &Dispute): u64 { dispute.votes_guilty }
 
 public fun votes_innocent(dispute: &Dispute): u64 { dispute.votes_innocent }
@@ -377,6 +405,34 @@ public fun status_upheld(): u8 { STATUS_UPHELD }
 public fun status_rejected(): u8 { STATUS_REJECTED }
 
 public fun status_expired(): u8 { STATUS_EXPIRED }
+
+// === Test Functions ===
+
+#[test_only]
+/// Opens a dispute with a default reason, preserving the pre-M8 signature so
+/// existing tests are unchanged by the LI-D7 `reason` addition.
+public fun initialize_dispute_for_testing<T>(
+    asset: &mut Asset,
+    target_pool: &mut ValidatorPool,
+    acc: &GlobalYieldAccumulator<T>,
+    config: &ProtocolConfig,
+    bond: Coin<USDC>,
+    evidence: WalrusRef,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    initialize_dispute(
+        asset,
+        target_pool,
+        acc,
+        config,
+        bond,
+        evidence,
+        b"Test dispute reason",
+        clock,
+        ctx,
+    );
+}
 
 // === Private Functions ===
 

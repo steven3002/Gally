@@ -78,6 +78,7 @@ pub async fn get_dispute(
         "challenger": d.challenger,
         "bond": d.bond.to_string(),
         "evidence_hash": d.evidence_hash,
+        "reason": d.reason,
         "opened_at_ms": d.opened_at_ms,
         "resolved_at_ms": d.resolved_at_ms,
         "verdict": d.verdict,

@@ -59,7 +59,7 @@ fun to_operational(): ts::Scenario {
     {
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(&mut s, 0);
-        validator::register_validator(
+        validator::register_validator_for_testing(
             &config,
             coin::mint_for_testing<USDC>(STAKE, s.ctx()),
             &clock,
@@ -73,7 +73,7 @@ fun to_operational(): ts::Scenario {
     {
         let config = s.take_shared<ProtocolConfig>();
         let clock = make_clock(&mut s, 0);
-        asset::create_asset(
+        asset::create_asset_for_testing(
             &config,
             GOAL,
             FUNDING_DEADLINE_MS,
