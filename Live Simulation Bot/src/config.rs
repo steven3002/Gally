@@ -14,7 +14,7 @@ use crate::pace::Pace;
 pub const DEFAULT_RPC_URL: &str = "http://127.0.0.1:9000";
 pub const DEFAULT_FAUCET_URL: &str = "http://127.0.0.1:9123/gas";
 pub const DEFAULT_RESEED_AMOUNT: u64 = 500_000_000_000; // 500,000 USDC
-pub const DEFAULT_USER_COUNT: usize = 8;
+pub const DEFAULT_USER_COUNT: usize = 12; // SIM-M6: a wider cohort for a non-trivial holder distribution
 pub const DEFAULT_GAS_THRESHOLD_MIST: u64 = 1_000_000_000; // 1 SUI
 pub const DEFAULT_USER_KEYS_PATH: &str = "./sim_users.json";
 pub const DEFAULT_SIM_STATE_PATH: &str = "./sim_state.json";
@@ -233,6 +233,34 @@ mod tests {
         // explicit tick override wins over the profile default
         let cfg = Config::from_map(&map, Some(Pace::Accelerated), Some(123)).unwrap();
         assert_eq!(cfg.tick_interval_ms, 123);
+    }
+
+    /// SIM-M6: contributions must spread across the cohort, not collapse onto one address. Models
+    /// the daemon's exact user pick (`1 + rng.pick_index(user_count)`) and asserts that many draws
+    /// touch (nearly) the whole cohort — `DEFAULT_USER_COUNT` is wide enough for a real distribution.
+    #[test]
+    fn test_cohort_contribution_spread() {
+        use crate::rng::Rng;
+        use std::collections::HashSet;
+
+        let user_count = DEFAULT_USER_COUNT;
+        assert!(user_count >= 10, "cohort wide enough for a non-trivial holder distribution");
+
+        let mut r = Rng::new(20260618);
+        let mut touched: HashSet<usize> = HashSet::new();
+        for _ in 0..(user_count * 20) {
+            // actor index 0 is the operator; users are 1..=user_count (daemon do_contribute).
+            let uidx = 1 + r.pick_index(user_count).unwrap();
+            assert!((1..=user_count).contains(&uidx));
+            touched.insert(uidx);
+        }
+        // No single-address collapse: over enough draws, almost every distinct holder appears.
+        assert!(
+            touched.len() >= user_count - 1,
+            "contributions spread across the cohort (touched {} of {})",
+            touched.len(),
+            user_count
+        );
     }
 
     #[test]

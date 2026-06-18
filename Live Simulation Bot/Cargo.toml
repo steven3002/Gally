@@ -23,6 +23,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
 ed25519-dalek = "2"                                          # fake-user + operator keypairs, tx signing
 blake2 = "0.10"                                              # Sui address + intent-message digest
+sha2 = "0.10"                                                # SIM-M6: real sha256 for the sha256-pinned mock-Walrus blobs (LI-Q3)
 base64 = "0.22"
 hex = "0.4"
 getrandom = "0.2"                                            # OS entropy for keygen

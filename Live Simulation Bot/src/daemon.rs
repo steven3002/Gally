@@ -610,9 +610,12 @@ impl<'a> Daemon<'a> {
         }
         let goal = 80_000_000_000; // 80k μUSDC — fillable in a few contributions
         let collateral = goal / 10;
-        // Far deadlines: the asset rides the success pipeline (fund → finalize →
-        // tranche → operational). EntityDefaulted is covered by the seeded
+        // SIM-M6: real catalog metadata (LI-D3), rotating by the count of assets the daemon has
+        // listed so categories vary. Single-tranche on purpose — the success pipeline releases the
+        // (only) tranche in one cycle → OPERATIONAL. EntityDefaulted is covered by the seeded
         // COMPENSATING asset, so the daemon does not list doomed assets.
+        let project = crate::catalog::project(self.assets.len());
+        let desc = crate::catalog::str_literal(&format!("Phase 1/1: {} milestone", project.ticker));
         let mut args = self.mint(collateral, "col");
         args.extend([
             "--move-call".into(),
@@ -621,13 +624,13 @@ impl<'a> Daemon<'a> {
             format!("{goal}u64"),
             format!("{FAR_MS}u64"),
             format!("vector[{goal}u64]"),
-            "vector[vector[77u8,49u8]]".into(),
+            format!("vector[{desc}]"),
             // tranche deadline strictly after the funding deadline (E308).
             format!("vector[{}u64]", FAR_MS + 3_600_000),
             format!("{REVENUE_SPLIT_BPS}u64"),
-            "col".into(),
-            "@0x6".into(),
         ]);
+        args.extend(crate::catalog::metadata_args(project));
+        args.extend(["col".into(), "@0x6".into()]);
         let create = self.exec_op(&args)?;
         let asset_id = created_object_id(&create, "::asset::Asset")
             .ok_or_else(|| anyhow!("create_asset: no Asset created"))?;
@@ -1335,6 +1338,8 @@ impl<'a> Daemon<'a> {
             format!("@{}", self.config_id),
             format!("@{}", bond_coin.id),
             "ev".into(),
+            // SIM-M6 / LI-D7: a real challenger reason (rotates for variety).
+            crate::catalog::str_literal(crate::catalog::dispute_reason(self.assets.len())),
             "@0x6".into(),
         ]);
         let open = self.exec_as(uidx, &oargs)?;
