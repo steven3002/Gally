@@ -1,0 +1,118 @@
+{
+  "validator_pool_id": "0xf01e3e8e3acef00404e7497bac3cac160fb3a5e3fce8fa79e737bda6b6e09f07",
+  "validator_cap_id": "0x4db5ce27cda25217176fc712b92f64fd900b7d8d198229c73322c0d6d18c0744",
+  "asset_id": "0x26550256e4c85c1b7ad7c47d7c0f53403d2c1b25794901a2b95d86ee8a8f0c91",
+  "entity_cap_id": "0x40a6e9bf0fbe2654e2a7b3098d6f967cdbac7ecac71e08464c92d6b59525a2a2",
+  "time_warped": true,
+  "validator_pools": [
+    "0xd6bd911177e4ec91b27a871afa80ed0f5d88301871d6d231ec9b47758bc1a2c6",
+    "0x239d4a3a4457fbb25edd18b3e9de636988157c146e8ab8486c90cfd01f99f1a3",
+    "0xd205a20d859fd81b1201b9e24c66d3d9e2b0ffff3e5f0aabc6b79260b0cc86e1"
+  ],
+  "validator_caps": [
+    "0x512d32725302f21db6271035162bcfb1708b0c0a82ac957e877ab4907991c9c2",
+    "0x0ab27d0ae98bf211510bb8156eac7741196e6c8fcf6803b2221ad977a472cd40",
+    "0x21c20e2ab8747beab688ccf4a14bc6373b8b729ae833d0e22dee182075d8ed31"
+  ],
+  "entity_tokens": [
+    {
+      "package_id": "0x886edaa6702cde1cc59133368ce907c713695cf2845545e23c9d65703db65f84",
+      "module": "gally_entity_1",
+      "witness": "GALLY_ENTITY_1",
+      "treasury_cap_id": "0xc9992dfb5f6d11b62c5e434ee4069f1cbe702cef7fab0c371a6f6a1b93b833ca",
+      "metadata_id": "0x16c0078c962734edd54c9c6f275df30552840a89fccc19266014f34ed0e64823"
+    },
+    {
+      "package_id": "0xb84a805869760caa84033aa9eba7b3bdfe6f850f6b8850d9031fdb14dbbbd5e3",
+      "module": "gally_entity_2",
+      "witness": "GALLY_ENTITY_2",
+      "treasury_cap_id": "0x0239b802b0649ce3869b8000a2d5b48aa76ffb71d14b887e7ef3d1eb09ac3644",
+      "metadata_id": "0xd6e8525d9b08409948643eeff3408d9b2be86a6d8797a33fc250c84937d85b2b"
+    },
+    {
+      "package_id": "0x54802fc583f1f15016a807b7f06d040db028165b7215bc8b35f83a26f85220cd",
+      "module": "gally_entity_3",
+      "witness": "GALLY_ENTITY_3",
+      "treasury_cap_id": "0x72793a0787cccf057769f0f3db7bdfbed954ca55f41df8dcf966bfbcbfa14688",
+      "metadata_id": "0x0ba04ddaf8bca6ee53f905d5b70b58c8aa97a7a2b24a9fb6364d75712d3382a1"
+    },
+    {
+      "package_id": "0xdbc15ce49f18d1f95dde5201b5753cfd62f3cafcefc3b1a4afeb4644a06fd0b2",
+      "module": "gally_entity_4",
+      "witness": "GALLY_ENTITY_4",
+      "treasury_cap_id": "0xd3a38cdfc79fccca9f972a52e8cd7d766237b4452c6d53fb4c2bca94063a870d",
+      "metadata_id": "0xf5705d5cfa03cec2eb94100dc476293cd25f82757a08bc0c1006a1e20a458bbb"
+    },
+    {
+      "package_id": "0x7adbc04a92796705680810d8de92ba679d96c5de68d3317479fd3de8c5912305",
+      "module": "gally_entity_5",
+      "witness": "GALLY_ENTITY_5",
+      "treasury_cap_id": "0x27d275e84f172b4d4b54a65ba21e84045ee9b18d13cde0c2032075691840ff84",
+      "metadata_id": "0x10a2eee938e0f5d083ecbc2226d9a19b06f5b098000818b9df5aa9a013bc440e"
+    },
+    {
+      "package_id": "0x0b5b656d32d29f320be12c375132e89f28acbfdfe05958987b7f4882211c4555",
+      "module": "gally_entity_6",
+      "witness": "GALLY_ENTITY_6",
+      "treasury_cap_id": "0x98221f73655122adb630d6bfbc7e967a39b4c997484fc04a2a64c40015f1084b",
+      "metadata_id": "0x3f6fc0841ee96a0c602563461e121b06d1a0e14198abafca47ce07f5e25ded46"
+    }
+  ],
+  "entity_tokens_used": 6,
+  "lifecycle": {
+    "cancelled": {
+      "asset_id": "0x76d4049a23ce92168e08fbc2e31624189c5fca70f476886f0a7d180d4aa05001",
+      "entity_cap_id": "0x64409cf2a35535aef5a85903a63e6a8b463dc78f8bccfd42b248bf32617f6e9e",
+      "accumulator_id": null,
+      "token_type": null
+    },
+    "closed": {
+      "asset_id": "0x351c6c28dbc96578c6fd2ca016b4e941c2fe1e05830e9b404032b990009f5caa",
+      "entity_cap_id": "0x70787587c3080c0d59727b70db467dcba21f5e00a1035780f4ce8e1f77714955",
+      "accumulator_id": "0xc7d9f99155c41dfb0003aa834f08cc4d229d6324a3fba2851ae83c2cef79d088",
+      "token_type": "0x54802fc583f1f15016a807b7f06d040db028165b7215bc8b35f83a26f85220cd::gally_entity_3::GALLY_ENTITY_3"
+    },
+    "closed_term": {
+      "asset_id": "0xc96a820ecd5e4b6dadde9f462c3617d9550f4ad336d2b810bffae568fb11bb8b",
+      "entity_cap_id": "0x87d91b4fc25a94d3e5a71f59b369113572975598de40bea0c63dd5bd253bfc71",
+      "accumulator_id": "0xc825566357a6f19726fea03804e4e555e0b77c52269b0be010837b65bc8b0cbc",
+      "token_type": "0xdbc15ce49f18d1f95dde5201b5753cfd62f3cafcefc3b1a4afeb4644a06fd0b2::gally_entity_4::GALLY_ENTITY_4"
+    },
+    "compensating": {
+      "asset_id": "0x2a5cc6f39b84ad29711e156833552d2ebbb88a794b4663d6f6a2c9c1936797f9",
+      "entity_cap_id": "0x11b2db8ce0bd8086e8d31530b1750df1eae890c72816b60734e53f4ca32a6319",
+      "accumulator_id": "0xf893bc73f0de2b45f81f0d1e84568fc218788ae181ddd4c39fb651dae7fc3b2c",
+      "token_type": "0x7adbc04a92796705680810d8de92ba679d96c5de68d3317479fd3de8c5912305::gally_entity_5::GALLY_ENTITY_5"
+    },
+    "executing": {
+      "asset_id": "0xd73ed31a73dfe72572829ac8ad176147346d8a45530bfdc917e938d89cecab0e",
+      "entity_cap_id": "0x7e452c950bf72f99f7579e7a2f1e812a0d5e28f899394a82c9a0db7a59cc26b1",
+      "accumulator_id": "0xf0a99d5c68eca613a4ed442b502e56fc440f610d8239ae561ce0cc78c0e3f226",
+      "token_type": "0x886edaa6702cde1cc59133368ce907c713695cf2845545e23c9d65703db65f84::gally_entity_1::GALLY_ENTITY_1"
+    },
+    "failed": {
+      "asset_id": "0xaff2f094d8b4475f0a29c56c0c70e019a8ff231156a2cc69537697b18bfcf38a",
+      "entity_cap_id": "0x90edaab855590278221b835c4dd989026c60e828f730f320d3c85f81439bf06c",
+      "accumulator_id": null,
+      "token_type": null
+    },
+    "funding": {
+      "asset_id": "0x292bb04c8ec5ac79db72a0afb2583f49c0f8dab390e0fb0cc3c3cd818a3380c8",
+      "entity_cap_id": "0x477864182634913245b0e328660ea0184ab757accb0c2cd29a43cee42c747033",
+      "accumulator_id": null,
+      "token_type": null
+    },
+    "operational": {
+      "asset_id": "0xc02048ef2e8e0b1ef901605865f176c0c168d4853f65b30271dc537e5bab441b",
+      "entity_cap_id": "0x49f9c4ad2a00337ebbeb2a0b5d201abd64083829d8223cb37b039e07752d3566",
+      "accumulator_id": "0x8408a128e7ced93ee343eeae073e86078b1d989cd1f766b140813f69d937304d",
+      "token_type": "0xb84a805869760caa84033aa9eba7b3bdfe6f850f6b8850d9031fdb14dbbbd5e3::gally_entity_2::GALLY_ENTITY_2"
+    },
+    "pending_vouch": {
+      "asset_id": "0xed3a8cc8eb61151c2e71f6af628c15e17e657dca15d8a6fb0a3bb330446f2155",
+      "entity_cap_id": "0xb35c34c68c0f8bd2bb12ecda100c05521af405802e8adde005c6205d5b0d4788",
+      "accumulator_id": null,
+      "token_type": null
+    }
+  }
+}

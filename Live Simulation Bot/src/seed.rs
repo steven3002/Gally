@@ -18,19 +18,20 @@
 use anyhow::{anyhow, Context, Result};
 use tracing::info;
 
+use crate::catalog;
 use crate::config::Config;
 use crate::ptb;
 use crate::sim_state::SimState;
 use crate::sui_client::{created_object_id, SuiClient};
+use crate::walrus;
 
 /// Demo asset funding goal (μUSDC) — 4 × 25k faucet claims fund it exactly.
 pub const DEMO_FUNDING_GOAL: u64 = 100_000_000_000;
 const VALIDATOR_STAKE: u64 = 50_000_000_000; // 50k ≥ max(10k min, 20k coverage)
 const ENTITY_COLLATERAL: u64 = 10_000_000_000; // 10% of the 100k goal
 const REVENUE_SPLIT_BPS: u64 = 500; // 5% revenue share
-// Far-future deadlines (year ~2100); tranche deadline strictly after funding (E308).
+// Far-future funding deadline (year ~2100); the multi-tranche deadlines step strictly after it.
 const FUNDING_DEADLINE_MS: u64 = 4_102_444_800_000;
-const TRANCHE_DEADLINE_MS: u64 = 4_102_448_400_000;
 const SEED_GAS_BUDGET: u64 = 200_000_000;
 
 /// The seeded objects the funding loop needs.
@@ -81,6 +82,7 @@ pub fn ensure_seed(client: &SuiClient, cfg: &Config) -> Result<Seeded> {
                 format!("{gally}::validator::register_validator"),
                 format!("@{config_id}"),
                 "stake".into(),
+                catalog::str_literal(catalog::validator_name(0)), // BI-M8 / LI-D6: named validator
                 "@0x6".into(),
             ],
         )?,
@@ -93,30 +95,32 @@ pub fn ensure_seed(client: &SuiClient, cfg: &Config) -> Result<Seeded> {
     info!(pool = %pool_id, "validator registered");
 
     // 2. mint collateral → create_asset (Asset + EntityCap created; PENDING_VOUCH).
+    // SIM-M6: real catalog metadata + a multi-tranche schedule (LI-D3/D8). The funding-slice asset
+    // is catalog entry 0 (Lekki Coastal Homes, Housing, 3 tranches).
+    let project = catalog::project(0);
+    let (tranche_amounts, tranche_descs, tranche_deadlines) =
+        catalog::tranche_schedule_literals(project, DEMO_FUNDING_GOAL, FUNDING_DEADLINE_MS, 3_600_000);
+    let mut create_args = vec![
+        "--move-call".into(),
+        format!("0x2::coin::mint<{usdc_type}>"),
+        format!("@{}", op.usdc_treasury_cap_id),
+        format!("{ENTITY_COLLATERAL}u64"),
+        "--assign".into(),
+        "col".into(),
+        "--move-call".into(),
+        format!("{gally}::asset::create_asset"),
+        format!("@{config_id}"),
+        format!("{DEMO_FUNDING_GOAL}u64"),
+        format!("{FUNDING_DEADLINE_MS}u64"),
+        tranche_amounts,
+        tranche_descs,
+        tranche_deadlines,
+        format!("{REVENUE_SPLIT_BPS}u64"),
+    ];
+    create_args.extend(catalog::metadata_args(project)); // name,ticker,category,location,entity_name,blob_id,sha256
+    create_args.extend(["col".into(), "@0x6".into()]);
     let create = client.sign_and_execute(
-        &ptb::build_unsigned(
-            &op.address,
-            SEED_GAS_BUDGET,
-            &[
-                "--move-call".into(),
-                format!("0x2::coin::mint<{usdc_type}>"),
-                format!("@{}", op.usdc_treasury_cap_id),
-                format!("{ENTITY_COLLATERAL}u64"),
-                "--assign".into(),
-                "col".into(),
-                "--move-call".into(),
-                format!("{gally}::asset::create_asset"),
-                format!("@{config_id}"),
-                format!("{DEMO_FUNDING_GOAL}u64"),
-                format!("{FUNDING_DEADLINE_MS}u64"),
-                format!("vector[{DEMO_FUNDING_GOAL}u64]"),
-                "vector[vector[77u8,49u8]]".into(), // [b"M1"]
-                format!("vector[{TRANCHE_DEADLINE_MS}u64]"),
-                format!("{REVENUE_SPLIT_BPS}u64"),
-                "col".into(),
-                "@0x6".into(),
-            ],
-        )?,
+        &ptb::build_unsigned(&op.address, SEED_GAS_BUDGET, &create_args)?,
         &op.keypair,
     )?;
     let asset_id = created_object_id(&create, "::asset::Asset")
@@ -159,6 +163,14 @@ pub fn ensure_seed(client: &SuiClient, cfg: &Config) -> Result<Seeded> {
     state.asset_id = Some(asset_id.clone());
     state.entity_cap_id = entity_cap_id;
     state.save(&cfg.sim_state_path)?;
+
+    // SIM-M6 / LI-Q3: emit the deterministic mock-Walrus blob map so the frontend resolves +
+    // sha256-verifies asset metadata docs in sim mode (idempotent — identical bytes each run).
+    let blobs_path =
+        std::path::Path::new(&cfg.sim_state_path).with_file_name("walrus_blobs.json");
+    if let Err(e) = walrus::write_blob_map(&blobs_path) {
+        info!(error = %e, "could not write walrus_blobs.json (non-fatal)");
+    }
 
     Ok(Seeded {
         asset_id,

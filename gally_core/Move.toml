@@ -2,4 +2,9 @@
 name = "gally_core"
 edition = "2024"
 
+# SIM live-soak: declare the local node's chain identifier so Sui 1.73's env-aware
+# publish (automated address management) will deploy here. Sim-only deployment config.
+[environments]
+localnet = "15809a04"
+
 [dependencies]

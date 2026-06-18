@@ -31,6 +31,7 @@ const STAKE_VOUCHER: u64 = 300_000_000_000; // pool[0] vouches all (≥ 6×20k c
 const STAKE_EXTRA: u64 = 50_000_000_000; // pools[1..] exist for the K count
 const REVENUE_SPLIT_BPS: u64 = 5_000; // 50% of net revenue to investors
 const REVENUE_GROSS: u64 = 10_000_000_000; // 10k revenue deposit (→ non-zero index)
+const TERM_GOAL: u64 = 1_000_000_000; // 1k μUSDC — small so one revenue deposit clears the return target
 const GAS: u64 = 400_000_000;
 const FAR_FUNDING_MS: u64 = 4_102_444_800_000; // ~year 2100
 const FAR_TRANCHE_MS: u64 = 4_102_448_400_000; // strictly after funding
@@ -42,7 +43,7 @@ const COMPENSATING_TRANCHE_MS: u64 = 28_000;
 /// The 8 [CORE] §4 lifecycle states this genesis covers, paired with the on-chain
 /// `Asset.state` byte each must reach. The seeder seeds exactly one asset per entry
 /// (its `ensure` key is the `.0` here).
-pub const LIFECYCLE_PLAN: [(&str, u8); 8] = [
+pub const LIFECYCLE_PLAN: [(&str, u8); 9] = [
     ("pending_vouch", 0),
     ("funding", 1),
     ("failed", 2),
@@ -51,10 +52,13 @@ pub const LIFECYCLE_PLAN: [(&str, u8); 8] = [
     ("operational", 5),
     ("compensating", 6),
     ("closed", 7),
+    // SIM-M6: a term asset that reaches CLOSED via close_at_return_target (reason 1).
+    ("closed_term", 7),
 ];
 
 /// Plan states whose seeding consumes one pooled entity token at finalize (SIM-D4).
-pub const FINALIZED_STATES: [&str; 4] = ["executing", "operational", "compensating", "closed"];
+pub const FINALIZED_STATES: [&str; 5] =
+    ["executing", "operational", "compensating", "closed", "closed_term"];
 
 /// Plan states not yet recorded in the cache — the seeder's idempotency basis (SI-5).
 pub fn remaining_states(st: &SimState) -> Vec<&'static str> {
@@ -164,6 +168,8 @@ impl<'a> Seeder<'a> {
                 format!("{}::validator::register_validator", self.gally),
                 format!("@{}", self.config_id),
                 "stake".into(),
+                // SIM-M6 / LI-D6: each pool gets a self-asserted display name.
+                crate::catalog::str_literal(crate::catalog::validator_name(st.validator_pools.len())),
                 "@0x6".into(),
             ]);
             let r = self.exec(&args)?;
@@ -180,8 +186,14 @@ impl<'a> Seeder<'a> {
     }
 
     // --- transition primitives ---------------------------------------------
-    /// create_asset (1 tranche = goal) → returns (asset_id, entity_cap_id). PENDING_VOUCH.
-    fn create_asset(&self, funding_deadline: u64, tranche_deadline: u64) -> Result<(String, String)> {
+    /// create_asset (single tranche = goal) with the catalog metadata for `ordinal` (SIM-M6, LI-D3).
+    /// Single-tranche on purpose for the states that later release/default — the tuned release and
+    /// flag_default mechanics fire on the first/only tranche. Returns (asset_id, entity_cap_id).
+    fn create_asset(&self, ordinal: usize, funding_deadline: u64, tranche_deadline: u64)
+        -> Result<(String, String)>
+    {
+        let p = crate::catalog::project(ordinal);
+        let desc = crate::catalog::str_literal(&format!("Phase 1/1: {} milestone", p.ticker));
         let mut args = self.mint(COLLATERAL, "col");
         args.extend([
             "--move-call".into(),
@@ -190,17 +202,82 @@ impl<'a> Seeder<'a> {
             format!("{GOAL}u64"),
             format!("{funding_deadline}u64"),
             format!("vector[{GOAL}u64]"),
-            "vector[vector[77u8,49u8]]".into(),
+            format!("vector[{desc}]"),
             format!("vector[{tranche_deadline}u64]"),
             format!("{REVENUE_SPLIT_BPS}u64"),
-            "col".into(),
-            "@0x6".into(),
         ]);
+        args.extend(crate::catalog::metadata_args(p));
+        args.extend(["col".into(), "@0x6".into()]);
         let r = self.exec(&args)?;
         let asset = created_object_id(&r, "::asset::Asset")
             .ok_or_else(|| anyhow!("create_asset: no Asset created"))?;
         let cap = created_object_id(&r, "::asset::EntityCap")
             .ok_or_else(|| anyhow!("create_asset: no EntityCap created"))?;
+        Ok((asset, cap))
+    }
+
+    /// create_asset with the catalog's **multi-tranche** schedule (2–3 tranches, LI-D8). For states
+    /// that never release a tranche (PENDING_VOUCH / FUNDING / CANCELLED), so the explorer shows real
+    /// unreleased schedules without disturbing the release/default machine. `step` staggers the
+    /// deadlines past `funding_deadline` (far-future here — these never lapse).
+    fn create_asset_multi(&self, ordinal: usize, funding_deadline: u64, step: u64)
+        -> Result<(String, String)>
+    {
+        let p = crate::catalog::project(ordinal);
+        let (amounts, descs, deadlines) =
+            crate::catalog::tranche_schedule_literals(p, GOAL, funding_deadline, step);
+        let mut args = self.mint(COLLATERAL, "col");
+        args.extend([
+            "--move-call".into(),
+            format!("{}::asset::create_asset", self.gally),
+            format!("@{}", self.config_id),
+            format!("{GOAL}u64"),
+            format!("{funding_deadline}u64"),
+            amounts,
+            descs,
+            deadlines,
+            format!("{REVENUE_SPLIT_BPS}u64"),
+        ]);
+        args.extend(crate::catalog::metadata_args(p));
+        args.extend(["col".into(), "@0x6".into()]);
+        let r = self.exec(&args)?;
+        let asset = created_object_id(&r, "::asset::Asset")
+            .ok_or_else(|| anyhow!("create_asset_multi: no Asset created"))?;
+        let cap = created_object_id(&r, "::asset::EntityCap")
+            .ok_or_else(|| anyhow!("create_asset_multi: no EntityCap created"))?;
+        Ok((asset, cap))
+    }
+
+    /// create_term_asset (single tranche) with a fixed `return_target` ≥ goal (LI-D12). Used to drive
+    /// a term-style CLOSED (reason 1) via `close_at_return_target`. `goal` is small so one revenue
+    /// deposit clears the target.
+    fn create_term_asset(&self, ordinal: usize, goal: u64, funding_deadline: u64, tranche_deadline: u64)
+        -> Result<(String, String)>
+    {
+        let p = crate::catalog::project(ordinal);
+        let collateral = goal / 10 + 1; // ≥ entity_collateral_bps floor (10%)
+        let return_target = crate::catalog::term_return_target(goal);
+        let desc = crate::catalog::str_literal(&format!("Phase 1/1: {} delivery", p.ticker));
+        let mut args = self.mint(collateral, "col");
+        args.extend([
+            "--move-call".into(),
+            format!("{}::asset::create_term_asset", self.gally),
+            format!("@{}", self.config_id),
+            format!("{goal}u64"),
+            format!("{funding_deadline}u64"),
+            format!("vector[{goal}u64]"),
+            format!("vector[{desc}]"),
+            format!("vector[{tranche_deadline}u64]"),
+            format!("{REVENUE_SPLIT_BPS}u64"),
+        ]);
+        args.extend(crate::catalog::metadata_args(p));
+        // create_term_asset inserts `return_target` right before `collateral` (guard_rails R2).
+        args.extend([format!("{return_target}u64"), "col".into(), "@0x6".into()]);
+        let r = self.exec(&args)?;
+        let asset = created_object_id(&r, "::asset::Asset")
+            .ok_or_else(|| anyhow!("create_term_asset: no Asset created"))?;
+        let cap = created_object_id(&r, "::asset::EntityCap")
+            .ok_or_else(|| anyhow!("create_term_asset: no EntityCap created"))?;
         Ok((asset, cap))
     }
 
@@ -309,7 +386,13 @@ impl<'a> Seeder<'a> {
     }
 
     fn deposit_revenue(&self, asset: &str, acc: &str, type_tag: &str) -> Result<()> {
-        let mut args = self.mint(REVENUE_GROSS, "rev");
+        self.deposit_revenue_amount(asset, acc, type_tag, REVENUE_GROSS)
+    }
+
+    /// `deposit_revenue` with an explicit gross amount (SIM-M6: drive a term asset past its return
+    /// target in one drop).
+    fn deposit_revenue_amount(&self, asset: &str, acc: &str, type_tag: &str, gross: u64) -> Result<()> {
+        let mut args = self.mint(gross, "rev");
         args.extend([
             "--move-call".into(),
             format!("{}::asset::deposit_revenue<{type_tag}>", self.gally),
@@ -317,6 +400,27 @@ impl<'a> Seeder<'a> {
             format!("@{acc}"),
             format!("@{}", self.config_id),
             "rev".into(),
+        ]);
+        self.exec(&args)?;
+        Ok(())
+    }
+
+    /// Fund an asset to an explicit `goal` (SIM-M6 term assets use a small goal). Mirrors
+    /// `fund_full` but for a caller-chosen amount.
+    fn fund_term(&self, asset: &str, goal: u64) -> Result<()> {
+        let mut args = self.mint(goal, "pay");
+        args.extend([
+            "--move-call".into(),
+            format!("{}::asset::contribute_capital", self.gally),
+            format!("@{asset}"),
+            format!("@{}", self.config_id),
+            "@0x6".into(),
+            "pay".into(),
+            "--assign".into(),
+            "change".into(),
+            "--transfer-objects".into(),
+            "[change]".into(),
+            format!("@{}", self.op.address),
         ]);
         self.exec(&args)?;
         Ok(())
@@ -388,15 +492,15 @@ pub fn seed_lifecycle(client: &SuiClient, cfg: &Config) -> Result<()> {
     let pool = st.validator_pools[0].clone();
     let vcap = st.validator_caps[0].clone();
 
-    // PENDING_VOUCH — create, do not vouch.
+    // PENDING_VOUCH — create (multi-tranche, never released), do not vouch.
     s.ensure(&mut st, "pending_vouch", |s| {
-        let (asset, cap) = s.create_asset(FAR_FUNDING_MS, FAR_TRANCHE_MS)?;
+        let (asset, cap) = s.create_asset_multi(0, FAR_FUNDING_MS, 3_600_000)?;
         Ok(LifecycleAsset { asset_id: asset, entity_cap_id: Some(cap), ..Default::default() })
     })?;
 
-    // CANCELLED — create, entity cancels before any vouch.
+    // CANCELLED — create (multi-tranche), entity cancels before any vouch.
     s.ensure(&mut st, "cancelled", |s| {
-        let (asset, cap) = s.create_asset(FAR_FUNDING_MS, FAR_TRANCHE_MS)?;
+        let (asset, cap) = s.create_asset_multi(1, FAR_FUNDING_MS, 3_600_000)?;
         s.exec(&[
             "--move-call".into(),
             format!("{}::asset::cancel_unvouched_by_entity", s.gally),
@@ -411,9 +515,9 @@ pub fn seed_lifecycle(client: &SuiClient, cfg: &Config) -> Result<()> {
         Ok(LifecycleAsset { asset_id: asset, entity_cap_id: Some(cap), ..Default::default() })
     })?;
 
-    // FUNDING — create + vouch, leave raised = 0.
+    // FUNDING — create (multi-tranche) + vouch, leave raised = 0.
     s.ensure(&mut st, "funding", |s| {
-        let (asset, cap) = s.create_asset(FAR_FUNDING_MS, FAR_TRANCHE_MS)?;
+        let (asset, cap) = s.create_asset_multi(2, FAR_FUNDING_MS, 3_600_000)?;
         s.vouch(&asset, &pool, &vcap)?;
         Ok(LifecycleAsset { asset_id: asset, entity_cap_id: Some(cap), ..Default::default() })
     })?;
@@ -423,7 +527,7 @@ pub fn seed_lifecycle(client: &SuiClient, cfg: &Config) -> Result<()> {
         let tok = if st.lifecycle.contains_key("executing") { None } else { Some(s.next_token(&mut st)?) };
         s.ensure(&mut st, "executing", |s| {
             let tok = tok.unwrap();
-            let (asset, cap) = s.create_asset(FAR_FUNDING_MS, FAR_TRANCHE_MS)?;
+            let (asset, cap) = s.create_asset(3, FAR_FUNDING_MS, FAR_TRANCHE_MS)?;
             s.vouch(&asset, &pool, &vcap)?;
             s.fund_full(&asset)?;
             let acc = s.finalize(&asset, &tok)?;
@@ -436,7 +540,7 @@ pub fn seed_lifecycle(client: &SuiClient, cfg: &Config) -> Result<()> {
         let tok = if st.lifecycle.contains_key("operational") { None } else { Some(s.next_token(&mut st)?) };
         s.ensure(&mut st, "operational", |s| {
             let tok = tok.unwrap();
-            let (asset, cap) = s.create_asset(FAR_FUNDING_MS, FAR_TRANCHE_MS)?;
+            let (asset, cap) = s.create_asset(4, FAR_FUNDING_MS, FAR_TRANCHE_MS)?;
             s.vouch(&asset, &pool, &vcap)?;
             s.fund_full(&asset)?;
             let acc = s.finalize(&asset, &tok)?;
@@ -451,7 +555,7 @@ pub fn seed_lifecycle(client: &SuiClient, cfg: &Config) -> Result<()> {
         let tok = if st.lifecycle.contains_key("closed") { None } else { Some(s.next_token(&mut st)?) };
         s.ensure(&mut st, "closed", |s| {
             let tok = tok.unwrap();
-            let (asset, cap) = s.create_asset(FAR_FUNDING_MS, FAR_TRANCHE_MS)?;
+            let (asset, cap) = s.create_asset(5, FAR_FUNDING_MS, FAR_TRANCHE_MS)?;
             s.vouch(&asset, &pool, &vcap)?;
             s.fund_full(&asset)?;
             let acc = s.finalize(&asset, &tok)?;
@@ -469,10 +573,37 @@ pub fn seed_lifecycle(client: &SuiClient, cfg: &Config) -> Result<()> {
         })?;
     }
 
+    // CLOSED (term) — SIM-M6: a create_term_asset driven to CLOSED **reason 1** via
+    // close_at_return_target (not the admin wind-down above). A small goal lets one revenue deposit
+    // push lifetime_investor_revenue past the return target.
+    {
+        let tok = if st.lifecycle.contains_key("closed_term") { None } else { Some(s.next_token(&mut st)?) };
+        s.ensure(&mut st, "closed_term", |s| {
+            let tok = tok.unwrap();
+            let goal = TERM_GOAL;
+            let ord = crate::catalog::first_term_ordinal(); // catalog's term project (Trade Finance)
+            let (asset, cap) = s.create_term_asset(ord, goal, FAR_FUNDING_MS, FAR_TRANCHE_MS)?;
+            s.vouch(&asset, &pool, &vcap)?;
+            s.fund_term(&asset, goal)?;
+            let acc = s.finalize(&asset, &tok)?;
+            s.release_one_tranche(&asset, &cap, &pool, &vcap)?; // → OPERATIONAL
+            // Deposit revenue large enough that lifetime_investor_revenue ≥ return_target (goal×1.15).
+            s.deposit_revenue_amount(&asset, &acc, &tok.type_tag(), goal * 4)?;
+            s.exec(&[
+                "--move-call".into(),
+                format!("{}::asset::close_at_return_target<{}>", s.gally, tok.type_tag()),
+                format!("@{asset}"),
+                format!("@{acc}"),
+                format!("@{}", s.config_id),
+            ])?; // → CLOSED (reason 1)
+            Ok(LifecycleAsset { asset_id: asset, entity_cap_id: Some(cap), accumulator_id: Some(acc), token_type: Some(tok.type_tag()) })
+        })?;
+    }
+
     // FAILED — create with a short funding window, vouch, wait it out, abort.
     s.ensure(&mut st, "failed", |s| {
         let fd = now_ms() + FAILED_WINDOW_MS;
-        let (asset, cap) = s.create_asset(fd, fd + 4_000)?;
+        let (asset, cap) = s.create_asset(6, fd, fd + 4_000)?;
         s.vouch(&asset, &pool, &vcap)?;
         wait_until(fd, "FAILED funding deadline");
         s.exec(&[
@@ -494,7 +625,7 @@ pub fn seed_lifecycle(client: &SuiClient, cfg: &Config) -> Result<()> {
             let base = now_ms();
             let fd = base + COMPENSATING_FUND_MS;
             let td = base + COMPENSATING_TRANCHE_MS;
-            let (asset, cap) = s.create_asset(fd, td)?;
+            let (asset, cap) = s.create_asset(7, fd, td)?;
             s.vouch(&asset, &pool, &vcap)?;
             s.fund_full(&asset)?;
             let acc = s.finalize(&asset, &tok)?; // EXECUTING (before fd)
@@ -530,10 +661,17 @@ mod tests {
 
     #[test]
     fn test_lifecycle_plan_covers_all_states() {
-        // every [CORE] §4 state byte 0..=7 appears exactly once in the plan
-        let mut bytes: Vec<u8> = LIFECYCLE_PLAN.iter().map(|(_, b)| *b).collect();
-        bytes.sort();
-        assert_eq!(bytes, (0u8..=7).collect::<Vec<_>>(), "plan must cover each lifecycle state once");
+        // Every [CORE] §4 state byte 0..=7 is covered. SIM-M6 adds a second CLOSED entry
+        // (`closed_term`, reason 1) so byte 7 appears twice — the rest exactly once.
+        let mut distinct: Vec<u8> = LIFECYCLE_PLAN.iter().map(|(_, b)| *b).collect();
+        distinct.sort();
+        distinct.dedup();
+        assert_eq!(distinct, (0u8..=7).collect::<Vec<_>>(), "plan must cover each lifecycle state");
+        assert_eq!(
+            LIFECYCLE_PLAN.iter().filter(|(_, b)| *b == 7).count(),
+            2,
+            "two CLOSED assets: admin wind-down (reason 3) + term return-target (reason 1)"
+        );
         // finalized states are a subset of the plan
         for s in FINALIZED_STATES {
             assert!(LIFECYCLE_PLAN.iter().any(|(k, _)| *k == s), "{s} missing from plan");
@@ -561,8 +699,9 @@ mod tests {
             treasury_cap_id: format!("0xcap{n}"),
             metadata_id: format!("0xmeta{n}"),
         };
+        // SIM-M6: 5 finalized states now (added closed_term) → the pool must hold ≥5.
         let mut st = SimState {
-            entity_tokens: vec![mk(1), mk(2), mk(3), mk(4)],
+            entity_tokens: vec![mk(1), mk(2), mk(3), mk(4), mk(5)],
             ..Default::default()
         };
         // one finalize per finalized state, each consuming a DISTINCT pooled T

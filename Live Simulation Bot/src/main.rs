@@ -8,6 +8,7 @@
 
 mod action;
 mod activity;
+mod catalog;
 mod cli;
 mod config;
 mod daemon;
@@ -20,6 +21,7 @@ mod reseed;
 mod rng;
 mod seed;
 mod sim_state;
+mod walrus;
 mod sui_client;
 
 use anyhow::{Context, Result};
