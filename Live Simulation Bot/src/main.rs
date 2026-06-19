@@ -25,11 +25,29 @@ mod walrus;
 mod sui_client;
 
 use anyhow::{Context, Result};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, warn};
 
+/// SIM-M5 graceful shutdown: a shared flag flipped by a Ctrl-C (SIGINT) handler. The long-running
+/// loops poll it and exit cleanly — finishing the current tick and flushing `sim_state.json` — so a
+/// soak can be stopped without orphaned work or a corrupt cache (Pass Criteria 3).
+fn install_shutdown() -> Arc<AtomicBool> {
+    let flag = Arc::new(AtomicBool::new(false));
+    let handler_flag = flag.clone();
+    if let Err(e) = ctrlc::set_handler(move || {
+        handler_flag.store(true, Ordering::Relaxed);
+        eprintln!("\n[sim] shutdown requested — finishing the current tick and flushing state…");
+    }) {
+        warn!(error = %e, "could not install Ctrl-C handler — shutdown will be abrupt");
+    }
+    flag
+}
+
 fn main() -> Result<()> {
     init_tracing();
+    let shutdown = install_shutdown();
 
     let cli = cli::Cli::parse(std::env::args().skip(1))?;
     let cfg = config::Config::load(&cli).context("loading configuration")?;
@@ -154,15 +172,19 @@ fn main() -> Result<()> {
     // --daemon: SIM-M4 activity generator — RESEED + one weighted-random action
     // per tick (the continuous traffic loop). Requires a seeded genesis.
     if cli.daemon {
-        daemon::run(&client, &gasf, &cfg, &users, cli.cycles)
+        daemon::run(&client, &gasf, &cfg, &users, cli.cycles, &shutdown)
             .context("running the activity daemon")?;
         return Ok(());
     }
 
-    // TICK loop — RESEED + SLEEP only (SIM-M2).
+    // TICK loop — RESEED + SLEEP only (SIM-M2). Honors the same graceful-shutdown flag.
     let tick = Duration::from_millis(cfg.tick_interval_ms);
     info!(once = cli.once, tick_ms = cfg.tick_interval_ms, "entering re-seed tick loop");
     loop {
+        if shutdown.load(Ordering::Relaxed) {
+            info!("shutdown signal received — exiting re-seed loop");
+            break;
+        }
         if let Err(e) = reseed::tick(&client, &gasf, &cfg) {
             warn!(error = %e, "re-seed tick failed (continuing next tick)");
         }

@@ -263,6 +263,47 @@ mod tests {
         );
     }
 
+    /// SIM-M5: the shipped `config.toml.example` must declare every key the bot reads — so an
+    /// operator who fills the template has nothing missing. Embedded at compile time; parsed with
+    /// the bot's own parser and checked against the full key set.
+    #[test]
+    fn test_config_template_complete() {
+        let template = include_str!("../config.toml.example");
+        let mut map = BTreeMap::new();
+        parse_kv_into(template, &mut map);
+
+        // Every key the bot reads (connection + pacing + paths + operator/IDs). If `from_map` learns
+        // a new key, add it here and to the template.
+        const REQUIRED: &[&str] = &[
+            "RPC_URL",
+            "FAUCET_URL",
+            "PACE",
+            "TICK_INTERVAL_MS",
+            "RESEED_AMOUNT",
+            "USER_COUNT",
+            "GAS_THRESHOLD_MIST",
+            "USER_KEYS_PATH",
+            "SIM_STATE_PATH",
+            "OPERATOR_KEY",
+            "GALLY_PACKAGE_ID",
+            "PROTOCOL_CONFIG_ID",
+            "ADMIN_CAP_ID",
+            "USDC_TREASURY_CAP_ID",
+            "FAUCET_PACKAGE_ID",
+            "MOCK_FAUCET_ID",
+        ];
+        for key in REQUIRED {
+            assert!(
+                map.contains_key(*key),
+                "config.toml.example is missing the `{key}` key"
+            );
+        }
+        // The connection defaults in the template must actually parse into a Config.
+        let cfg = Config::from_map(&map, None, None).expect("template parses into a Config");
+        assert_eq!(cfg.rpc_url, "http://127.0.0.1:9000");
+        assert_eq!(cfg.user_count, 12);
+    }
+
     #[test]
     fn test_kv_file_parse() {
         let mut map = BTreeMap::new();

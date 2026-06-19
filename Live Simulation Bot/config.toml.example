@@ -1,0 +1,45 @@
+# Gally Root Simulator — operator config template (SIM-M5).
+# Copy to `config.toml` (or point SIM_CONFIG at it) and fill the post-publish IDs.
+# Format: `KEY = "value"` lines; full-line `#` comments only (no trailing inline comments —
+# the parser does not strip them); env vars override these (env wins).
+# `run_stack.sh` writes the post-publish IDs in for you — see "Live Simulation Bot/README.md".
+
+# --- connection (defaults shown; safe to leave as-is for a local tunnel) ---
+# Sui JSON-RPC (local node, or an SSH tunnel to a remote one):
+RPC_URL = "http://127.0.0.1:9000"
+# SUI gas faucet (operator + user gas top-ups):
+FAUCET_URL = "http://127.0.0.1:9123/gas"
+
+# --- pacing / traffic (CLI --pace / --tick-ms override these) ---
+# real-world | accelerated (accelerated shortens windows AND enables disputes):
+PACE = "real-world"
+# ms between daemon ticks:
+TICK_INTERVAL_MS = "30000"
+# μUSDC minted into the faucet per re-seed (500k USDC):
+RESEED_AMOUNT = "500000000000"
+# fake-user cohort size (holder distribution):
+USER_COUNT = "12"
+# top up an address from the SUI faucet below this (1 SUI):
+GAS_THRESHOLD_MIST = "1000000000"
+
+# --- local paths ---
+# persisted cohort keypairs (stable across restarts):
+USER_KEYS_PATH = "./sim_users.json"
+# seeded-object id cache (idempotency; entity-token pool):
+SIM_STATE_PATH = "./sim_state.json"
+
+# --- operator + post-publish IDs (REQUIRED for live re-seed / seed / daemon) ---
+# OPERATOR_KEY = base64(flag||privkey) = the single entry in ~/.sui/sui_config/sui.keystore:
+OPERATOR_KEY = "PASTE_OPERATOR_KEY"
+# published gally_core package:
+GALLY_PACKAGE_ID = "0xPASTE"
+# shared ProtocolConfig (created by gally_core init):
+PROTOCOL_CONFIG_ID = "0xPASTE"
+# AdminCap (owned by the operator; time-warp + wind-down):
+ADMIN_CAP_ID = "0xPASTE"
+# TreasuryCap<USDC> (sim Mock-USDC; local-only, R1):
+USDC_TREASURY_CAP_ID = "0xPASTE"
+# published gally_mock_faucet package:
+FAUCET_PACKAGE_ID = "0xPASTE"
+# shared MockFaucet (the USDC reservoir):
+MOCK_FAUCET_ID = "0xPASTE"
