@@ -1,116 +1,116 @@
 {
-  "validator_pool_id": "0xf01e3e8e3acef00404e7497bac3cac160fb3a5e3fce8fa79e737bda6b6e09f07",
-  "validator_cap_id": "0x4db5ce27cda25217176fc712b92f64fd900b7d8d198229c73322c0d6d18c0744",
-  "asset_id": "0x26550256e4c85c1b7ad7c47d7c0f53403d2c1b25794901a2b95d86ee8a8f0c91",
-  "entity_cap_id": "0x40a6e9bf0fbe2654e2a7b3098d6f967cdbac7ecac71e08464c92d6b59525a2a2",
+  "validator_pool_id": null,
+  "validator_cap_id": null,
+  "asset_id": null,
+  "entity_cap_id": null,
   "time_warped": true,
   "validator_pools": [
-    "0xd6bd911177e4ec91b27a871afa80ed0f5d88301871d6d231ec9b47758bc1a2c6",
-    "0x239d4a3a4457fbb25edd18b3e9de636988157c146e8ab8486c90cfd01f99f1a3",
-    "0xd205a20d859fd81b1201b9e24c66d3d9e2b0ffff3e5f0aabc6b79260b0cc86e1"
+    "0xd7df3fe39b5515b04bae193d6ce779c24aa0e7890d910aba2697649538ab846f",
+    "0xdd19b4290724661641167f30958f85429b0caefafdcd8880160d29e2cdc7d6db",
+    "0xcd47144cc554ccbcb1849c1f59bcf25023340ff1ab280e16f9028193cd7f8613"
   ],
   "validator_caps": [
-    "0x512d32725302f21db6271035162bcfb1708b0c0a82ac957e877ab4907991c9c2",
-    "0x0ab27d0ae98bf211510bb8156eac7741196e6c8fcf6803b2221ad977a472cd40",
-    "0x21c20e2ab8747beab688ccf4a14bc6373b8b729ae833d0e22dee182075d8ed31"
+    "0x8dd2b7b65a7fa43582d2d9692f80d92a4e0470e1b74eaf515066aa3a096d7a30",
+    "0x622bb870dab6eec03c2be19c56d7c5bd3b79b2389cb0b1ae4849ba6003070038",
+    "0x9a0f592c52a4f5a7969d2218994d62c81c606816d033e83bbd3f660a25f3969b"
   ],
   "entity_tokens": [
     {
-      "package_id": "0x886edaa6702cde1cc59133368ce907c713695cf2845545e23c9d65703db65f84",
+      "package_id": "0x20b31d7ddce8fe21b1b34fac58cd65cdc8508b2a17af51992d5b4ff4e76f2647",
       "module": "gally_entity_1",
       "witness": "GALLY_ENTITY_1",
-      "treasury_cap_id": "0xc9992dfb5f6d11b62c5e434ee4069f1cbe702cef7fab0c371a6f6a1b93b833ca",
-      "metadata_id": "0x16c0078c962734edd54c9c6f275df30552840a89fccc19266014f34ed0e64823"
+      "treasury_cap_id": "0x0108ffbd80dcf482f66afdb084c6b2e00988c4673107ceb52e9b68df24df9571",
+      "metadata_id": "0xf82dd012d95c585af28f8c1cdca8eeba99dda9ccbcedf3060efda2c9b76a0431"
     },
     {
-      "package_id": "0xb84a805869760caa84033aa9eba7b3bdfe6f850f6b8850d9031fdb14dbbbd5e3",
+      "package_id": "0xb3c70b4b1feedf8bde85028e1ea7c730970be5e0340809b70303763db1f0eea5",
       "module": "gally_entity_2",
       "witness": "GALLY_ENTITY_2",
-      "treasury_cap_id": "0x0239b802b0649ce3869b8000a2d5b48aa76ffb71d14b887e7ef3d1eb09ac3644",
-      "metadata_id": "0xd6e8525d9b08409948643eeff3408d9b2be86a6d8797a33fc250c84937d85b2b"
+      "treasury_cap_id": "0xa787d58f441226d0c3204a66fd372ae1a6ecfacc5fdf14ec80b764adcc4dea3c",
+      "metadata_id": "0xeb0a727eff5bb7511d4b1adeca6c63ca276f814a4bdfc6127ad71137617ae390"
     },
     {
-      "package_id": "0x54802fc583f1f15016a807b7f06d040db028165b7215bc8b35f83a26f85220cd",
+      "package_id": "0x9fd5884b2b4ead36a0f5e086a02cd031d9ab62cadba633cc02a6c1084a6bf3a4",
       "module": "gally_entity_3",
       "witness": "GALLY_ENTITY_3",
-      "treasury_cap_id": "0x72793a0787cccf057769f0f3db7bdfbed954ca55f41df8dcf966bfbcbfa14688",
-      "metadata_id": "0x0ba04ddaf8bca6ee53f905d5b70b58c8aa97a7a2b24a9fb6364d75712d3382a1"
+      "treasury_cap_id": "0xd84a63ec498973730d62f0841594ed61eb6dd5d2ac2765770a8a9f2d89212e2b",
+      "metadata_id": "0x4a0ae5c23b87bc703fa3e3e45ae558d7998b9fc368a3e9b05e77ca20a81f5318"
     },
     {
-      "package_id": "0xdbc15ce49f18d1f95dde5201b5753cfd62f3cafcefc3b1a4afeb4644a06fd0b2",
+      "package_id": "0xe808d2f943eb06a7f252595c18aeb65bdd2ea4efc835b61d5beda325c6735db4",
       "module": "gally_entity_4",
       "witness": "GALLY_ENTITY_4",
-      "treasury_cap_id": "0xd3a38cdfc79fccca9f972a52e8cd7d766237b4452c6d53fb4c2bca94063a870d",
-      "metadata_id": "0xf5705d5cfa03cec2eb94100dc476293cd25f82757a08bc0c1006a1e20a458bbb"
+      "treasury_cap_id": "0x4613b2dda9841245c3ada10e57143831ee9fdbc0a950af6c530f4810093be830",
+      "metadata_id": "0xbbcff9c8d9f2166319ab262d713180b1d8c41e303cc564519129f74dd7ba3101"
     },
     {
-      "package_id": "0x7adbc04a92796705680810d8de92ba679d96c5de68d3317479fd3de8c5912305",
+      "package_id": "0x99b1e44af370c468765c6bb709eced774f5b716e6a783de2d16844481357b49f",
       "module": "gally_entity_5",
       "witness": "GALLY_ENTITY_5",
-      "treasury_cap_id": "0x27d275e84f172b4d4b54a65ba21e84045ee9b18d13cde0c2032075691840ff84",
-      "metadata_id": "0x10a2eee938e0f5d083ecbc2226d9a19b06f5b098000818b9df5aa9a013bc440e"
+      "treasury_cap_id": "0x0e6ec7d64b61d1a92ac52c98f8c744a5aeff5720af957853302731e1bbc10409",
+      "metadata_id": "0x1aaec36172624fb12134e4fbba6fe274ca2b171ece6b9624a9fd394773ed0d19"
     },
     {
-      "package_id": "0x0b5b656d32d29f320be12c375132e89f28acbfdfe05958987b7f4882211c4555",
+      "package_id": "0xf9c94ca4f501b6fb5a6973516e3a8c50dc98cb794eb2ed5eccad75d8dcd484c8",
       "module": "gally_entity_6",
       "witness": "GALLY_ENTITY_6",
-      "treasury_cap_id": "0x98221f73655122adb630d6bfbc7e967a39b4c997484fc04a2a64c40015f1084b",
-      "metadata_id": "0x3f6fc0841ee96a0c602563461e121b06d1a0e14198abafca47ce07f5e25ded46"
+      "treasury_cap_id": "0x716f908633d54d3476e1990b9d2666969ee855b7de68c68c91d5dff2a54208ff",
+      "metadata_id": "0xc317f62449cb345a64b7a181b5df299cf9ca6d794021ace835e09c64d83abb1d"
     }
   ],
-  "entity_tokens_used": 6,
+  "entity_tokens_used": 5,
   "lifecycle": {
     "cancelled": {
-      "asset_id": "0x76d4049a23ce92168e08fbc2e31624189c5fca70f476886f0a7d180d4aa05001",
-      "entity_cap_id": "0x64409cf2a35535aef5a85903a63e6a8b463dc78f8bccfd42b248bf32617f6e9e",
+      "asset_id": "0xf73058cf3f32c8b31ae3baaf34bf610898498307b1b13e8eb29edd147f71cf76",
+      "entity_cap_id": "0xc6026b8ea871ced637e0e5c00199ddc9b0023d01ce21ee6cd1c7298888bc3245",
       "accumulator_id": null,
       "token_type": null
     },
     "closed": {
-      "asset_id": "0x351c6c28dbc96578c6fd2ca016b4e941c2fe1e05830e9b404032b990009f5caa",
-      "entity_cap_id": "0x70787587c3080c0d59727b70db467dcba21f5e00a1035780f4ce8e1f77714955",
-      "accumulator_id": "0xc7d9f99155c41dfb0003aa834f08cc4d229d6324a3fba2851ae83c2cef79d088",
-      "token_type": "0x54802fc583f1f15016a807b7f06d040db028165b7215bc8b35f83a26f85220cd::gally_entity_3::GALLY_ENTITY_3"
+      "asset_id": "0xa97c009b6da00901c8f19d9e0d9f8745b14113fdc7506ae243abde5e9944245b",
+      "entity_cap_id": "0x99d67896483cd69c2d1d9e93f4f4f274c5439798569e48b03c650f0aaff9a636",
+      "accumulator_id": "0xa18eeb1c91a5a831c59b5b65ecf1042e24e1a7ed27c7fa4542fae5894817f20a",
+      "token_type": "0x9fd5884b2b4ead36a0f5e086a02cd031d9ab62cadba633cc02a6c1084a6bf3a4::gally_entity_3::GALLY_ENTITY_3"
     },
     "closed_term": {
-      "asset_id": "0xc96a820ecd5e4b6dadde9f462c3617d9550f4ad336d2b810bffae568fb11bb8b",
-      "entity_cap_id": "0x87d91b4fc25a94d3e5a71f59b369113572975598de40bea0c63dd5bd253bfc71",
-      "accumulator_id": "0xc825566357a6f19726fea03804e4e555e0b77c52269b0be010837b65bc8b0cbc",
-      "token_type": "0xdbc15ce49f18d1f95dde5201b5753cfd62f3cafcefc3b1a4afeb4644a06fd0b2::gally_entity_4::GALLY_ENTITY_4"
+      "asset_id": "0x0ed71d9df8240298ecddcd8377a24f88c67d0219c039bc6718c18877ef9037ce",
+      "entity_cap_id": "0x62ca1802d5050749eea27149075fae9883778a6b86c5903f002cb52e2be971a1",
+      "accumulator_id": "0xa9b75738ceb8aad80e12bc87b974d36a505318f0a7c37adf4c96ebe989db88c1",
+      "token_type": "0xe808d2f943eb06a7f252595c18aeb65bdd2ea4efc835b61d5beda325c6735db4::gally_entity_4::GALLY_ENTITY_4"
     },
     "compensating": {
-      "asset_id": "0x2a5cc6f39b84ad29711e156833552d2ebbb88a794b4663d6f6a2c9c1936797f9",
-      "entity_cap_id": "0x11b2db8ce0bd8086e8d31530b1750df1eae890c72816b60734e53f4ca32a6319",
-      "accumulator_id": "0xf893bc73f0de2b45f81f0d1e84568fc218788ae181ddd4c39fb651dae7fc3b2c",
-      "token_type": "0x7adbc04a92796705680810d8de92ba679d96c5de68d3317479fd3de8c5912305::gally_entity_5::GALLY_ENTITY_5"
+      "asset_id": "0x4c388b8b242746d08c755491ab57baa700766b8d961f5400bc1eeaf522bceed7",
+      "entity_cap_id": "0x5c388bf389310ff37c52f3f3aa117b16c930175ce6959ef605254c9342f51e18",
+      "accumulator_id": "0x51c6e3f9a7a1277dcb1e6ab1f01cea1906c600504cac1d2fa788a8a17bffc1b5",
+      "token_type": "0x99b1e44af370c468765c6bb709eced774f5b716e6a783de2d16844481357b49f::gally_entity_5::GALLY_ENTITY_5"
     },
     "executing": {
-      "asset_id": "0xd73ed31a73dfe72572829ac8ad176147346d8a45530bfdc917e938d89cecab0e",
-      "entity_cap_id": "0x7e452c950bf72f99f7579e7a2f1e812a0d5e28f899394a82c9a0db7a59cc26b1",
-      "accumulator_id": "0xf0a99d5c68eca613a4ed442b502e56fc440f610d8239ae561ce0cc78c0e3f226",
-      "token_type": "0x886edaa6702cde1cc59133368ce907c713695cf2845545e23c9d65703db65f84::gally_entity_1::GALLY_ENTITY_1"
+      "asset_id": "0x9ca4b59b7dc13224a63b2d4c4b3b0314e0c48ef8994b679765184c7237698a65",
+      "entity_cap_id": "0x263c2292152f3b5355a8fdfc67a67285dade290f4fbf98a9866bb043a5bf3bb6",
+      "accumulator_id": "0x3f1b66c17e6dbe8d22e74ad035ee3f11cef66e6b2e14e4cda3b15541b706c15f",
+      "token_type": "0x20b31d7ddce8fe21b1b34fac58cd65cdc8508b2a17af51992d5b4ff4e76f2647::gally_entity_1::GALLY_ENTITY_1"
     },
     "failed": {
-      "asset_id": "0xaff2f094d8b4475f0a29c56c0c70e019a8ff231156a2cc69537697b18bfcf38a",
-      "entity_cap_id": "0x90edaab855590278221b835c4dd989026c60e828f730f320d3c85f81439bf06c",
+      "asset_id": "0x6e6d5e2b0562b13d45855eee6c2793a2c4532f2507e58c07efe8730ab30bcd15",
+      "entity_cap_id": "0x72f5c73b9ad10a9d03b0d3698a42275ce7ebf7662c841f76428097558b33a211",
       "accumulator_id": null,
       "token_type": null
     },
     "funding": {
-      "asset_id": "0x292bb04c8ec5ac79db72a0afb2583f49c0f8dab390e0fb0cc3c3cd818a3380c8",
-      "entity_cap_id": "0x477864182634913245b0e328660ea0184ab757accb0c2cd29a43cee42c747033",
+      "asset_id": "0x650ae63806bed9b078601795fc232805ad5f07653b84a41a7d216df72179d659",
+      "entity_cap_id": "0xe1bfcc88224c73a728f06a5d210219be092a526f5bb0f292a1a6b9dd8af87102",
       "accumulator_id": null,
       "token_type": null
     },
     "operational": {
-      "asset_id": "0xc02048ef2e8e0b1ef901605865f176c0c168d4853f65b30271dc537e5bab441b",
-      "entity_cap_id": "0x49f9c4ad2a00337ebbeb2a0b5d201abd64083829d8223cb37b039e07752d3566",
-      "accumulator_id": "0x8408a128e7ced93ee343eeae073e86078b1d989cd1f766b140813f69d937304d",
-      "token_type": "0xb84a805869760caa84033aa9eba7b3bdfe6f850f6b8850d9031fdb14dbbbd5e3::gally_entity_2::GALLY_ENTITY_2"
+      "asset_id": "0x886db9ab6e893e80f93a2fff4e6fdcf19cbfff00efaf94c1b60590c58ec34ccd",
+      "entity_cap_id": "0xd411aedb727378994a33fde49ecfd629ed2743d9e7d71daae2c87a1c3587ee54",
+      "accumulator_id": "0x15e34d8c4882cae920e17b217507f12a222af5fdc986fb4bb408987faf0b8ce5",
+      "token_type": "0xb3c70b4b1feedf8bde85028e1ea7c730970be5e0340809b70303763db1f0eea5::gally_entity_2::GALLY_ENTITY_2"
     },
     "pending_vouch": {
-      "asset_id": "0xed3a8cc8eb61151c2e71f6af628c15e17e657dca15d8a6fb0a3bb330446f2155",
-      "entity_cap_id": "0xb35c34c68c0f8bd2bb12ecda100c05521af405802e8adde005c6205d5b0d4788",
+      "asset_id": "0xe1b1d4842da2e8c484b0dd4ecedab48ab6d7171464cb3d5248c9afa36479f316",
+      "entity_cap_id": "0x5ab3196fe898286da9d8ad0c031324f0a049abf1d8075f8c0900d0343609612f",
       "accumulator_id": null,
       "token_type": null
     }
