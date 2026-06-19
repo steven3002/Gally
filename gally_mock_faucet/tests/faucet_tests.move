@@ -5,7 +5,7 @@
 #[test_only]
 module gally_mock_faucet::faucet_tests;
 
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use gally_mock_faucet::faucet::{Self, MockFaucet, FaucetOperatorCap};
 use sui::coin;
 use sui::test_scenario as ts;

@@ -15,7 +15,7 @@ use gally_core::dispute_token::{Self, DISPUTE_TOKEN};
 use gally_core::dispute::{Self, Dispute};
 use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share::GallyShare;
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use gally_core::validator::{Self, ValidatorCap, ValidatorPool};
 use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};

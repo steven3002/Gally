@@ -7,7 +7,7 @@
 module gally_core::validator_tests;
 
 use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use gally_core::validator::{Self, ValidatorCap, ValidatorPool};
 use sui::clock;
 use sui::coin;

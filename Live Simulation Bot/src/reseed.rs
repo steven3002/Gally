@@ -58,7 +58,7 @@ pub fn tick(client: &SuiClient, _gas: &GasFaucet, cfg: &Config) -> Result<()> {
         "0x2",
         "coin",
         "mint_and_transfer",
-        vec![format!("{}::usdc::USDC", op.gally_package_id)],
+        vec![format!("{}::usdc::USDC", op.usdc_package_id)],
         vec![
             json!(op.usdc_treasury_cap_id),
             json!(amount.to_string()),

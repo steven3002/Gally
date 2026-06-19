@@ -15,7 +15,7 @@ module gally_core::accumulator;
 
 use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share::{Self, GallyShare};
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::coin::{Self, Coin, TreasuryCap};

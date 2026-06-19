@@ -14,7 +14,7 @@ use gally_core::asset_token::{Self, ASSET_TOKEN};
 use gally_core::bad_decimals_token::{Self, BAD_DECIMALS_TOKEN};
 use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share;
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use gally_core::validator::{Self, ValidatorCap, ValidatorPool};
 use sui::clock::{Self, Clock};
 use sui::coin;

@@ -21,7 +21,7 @@ module gally_core::asset;
 use gally_core::accumulator::{Self, GlobalYieldAccumulator};
 use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share::{Self, GallyShare};
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use gally_core::validator::{Self, ValidatorCap, ValidatorPool};
 use sui::balance::Balance;
 use sui::clock::Clock;

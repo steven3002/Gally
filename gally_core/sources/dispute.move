@@ -20,7 +20,7 @@ module gally_core::dispute;
 use gally_core::accumulator::{Self, GlobalYieldAccumulator};
 use gally_core::asset::{Self, Asset, WalrusRef};
 use gally_core::protocol::{Self, ProtocolConfig};
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use gally_core::validator::{Self, ValidatorCap, ValidatorPool};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;

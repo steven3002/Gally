@@ -37,10 +37,11 @@ catalog). **Errors:** `EAlreadyClaimed (0)`, `EReservoirEmpty (1)`,
 
 ## Dependency on Mock USDC (SIM-D1)
 
-This package depends on `gally_core` solely to name `gally_core::usdc::USDC`.
-On a live node that coin must be mintable, so `gally_core/sources/usdc.move`
-runs under its **SIM-D1 profile**: `init` creates the currency (6 decimals),
-freezes the metadata, and hands the `TreasuryCap<USDC>` to the publisher.
+This package depends on the standalone `usdc` package solely to name the canonical
+settlement coin type `usdc::usdc::USDC` (Circle's published USDC on mainnet, the
+locally-mintable mock on localnet/sim). On a live node that coin must be mintable, so
+`usdc/sources/usdc.move` runs under its **SIM-D1 profile**: `init` creates the currency
+(6 decimals), freezes the metadata, and hands the `TreasuryCap<USDC>` to the publisher.
 
 > ⚠️ The SIM-D1 profile is **not** the production Circle-USDC swap. See
 > `gally_core/sources/usdc.move` header and `guard_rails.md` R1.
