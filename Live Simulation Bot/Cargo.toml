@@ -27,3 +27,4 @@ sha2 = "0.10"                                                # SIM-M6: real sha2
 base64 = "0.22"
 hex = "0.4"
 getrandom = "0.2"                                            # OS entropy for keygen
+ctrlc = "3"                                                  # SIM-M5: graceful Ctrl-C shutdown (flush sim_state, no orphans)

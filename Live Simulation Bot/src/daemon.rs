@@ -119,6 +119,65 @@ enum Outcome {
     Skipped(String),
 }
 
+/// What one tick resolved to, after absorbing any error (SIM-M5 hardening). `Failed` means a tx
+/// aborted or an RPC errored — it is **logged and contained**, never propagated, so the soak loop
+/// keeps running (Pass Criteria 2/3).
+#[derive(Debug, PartialEq, Eq)]
+pub enum TickStatus {
+    Acted,
+    Skipped,
+    Failed,
+}
+
+/// Collapse one tick's action `Result` into a [`TickStatus`] + the events to record, logging it.
+/// **Never returns `Err`** — a single failed RPC/tx must not kill the loop (SIM-M5 Pass Criteria 2).
+/// Pure enough to unit-test the error-containment contract without a node.
+fn absorb_tick(
+    result: Result<Outcome>,
+    tick: u64,
+    action: &str,
+    weight: u32,
+) -> (TickStatus, Vec<String>) {
+    match result {
+        Ok(Outcome::Acted { detail, events }) => {
+            info!(tick, action, weight, events = %fmt_events(&events), "{detail}");
+            (TickStatus::Acted, events)
+        }
+        Ok(Outcome::Skipped(why)) => {
+            info!(tick, action, weight, "skipped: {why}");
+            (TickStatus::Skipped, Vec::new())
+        }
+        Err(e) => {
+            // The chain moved under us / a precondition no longer holds / RPC blip: log + continue.
+            warn!(tick, action, error = %e, "action failed — skipping (loop continues)");
+            (TickStatus::Failed, Vec::new())
+        }
+    }
+}
+
+/// Should the soak loop stop now? True on a shutdown signal (Ctrl-C, SIM-M5 graceful shutdown) or
+/// once the optional `cycles` bound is reached. Pure — unit-tested without a node.
+fn should_stop(shutdown: &std::sync::atomic::AtomicBool, cycles: Option<u64>, tick: u64) -> bool {
+    use std::sync::atomic::Ordering;
+    shutdown.load(Ordering::Relaxed) || cycles.is_some_and(|c| tick >= c)
+}
+
+/// Sleep up to `dur`, but wake early (within ~200 ms) if a shutdown is requested — so Ctrl-C during
+/// a long `TICK_INTERVAL_MS` responds promptly instead of blocking the whole interval.
+fn sleep_interruptible(dur: Duration, shutdown: &std::sync::atomic::AtomicBool) {
+    use std::sync::atomic::Ordering;
+    let step = Duration::from_millis(200);
+    let mut left = dur;
+    while left > Duration::ZERO {
+        if shutdown.load(Ordering::Relaxed) {
+            return;
+        }
+        let nap = left.min(step);
+        std::thread::sleep(nap);
+        left = left.saturating_sub(nap);
+    }
+}
+
 pub struct Daemon<'a> {
     client: &'a SuiClient,
     gasf: &'a GasFaucet,
@@ -155,6 +214,7 @@ pub fn run(
     cfg: &Config,
     users: &[Keypair],
     cycles: Option<u64>,
+    shutdown: &std::sync::atomic::AtomicBool,
 ) -> Result<()> {
     let op = cfg.operator().context("operator context for the activity daemon")?;
     let config_id = cfg
@@ -224,6 +284,12 @@ pub fn run(
     );
 
     loop {
+        // SIM-M5 graceful shutdown: stop before starting a new tick (Ctrl-C). The flush happens
+        // after the loop so `sim_state.json` is never left mid-write.
+        if shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+            info!(tick = d.tick, "shutdown signal received — stopping soak, flushing sim_state");
+            break;
+        }
         d.tick += 1;
 
         // 1. RESEED first (lazy) — keep the faucet fundable (§6).
@@ -235,28 +301,13 @@ pub fn run(
             d.ensure_all_gas();
         }
 
-        // 2. ACTIVITY — one weighted-random action.
+        // 2. ACTIVITY — one weighted-random action. `absorb_tick` contains any tx/RPC error so the
+        //    soak never dies on a single failure (Pass Criteria 2/3).
         let chosen = action::select(&mut d.rng);
         let w = action::weight(chosen);
-        match d.act(chosen) {
-            Ok(Outcome::Acted { detail, events }) => {
-                d.coverage.observe(&events);
-                info!(
-                    tick = d.tick,
-                    action = chosen.name(),
-                    weight = w,
-                    events = %fmt_events(&events),
-                    "{detail}"
-                );
-            }
-            Ok(Outcome::Skipped(why)) => {
-                info!(tick = d.tick, action = chosen.name(), weight = w, "skipped: {why}");
-            }
-            Err(e) => {
-                // A submitted tx aborted (the chain moved under us, a precondition
-                // no longer holds): log + continue, never panic (Pass Criteria 3).
-                warn!(tick = d.tick, action = chosen.name(), error = %e, "action failed — skipping");
-            }
+        let (status, events) = absorb_tick(d.act(chosen), d.tick, chosen.name(), w);
+        if status == TickStatus::Acted {
+            d.coverage.observe(&events);
         }
 
         // 3a. periodic asset-state census (shows the lifecycle distribution).
@@ -276,12 +327,16 @@ pub fn run(
             );
         }
 
-        if let Some(c) = cycles {
-            if d.tick >= c {
-                break;
-            }
+        if should_stop(shutdown, cycles, d.tick) {
+            break;
         }
-        std::thread::sleep(interval);
+        sleep_interruptible(interval, shutdown);
+    }
+
+    // SIM-M5: flush the cache on exit (graceful shutdown OR cycles done) so a restart resumes cleanly
+    // and `sim_state.json` is never corrupt (Pass Criteria 3).
+    if let Err(e) = d.sim.save(&cfg.sim_state_path) {
+        warn!(error = %e, "failed to flush sim_state on exit");
     }
 
     let missing = d.coverage.missing();
@@ -1403,5 +1458,67 @@ fn short(id: &str) -> String {
         format!("{}…", &id[..10])
     } else {
         id.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// SIM-M5: the soak loop stops promptly on a shutdown signal and the cache flush round-trips —
+    /// i.e. Ctrl-C exits cleanly without a corrupt `sim_state.json` (Pass Criteria 3).
+    #[test]
+    fn test_graceful_shutdown() {
+        let shutdown = AtomicBool::new(false);
+        // Running: not stopped while below the (optional) cycle bound and no signal.
+        assert!(!should_stop(&shutdown, None, 5));
+        assert!(!should_stop(&shutdown, Some(10), 9));
+        // Cycle bound reached stops it.
+        assert!(should_stop(&shutdown, Some(10), 10));
+        // A shutdown signal stops it regardless of cycles (the Ctrl-C path).
+        shutdown.store(true, Ordering::Relaxed);
+        assert!(should_stop(&shutdown, None, 1));
+        assert!(should_stop(&shutdown, Some(1_000_000), 1));
+
+        // The on-exit flush writes a re-loadable cache (no corruption).
+        let path = std::env::temp_dir()
+            .join(format!("gally_sim_state_test_{}.json", std::process::id()));
+        let p = path.to_str().unwrap();
+        let mut st = SimState::default();
+        st.entity_tokens_used = 4;
+        st.validator_pools = vec!["0xpool".into()];
+        st.save(p).expect("flush sim_state");
+        let reloaded = SimState::load(p);
+        assert_eq!(reloaded.entity_tokens_used, 4, "flushed cache round-trips");
+        assert_eq!(reloaded.validator_pools, vec!["0xpool".to_string()]);
+        let _ = std::fs::remove_file(p);
+    }
+
+    /// SIM-M5: a failed tx/RPC in one tick is absorbed (logged, not propagated) so the loop keeps
+    /// running (Pass Criteria 2) — `absorb_tick` never returns `Err` and reports `Failed`.
+    #[test]
+    fn test_tick_survives_tx_error() {
+        // An error becomes `Failed` with no events — the loop continues (no panic, no propagation).
+        let (status, events) =
+            absorb_tick(Err(anyhow!("simulated RPC/tx failure")), 7, "contribute", 10);
+        assert_eq!(status, TickStatus::Failed);
+        assert!(events.is_empty());
+
+        // A successful action is reported as `Acted` with its events (for coverage).
+        let (status, events) = absorb_tick(
+            Ok(Outcome::Acted { detail: "ok".into(), events: vec!["CapitalContributedEvent".into()] }),
+            8,
+            "contribute",
+            10,
+        );
+        assert_eq!(status, TickStatus::Acted);
+        assert_eq!(events, vec!["CapitalContributedEvent".to_string()]);
+
+        // A skip is reported as `Skipped`, no events.
+        let (status, events) =
+            absorb_tick(Ok(Outcome::Skipped("nothing to do".into())), 9, "wrap", 4);
+        assert_eq!(status, TickStatus::Skipped);
+        assert!(events.is_empty());
     }
 }
