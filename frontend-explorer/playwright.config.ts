@@ -27,7 +27,15 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        // Sandboxes without a Playwright-managed browser (e.g. ubuntu 26.04, where
+        // `playwright install` is unsupported) can point at a system Chromium via
+        // `PW_EXECUTABLE_PATH=/snap/bin/chromium`. Unset → default behaviour unchanged.
+        ...(process.env.PW_EXECUTABLE_PATH
+          ? { launchOptions: { executablePath: process.env.PW_EXECUTABLE_PATH, args: ["--no-sandbox", "--disable-setuid-sandbox"] } }
+          : {}),
+      },
     },
   ],
   webServer: {

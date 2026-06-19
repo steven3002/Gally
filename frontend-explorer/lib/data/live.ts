@@ -6,7 +6,7 @@
 // `Position` tier is NOT here (FE-M8b, wallet-RPC).
 
 import type { Asset, Category, Dispute, Holding, ObjectRef, ProtocolEvent, TxRow, Validator, WalrusDoc } from "@/lib/types";
-import type { AddressResult, CategoryStatDTO, DataSource, GovernanceResult, HealthResult, HoldersResult, ProtocolStatsDTO } from "./source";
+import type { AddressResult, CategoryStatDTO, DataSource, GovernanceResult, HealthResult, HoldersResult, ProtocolConfigDTO, ProtocolStatsDTO } from "./source";
 import type { RankedHolder } from "@/lib/mock/holders";
 import type { Solvency } from "@/lib/mock/health";
 import type { CrankOp } from "@/lib/mock/cranks";
@@ -21,6 +21,7 @@ import {
   mapRaiseSeries,
   mapTranches,
   mapTx,
+  mapPortfolioEvent,
   mapValidator,
   mapWrapSeries,
   mapYieldSeries,
@@ -28,6 +29,7 @@ import {
 } from "./map";
 import { eventFeedOf, eventTypeOf } from "./events";
 import { usdc, indexHuman } from "./wire";
+import { GALLY_PACKAGE_ID, PROTOCOL_CONFIG_ID, SUI_NETWORK } from "@/lib/tx/config";
 import type {
   WireAsset,
   WireDispute,
@@ -43,9 +45,27 @@ import type {
   WireYieldPoint,
   WireAddress,
   WireHealth,
+  WirePortfolioEvent,
 } from "./wire";
 
 const ASSET_PAGE = 60;
+
+/** A Sui object as served by the object-proxy (`/objects/:id`) — same shape as `sui_getObject`'s `result.data`. */
+interface WireObjectProxy {
+  data?: {
+    objectId?: string;
+    type?: string;
+    content?: { dataType?: string; type?: string; fields?: Record<string, unknown> };
+  };
+}
+
+/** Read one numeric Move field (string-encoded u64/u128) → number; `def` on absence. */
+function numField(f: Record<string, unknown>, key: string, def = 0): number {
+  const v = f[key];
+  if (v == null) return def;
+  const n = Number(v as string);
+  return Number.isFinite(n) ? n : def;
+}
 
 /** Resolve `p`, or `fallback` if it rejects (graceful degradation). */
 async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
@@ -208,6 +228,39 @@ export const liveSource: DataSource = {
     }
     const paused = events.filter((e) => e.event_type === "EmergencyStopTriggered" || e.event_type === "ProtocolResumed").at(-1)?.event_type === "EmergencyStopTriggered";
     return { history, paused, config };
+  },
+
+  async getProtocolConfig(): Promise<ProtocolConfigDTO> {
+    // Tier-2: the authoritative current params come from a direct read of the live
+    // ProtocolConfig shared object via the indexer object-proxy. USD fields are μ→USDC;
+    // bps/ms are raw integers. The AdminCap holder is not on the config object, so the
+    // admin is taken from the ProtocolInitialized governance event.
+    const [proxy, gov] = await Promise.all([
+      safe(getJson<WireObjectProxy>(`/objects/${PROTOCOL_CONFIG_ID}`), null),
+      safe(getList<WireGovEvent>(`/governance?limit=200`), [] as WireGovEvent[]),
+    ]);
+    const f = proxy?.data?.content?.fields ?? {};
+    const admin = gov.find((e) => e.event_type === "ProtocolInitialized")?.admin ?? String(f.treasury ?? "");
+    return {
+      configId: PROTOCOL_CONFIG_ID,
+      packageId: GALLY_PACKAGE_ID,
+      admin,
+      treasury: String(f.treasury ?? ""),
+      version: numField(f, "version", 1),
+      paused: Boolean(f.paused),
+      protocolFeeBps: numField(f, "protocol_fee_bps"),
+      minValidatorStake: usdc(f.min_validator_stake as string),
+      vouchCoverageBps: numField(f, "vouch_coverage_bps"),
+      challengerBond: usdc(f.challenger_bond as string),
+      juryQuorum: numField(f, "jury_quorum"),
+      juryThresholdBps: numField(f, "jury_threshold_bps"),
+      juryMinStake: usdc(f.jury_min_stake as string),
+      challengerBountyBps: numField(f, "challenger_bounty_bps"),
+      disputeWindowMs: numField(f, "dispute_window_ms"),
+      compensationGraceMs: numField(f, "compensation_grace_ms"),
+      minWrapDurationMs: numField(f, "min_wrap_duration_ms"),
+      network: SUI_NETWORK,
+    };
   },
 
   async getTx(digest): Promise<TxRow | null> {
@@ -397,9 +450,10 @@ export const liveSource: DataSource = {
     return [];
   },
 
-  async addressActivity(): Promise<ProtocolEvent[]> {
-    // The indexer serves derived/historical per-asset feeds; an actor-scoped feed is
-    // not part of BI-M8. Degrade to empty (the activity panel shows its empty state).
-    return [];
+  async addressActivity(address, limit = 30): Promise<ProtocolEvent[]> {
+    // BI-M8 `/portfolio/:address` is the actor-scoped activity feed (every event where
+    // this address is the economic actor). Degrade to empty if unreachable.
+    const rows = await safe(getList<WirePortfolioEvent>(`/portfolio/${address}?limit=${limit}`), [] as WirePortfolioEvent[]);
+    return rows.map(mapPortfolioEvent).slice(0, limit);
   },
 };
