@@ -33,6 +33,9 @@ pub struct Config {
     // Operational — required only for live re-seed (validated by `operator`).
     pub operator_key: Option<String>,
     pub gally_package_id: Option<String>,
+    /// Published `usdc` package (the canonical USDC type provider) — on localnet the
+    /// mintable mock, so the bot's `usdc::usdc::USDC` type args target the right package.
+    pub usdc_package_id: Option<String>,
     pub faucet_package_id: Option<String>,
     pub mock_faucet_id: Option<String>,
     pub usdc_treasury_cap_id: Option<String>,
@@ -47,6 +50,9 @@ pub struct Operational {
     pub keypair: Keypair,
     pub address: String,
     pub gally_package_id: String,
+    /// Published `usdc` package id — the home of `usdc::usdc::USDC` (the Mock USDC on
+    /// localnet). USDC type args + the `TreasuryCap<USDC>` mint resolve against THIS id.
+    pub usdc_package_id: String,
     pub faucet_package_id: String,
     pub usdc_treasury_cap_id: String,
 }
@@ -125,6 +131,7 @@ impl Config {
             gas_threshold_mist,
             operator_key: get("OPERATOR_KEY"),
             gally_package_id: get("GALLY_PACKAGE_ID"),
+            usdc_package_id: get("USDC_PACKAGE_ID"),
             faucet_package_id: get("FAUCET_PACKAGE_ID"),
             mock_faucet_id: get("MOCK_FAUCET_ID"),
             usdc_treasury_cap_id: get("USDC_TREASURY_CAP_ID"),
@@ -149,6 +156,9 @@ impl Config {
         if self.gally_package_id.is_none() {
             missing.push("GALLY_PACKAGE_ID");
         }
+        if self.usdc_package_id.is_none() {
+            missing.push("USDC_PACKAGE_ID");
+        }
         if self.faucet_package_id.is_none() {
             missing.push("FAUCET_PACKAGE_ID");
         }
@@ -168,6 +178,7 @@ impl Config {
             keypair,
             address,
             gally_package_id: self.gally_package_id.clone().unwrap(),
+            usdc_package_id: self.usdc_package_id.clone().unwrap(),
             faucet_package_id: self.faucet_package_id.clone().unwrap(),
             usdc_treasury_cap_id: self.usdc_treasury_cap_id.clone().unwrap(),
         })
@@ -286,6 +297,7 @@ mod tests {
             "SIM_STATE_PATH",
             "OPERATOR_KEY",
             "GALLY_PACKAGE_ID",
+            "USDC_PACKAGE_ID",
             "PROTOCOL_CONFIG_ID",
             "ADMIN_CAP_ID",
             "USDC_TREASURY_CAP_ID",

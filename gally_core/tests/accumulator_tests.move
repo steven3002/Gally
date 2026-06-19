@@ -14,7 +14,7 @@ use gally_core::asset::{Self, Asset, ContributionReceipt, EntityCap};
 use gally_core::acc_token::{Self, ACC_TOKEN};
 use gally_core::protocol::{Self, AdminCap, ProtocolConfig};
 use gally_core::share::{Self, GallyShare};
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use gally_core::validator::{Self, ValidatorCap, ValidatorPool};
 use sui::balance;
 use sui::clock::{Self, Clock};

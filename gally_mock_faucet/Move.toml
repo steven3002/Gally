@@ -4,10 +4,11 @@ edition = "2024"
 
 # SIM live-soak: chain identifier of the local node (Sui 1.73 env-aware publish).
 [environments]
-localnet = "fd9fdce8"
+localnet = "2008d900"
 
 [dependencies]
-# Depends on gally_core ONLY to name the settlement coin type
-# `gally_core::usdc::USDC` (protocol_flow.md §2). The Sui framework is an
-# implicit system dependency in edition 2024.
-gally_core = { local = "../gally_core" }
+# Depends on the `usdc` package ONLY to name the settlement coin type
+# `usdc::usdc::USDC` (protocol_flow.md §2) — the canonical USDC type (Circle's
+# published package on mainnet, the locally-mintable mock on localnet/sim). The Sui
+# framework is an implicit system dependency in edition 2024.
+usdc = { local = "../usdc" }

@@ -469,7 +469,7 @@ pub fn seed_lifecycle(client: &SuiClient, cfg: &Config) -> Result<()> {
         config_id,
         admin_cap: admin_cap.clone(),
         gally: op.gally_package_id.clone(),
-        usdc: format!("{}::usdc::USDC", op.gally_package_id),
+        usdc: format!("{}::usdc::USDC", op.usdc_package_id),
         usdc_cap: op.usdc_treasury_cap_id.clone(),
         sim_path: cfg.sim_state_path.clone(),
     };

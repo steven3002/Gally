@@ -33,6 +33,8 @@ SIM_STATE_PATH = "./sim_state.json"
 OPERATOR_KEY = "PASTE_OPERATOR_KEY"
 # published gally_core package:
 GALLY_PACKAGE_ID = "0xPASTE"
+# published usdc package (canonical USDC type provider; locally-mintable Mock USDC):
+USDC_PACKAGE_ID = "0xPASTE"
 # shared ProtocolConfig (created by gally_core init):
 PROTOCOL_CONFIG_ID = "0xPASTE"
 # AdminCap (owned by the operator; time-warp + wind-down):

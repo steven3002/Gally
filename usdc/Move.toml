@@ -1,0 +1,25 @@
+[package]
+name = "usdc"
+edition = "2024"
+
+# Canonical USDC type provider. The protocol references the coin type `usdc::usdc::USDC`
+# — the SAME fully-qualified path as Circle's on-chain USDC package (whose Move package
+# is also named `usdc`, module `usdc`, struct `USDC`).
+#
+#   • mainnet (production): the `usdc` dependency resolves to CIRCLE'S published package
+#     via `Published.toml` [published.mainnet] (published-at = the canonical mainnet USDC
+#     id). This local source is then used ONLY to type-check the reference; the deployed
+#     bytecode is Circle's. The mock `init` below is NEVER published to mainnet.
+#   • localnet (live simulation): this package is published on the local node, so its
+#     `init` runs and yields a locally-mintable Mock USDC for the Root Simulator + faucet
+#     (the SIM-D1 profile). "USDC is mintable" is a SIM/LOCAL build property, never a
+#     protocol property (live-simulation/guard_rails.md R1).
+#   • tests: compile against this source and mint via `coin::mint_for_testing<USDC>`.
+#
+# Standard environments (mainnet/testnet) are known to the sui client globally; only the
+# local chain needs declaring here. `run_stack.sh` rewrites this for each fresh chain.
+[environments]
+localnet = "2008d900"
+
+[dependencies]
+# Sui framework is an implicit system dependency in edition 2024.

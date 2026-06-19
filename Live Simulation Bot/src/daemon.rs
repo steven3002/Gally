@@ -249,7 +249,7 @@ pub fn run(
         warn!("no validator pools in sim_state — run `--seed-all` first; some actions will skip");
     }
 
-    let usdc_type = format!("{}::usdc::USDC", op.gally_package_id);
+    let usdc_type = format!("{}::usdc::USDC", op.usdc_package_id);
     let coin_t_needle = "::coin::Coin<".to_string();
     let mut d = Daemon {
         client,

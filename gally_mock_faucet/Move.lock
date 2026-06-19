@@ -16,17 +16,17 @@ use_environment = "localnet"
 manifest_digest = "CC15CB146CA1113370B03476BFF694B88F43F77D8DEE7C23CC0C78AB0634420D"
 deps = { MoveStdlib = "MoveStdlib" }
 
-[pinned.localnet.gally_core]
-source = { local = "../gally_core" }
-use_environment = "localnet"
-manifest_digest = "EAE83E4C2C7D5B4EF605145EE3703A5AF265593E686986BA5E58EE3F5D5E884F"
-deps = { std = "MoveStdlib", sui = "Sui" }
-
 [pinned.localnet.gally_mock_faucet]
 source = { root = true }
 use_environment = "localnet"
-manifest_digest = "698E18A0B7A16ED970EC0BBD407F7C3042485A759152F7F0A8A77F76164F40C5"
-deps = { gally_core = "gally_core", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "7CCBA54FDB5D25F382BCB7050C6CEF0D5A3DC58705D038402333AB0266A55F79"
+deps = { std = "MoveStdlib", sui = "Sui", usdc = "usdc" }
+
+[pinned.localnet.usdc]
+source = { local = "../usdc" }
+use_environment = "localnet"
+manifest_digest = "EAE83E4C2C7D5B4EF605145EE3703A5AF265593E686986BA5E58EE3F5D5E884F"
+deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.MoveStdlib]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "367fd808279bed26f7c64fc63160062a2ee29ab7" }

@@ -13,7 +13,7 @@ module gally_core::metadata_tests;
 
 use gally_core::asset::{Self, Asset, EntityCap};
 use gally_core::protocol::{Self, ProtocolConfig};
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use gally_core::validator::{Self, ValidatorPool};
 use sui::clock::{Self, Clock};
 use sui::coin;

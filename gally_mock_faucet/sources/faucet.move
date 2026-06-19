@@ -19,7 +19,7 @@ module gally_mock_faucet::faucet;
 
 // === Imports ===
 
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use std::string::String;
 use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin};

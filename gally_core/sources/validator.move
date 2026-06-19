@@ -16,7 +16,7 @@ module gally_core::validator;
 // === Imports ===
 
 use gally_core::protocol::{Self, ProtocolConfig};
-use gally_core::usdc::USDC;
+use usdc::usdc::USDC;
 use sui::balance::Balance;
 use sui::clock::Clock;
 use sui::coin::{Self, Coin};

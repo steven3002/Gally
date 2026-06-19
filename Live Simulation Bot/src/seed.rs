@@ -49,7 +49,7 @@ pub fn ensure_seed(client: &SuiClient, cfg: &Config) -> Result<Seeded> {
         .clone()
         .ok_or_else(|| anyhow!("PROTOCOL_CONFIG_ID unset — required for SIM-M3 seeding"))?;
     let gally = &op.gally_package_id;
-    let usdc_type = format!("{gally}::usdc::USDC");
+    let usdc_type = format!("{}::usdc::USDC", op.usdc_package_id);
 
     let mut state = SimState::load(&cfg.sim_state_path);
 
