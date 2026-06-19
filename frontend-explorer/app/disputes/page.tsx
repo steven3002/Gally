@@ -2,11 +2,13 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, SectionHeader, Stat } from "@/components/ui/primitives";
 import { Paginated } from "@/components/ui/Pager";
 import { DisputeCard } from "@/components/dispute/DisputeCard";
-import { disputes, protocolConfig } from "@/lib/mock/data";
+import { protocolConfig } from "@/lib/mock/data";
+import { data } from "@/lib/data";
 import { usd, usdCompact } from "@/lib/format";
 import { Scale, Check, Close, Coins } from "@/components/ui/icons";
 
-export default function DisputesPage() {
+export default async function DisputesPage() {
+  const disputes = await data.listDisputes();
   const open = disputes.filter((d) => d.status === "OPEN");
   const resolved = disputes.filter((d) => d.status !== "OPEN");
   const totalSlashed = disputes.reduce((s, d) => s + (d.slashed ?? 0), 0);

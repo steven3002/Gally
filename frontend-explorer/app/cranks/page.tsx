@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { allCranks } from "@/lib/mock/cranks";
+import { data } from "@/lib/data";
 import { CrankPanel } from "@/components/tx/CrankPanel";
 import { Card } from "@/components/ui/primitives";
 import { ChevronRight, Wrench } from "@/components/ui/icons";
@@ -16,8 +16,8 @@ export const metadata: Metadata = {
  * once its on-chain precondition holds — so they live here as well as on each
  * subject's own page. Eligibility is derived from the live fixture state.
  */
-export default function CranksPage() {
-  const ops = allCranks();
+export default async function CranksPage() {
+  const ops = await data.allCranks();
   const eligible = ops.filter((o) => o.eligible);
   const pending = ops.filter((o) => !o.eligible);
 

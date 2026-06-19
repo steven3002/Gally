@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import type { EventFeed, ProtocolEvent } from "@/lib/types";
-import { allEvents } from "@/lib/mock/activity";
 import { cn } from "@/lib/format";
 import { Card } from "@/components/ui/primitives";
 import { EventList } from "./EventList";
@@ -16,12 +15,12 @@ const FILTERS: { id: EventFeed | "all"; label: string }[] = [
   { id: "dispute", label: "Disputes" },
 ];
 
-export function ActivityFeed() {
+export function ActivityFeed({ allEvents }: { allEvents: ProtocolEvent[] }) {
   const [feed, setFeed] = useState<EventFeed | "all">("all");
 
   const events = useMemo<ProtocolEvent[]>(
     () => (feed === "all" ? allEvents : allEvents.filter((e) => e.feed === feed)),
-    [feed],
+    [allEvents, feed],
   );
 
   return (

@@ -3,6 +3,8 @@
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { protocolConfig } from "@/lib/mock/data";
+import { data } from "@/lib/data";
+import { useLive } from "@/lib/data/useLive";
 import { cn } from "@/lib/format";
 import { Alert } from "@/components/ui/icons";
 
@@ -47,9 +49,11 @@ export function usePausePreview(): boolean {
 
 export function PauseBanner() {
   const preview = usePausePreview();
-  const paused = protocolConfig.paused || preview;
+  // Live: the real pause state folds from the governance event log; mock: the const.
+  const livePaused = useLive(protocolConfig.paused, async () => (await data.getGovernance()).paused);
+  const paused = livePaused || preview;
   if (!paused) return null;
-  const isPreview = !protocolConfig.paused && preview;
+  const isPreview = !livePaused && preview;
 
   return (
     <div className="border-b border-danger/30 bg-danger-soft" role="status">

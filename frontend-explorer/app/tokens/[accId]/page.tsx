@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { assets, assetByAccId, DEMO_WALLET } from "@/lib/mock/data";
-import { eventsForAsset } from "@/lib/mock/activity";
-import { holderDistribution, supplyOf } from "@/lib/mock/holders";
-import { solvencyOf, graceOf } from "@/lib/mock/health";
+import { assets, DEMO_WALLET } from "@/lib/mock/data";
+import { data, isLive } from "@/lib/data";
+import { graceOf } from "@/lib/mock/health";
 import { num, pct, suiscanUrl, usd } from "@/lib/format";
 import { Avatar, Card, CardHeader, Stat } from "@/components/ui/primitives";
 import { Bar, KV, Pill, StatePill } from "@/components/ui/bits";
@@ -20,19 +19,24 @@ import { cranksForAccumulator } from "@/lib/mock/cranks";
 import { ChevronRight, Coins, ExternalLink, Lock } from "@/components/ui/icons";
 
 export function generateStaticParams() {
+  if (isLive) return []; // live: render on demand from the indexer
   return assets.filter((a) => a.accumulator).map((a) => ({ accId: a.accumulator!.id }));
 }
 
 export default async function TokenPage({ params }: { params: Promise<{ accId: string }> }) {
   const { accId } = await params;
-  const asset = assetByAccId[accId];
+  const asset = await data.getAssetByAccId(accId);
   if (!asset || !asset.accumulator) notFound();
 
   const acc = asset.accumulator;
-  const supply = supplyOf(asset.id);
-  const holders = holderDistribution(asset.id);
-  const events = eventsForAsset(asset.id);
-  const solvency = solvencyOf(asset.id);
+  const mintedShares = acc.totalMintedShares ?? asset.fundingGoal ?? 0;
+  const wrappedShares = acc.totalWrappedShares ?? 0;
+  const supply = { minted: mintedShares, wrapped: wrappedShares, unwrapped: mintedShares - wrappedShares };
+  const [holders, events, solvency] = await Promise.all([
+    data.holderDistribution(asset.id),
+    data.eventsForAsset(asset.id, 100),
+    data.getSolvency(asset.id),
+  ]);
   const grace = graceOf(asset);
   const wrapRatio = acc.totalMintedShares ? (acc.totalWrappedShares / acc.totalMintedShares) * 100 : 0;
   const closed = asset.state === "CLOSED";

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { assets, assetById, DEMO_WALLET } from "@/lib/mock/data";
-import { holderDistribution, supplyOf } from "@/lib/mock/holders";
+import { assets, DEMO_WALLET } from "@/lib/mock/data";
+import { data, isLive } from "@/lib/data";
 import { num } from "@/lib/format";
 import { Avatar, Card, CardHeader, Empty } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/bits";
@@ -10,17 +10,21 @@ import { HolderTable } from "@/components/holders/HolderTable";
 import { ChevronRight, Users } from "@/components/ui/icons";
 
 export function generateStaticParams() {
+  if (isLive) return []; // live: render on demand from the indexer
   return assets.map((a) => ({ id: a.id }));
 }
 
 export default async function AssetHoldersPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const asset = assetById[id];
+  const asset = await data.getAsset(id);
   if (!asset) notFound();
 
-  const holders = holderDistribution(asset.id);
-  const supply = supplyOf(asset.id);
-  const tokenSymbol = asset.accumulator?.tokenSymbol;
+  const holders = await data.holderDistribution(asset.id);
+  const acc = asset.accumulator;
+  const mintedShares = acc?.totalMintedShares ?? asset.fundingGoal ?? 0;
+  const wrappedShares = acc?.totalWrappedShares ?? 0;
+  const supply = { minted: mintedShares, wrapped: wrappedShares, unwrapped: mintedShares - wrappedShares };
+  const tokenSymbol = acc?.tokenSymbol;
 
   return (
     <div className="space-y-6">

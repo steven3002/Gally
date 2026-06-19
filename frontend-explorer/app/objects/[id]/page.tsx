@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { resolveObject } from "@/lib/mock/registry";
+import { data } from "@/lib/data";
 import { Card, Empty } from "@/components/ui/primitives";
 import { Compass, Search } from "@/components/ui/icons";
 
@@ -15,7 +15,7 @@ export default async function ObjectResolverPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const ref = resolveObject(decodeURIComponent(id));
+  const ref = await data.resolveObject(decodeURIComponent(id));
   if (ref) redirect(ref.route);
 
   return (

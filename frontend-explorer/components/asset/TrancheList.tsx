@@ -1,6 +1,7 @@
-import type { Asset, Tranche } from "@/lib/types";
+import type { Asset, Tranche, WalrusDoc as WalrusDocData } from "@/lib/types";
 import { cn, NOW, shortDate, usd } from "@/lib/format";
 import { proofOf } from "@/lib/mock/documents";
+import { isLive } from "@/lib/data";
 import { Pill } from "@/components/ui/primitives";
 import { WalrusDoc } from "@/components/ui/WalrusDoc";
 import { Check, Clock, Doc, Lock } from "@/components/ui/icons";
@@ -20,7 +21,13 @@ export function TrancheList({ asset }: { asset: Asset }) {
         const s = status(t, prevReleased);
         const Icon = s.icon;
         const overdue = !t.released && t.deadlineMs < NOW;
-        const proof = proofOf(asset.id, t.index);
+        // Live: the tranche carries its own content-pinned proof ref (indexer). Mock:
+        // the fixture document map (unchanged rendering).
+        const proof: WalrusDocData | undefined = isLive
+          ? t.proofBlobId
+            ? { blobId: t.proofBlobId, sha256: t.proofSha256 ?? "", attestedBy: t.approvedBy ?? "", kind: "proof", label: t.description, trancheIndex: t.index }
+            : undefined
+          : proofOf(asset.id, t.index);
         return (
           <div
             key={t.index}

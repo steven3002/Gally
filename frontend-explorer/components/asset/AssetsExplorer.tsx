@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Asset, AssetState, Category } from "@/lib/types";
-import { assets } from "@/lib/mock/data";
 import { cn, STATE_LABEL } from "@/lib/format";
 import { AssetCard } from "./AssetCard";
 import { AssetTable } from "./AssetTable";
@@ -39,7 +38,7 @@ const SORTS: { id: Sort; label: string }[] = [
   { id: "progress", label: "Funding progress" },
 ];
 
-export function AssetsExplorer({ initialCategory }: { initialCategory?: string }) {
+export function AssetsExplorer({ initialCategory, assets }: { initialCategory?: string; assets: Asset[] }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<Category | "All">(
     (CATEGORIES.includes(initialCategory as Category) ? initialCategory : "All") as
@@ -81,7 +80,7 @@ export function AssetsExplorer({ initialCategory }: { initialCategory?: string }
       }
     });
     return list;
-  }, [q, cat, state, sort]);
+  }, [assets, q, cat, state, sort]);
 
   // Page the filtered list (cards are large, so ~12/page = 4 grid rows). Reset to
   // the first page whenever the filter/sort signature changes (adjust-during-render).

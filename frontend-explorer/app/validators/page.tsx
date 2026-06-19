@@ -2,17 +2,19 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, Stat } from "@/components/ui/primitives";
 import { Paginated } from "@/components/ui/Pager";
 import { ValidatorCard } from "@/components/validator/ValidatorCard";
-import { validators, protocolConfig } from "@/lib/mock/data";
+import { protocolConfig } from "@/lib/mock/data";
+import { data } from "@/lib/data";
 import { usdCompact, usd } from "@/lib/format";
 import { Shield, Lock, Coins } from "@/components/ui/icons";
 
-export default function ValidatorsPage() {
+export default async function ValidatorsPage() {
+  const validators = await data.listValidators();
   const sorted = [...validators].sort((a, b) => b.stake - a.stake);
   const totalStake = validators.reduce((s, v) => s + v.stake, 0);
   const totalLocked = validators.reduce((s, v) => s + v.locked, 0);
   const active = validators.filter((v) => v.status === "ACTIVE").length;
   const avgRep = Math.round(
-    validators.reduce((s, v) => s + v.reputation, 0) / validators.length,
+    validators.reduce((s, v) => s + v.reputation, 0) / Math.max(1, validators.length),
   );
 
   return (

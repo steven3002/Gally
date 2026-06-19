@@ -5,6 +5,8 @@ import { Menu, Moon, Search, Sun } from "@/components/ui/icons";
 import { OPEN_PALETTE_EVENT } from "@/components/search/CommandPalette";
 import { NotificationBell } from "@/components/notifications/NotificationCenter";
 import { ConnectButton } from "@/components/tx/ConnectButton";
+import { LiveConnectButton } from "@/components/tx/LiveConnectButton";
+import { isLive } from "@/lib/data";
 import { protocolConfig } from "@/lib/mock/data";
 
 function openPalette() {
@@ -53,7 +55,9 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
           </span>
         </span>
 
-        <ConnectButton />
+        {/* Live mode → dapp-kit ConnectModal (Slush + wallet-standard auto-detect,
+            with the Slush web option when nothing is installed). Mock → demo wallet. */}
+        {isLive ? <LiveConnectButton /> : <ConnectButton />}
       </div>
     </header>
   );

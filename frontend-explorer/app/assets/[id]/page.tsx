@@ -1,17 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { assets, DEMO_WALLET } from "@/lib/mock/data";
+import { data, isLive } from "@/lib/data";
+import { revenueSplitOf } from "@/lib/mock/activity";
 import {
-  assetById,
-  assets,
-  disputesForAsset,
-  validatorForAsset,
-  DEMO_WALLET,
-} from "@/lib/mock/data";
-import { eventsForAsset, revenueSplitOf } from "@/lib/mock/activity";
-import { holderDistribution, supplyOf } from "@/lib/mock/holders";
-import { legalDocsOf } from "@/lib/mock/documents";
-import {
-  solvencyOf,
   nextTrancheOf,
   graceOf,
   compensationLayersOf,
@@ -67,6 +59,7 @@ import {
 } from "@/components/ui/icons";
 
 export function generateStaticParams() {
+  if (isLive) return []; // live: render on demand from the indexer
   return assets.map((a) => ({ id: a.id }));
 }
 
@@ -76,16 +69,22 @@ export default async function AssetDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const asset = assetById[id];
+  const asset = await data.getAsset(id);
   if (!asset) notFound();
 
-  const validator = validatorForAsset(asset);
-  const events = eventsForAsset(asset.id);
-  const disputes = disputesForAsset(asset.id);
-  const holders = holderDistribution(asset.id);
-  const supply = supplyOf(asset.id);
-  const legal = legalDocsOf(asset.id);
+  const [validator, events, disputes, holders, legal, solvency] = await Promise.all([
+    asset.validatorPoolId ? data.getValidator(asset.validatorPoolId) : Promise.resolve(null),
+    data.eventsForAsset(asset.id, 100),
+    data.disputesForAsset(asset.id),
+    data.holderDistribution(asset.id),
+    data.getLegalDocs(asset.id),
+    data.getSolvency(asset.id),
+  ]);
   const acc = asset.accumulator;
+  // Supply summary (derivable from the asset's accumulator — same as the mock `supplyOf`).
+  const mintedShares = acc?.totalMintedShares ?? asset.fundingGoal ?? 0;
+  const wrappedShares = acc?.totalWrappedShares ?? 0;
+  const supply = { minted: mintedShares, wrapped: wrappedShares, unwrapped: mintedShares - wrappedShares };
   const progress = pctOf(asset.raised, asset.fundingGoal);
   const funding = asset.state === "FUNDING";
   const operational = asset.state === "OPERATIONAL";
@@ -93,14 +92,15 @@ export default async function AssetDetailPage({
   const releasedTranches = asset.tranches.filter((t) => t.released).length;
   const wrapRatio = acc && acc.totalMintedShares ? (acc.totalWrappedShares / acc.totalMintedShares) * 100 : 0;
 
-  // FE-M5 — health, default-risk & holder-protection
-  const solvency = solvencyOf(asset.id);
+  // FE-M5 — health, default-risk & holder-protection (pure over the live asset)
   const grace = graceOf(asset);
   const compensating = isCompensating(asset);
   const compStack = compensating ? compensationLayersOf(asset) : null;
   const nextDeadline = asset.state === "EXECUTING" ? nextTrancheOf(asset) : undefined;
-  // FE-M6 — full three-way revenue split (fee → treasury, investor → index, entity remainder)
-  const split = acc && acc.lifetimeInvestorRevenue > 0 ? revenueSplitOf(asset.id) : null;
+  // FE-M6 — three-way revenue split. The per-deposit breakdown is reconstructed from
+  // the mock fixture; in live mode it would come from the yield series (deferred), so
+  // we gate it to mock to avoid showing a partial split.
+  const split = !isLive && acc && acc.lifetimeInvestorRevenue > 0 ? revenueSplitOf(asset.id) : null;
   // FE-M7.2 — permissionless cranks applicable to this asset + its accumulator
   const cranks = [...cranksForAsset(asset), ...cranksForAccumulator(asset)];
 
