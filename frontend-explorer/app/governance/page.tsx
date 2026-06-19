@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { protocolConfig } from "@/lib/mock/data";
-import { governanceHistory, type GovEventKind } from "@/lib/mock/governance";
+import { data, isLive } from "@/lib/data";
+import { governanceHistory, type GovEventKind, type GovHistoryEntry } from "@/lib/mock/governance";
+import type { GovParamChange } from "@/lib/types";
 import { bpsToPct, cn, DAY, HOUR, num, relTime, shortDate, usd, type Tone } from "@/lib/format";
 import { Avatar, Card, CardHeader, Stat } from "@/components/ui/primitives";
 import { Bar, KV, Pill } from "@/components/ui/bits";
@@ -27,10 +28,27 @@ const KIND_META: Record<GovEventKind, { tone: Tone; label: string }> = {
   resume: { tone: "positive", label: "Resumed" },
 };
 
-export default function GovernancePage() {
-  const c = protocolConfig;
-  const history = governanceHistory();
+/** Map the indexer's governance param-change log (live) into the page's display rows. */
+function liveGovHistory(changes: GovParamChange[]): GovHistoryEntry[] {
+  return changes
+    .map((c): GovHistoryEntry => {
+      if (c.name === "treasury")
+        return { kind: "treasury", tsMs: c.tsMs, txDigest: c.txDigest, title: "Treasury rotated", detail: `${c.oldValue.slice(0, 10)}… → ${c.newValue.slice(0, 10)}…` };
+      if (c.name === "initialized") return { kind: "init", tsMs: c.tsMs, txDigest: c.txDigest, title: "Protocol initialized", detail: "Config created with safe defaults" };
+      if (c.name === "paused") return { kind: "pause", tsMs: c.tsMs, txDigest: c.txDigest, title: "Emergency stop triggered", detail: "Capital entry halted — exits stayed open" };
+      if (c.name === "resumed") return { kind: "resume", tsMs: c.tsMs, txDigest: c.txDigest, title: "Protocol resumed", detail: "Normal operation restored" };
+      return { kind: "param", tsMs: c.tsMs, txDigest: c.txDigest, title: `Parameter changed — ${c.name}`, detail: `${c.oldValue} → ${c.newValue}` };
+    })
+    .sort((a, b) => b.tsMs - a.tsMs);
+}
+
+export default async function GovernancePage() {
+  // Tier-2: params + dispute/validator thresholds + pause state come from a live read
+  // of the ProtocolConfig object (object-proxy) in live mode; the mock returns the same
+  // shape so this page is byte-identical offline.
+  const c = await data.getProtocolConfig();
   const paused = c.paused;
+  const history = isLive ? liveGovHistory((await data.getGovernance()).history) : governanceHistory();
 
   return (
     <div className="space-y-6">

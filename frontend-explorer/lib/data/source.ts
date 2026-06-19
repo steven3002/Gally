@@ -64,6 +64,32 @@ export interface GovernanceResult {
   config: Record<string, string>;
 }
 
+/**
+ * The live `ProtocolConfig` object (Tier-2 object-proxy read). Mirrors the mock
+ * `protocolConfig` shape so `/governance` consumes one type in both modes. USD-valued
+ * fields are human USDC (μ-unscaled); bps/ms fields are the raw on-chain integers.
+ */
+export interface ProtocolConfigDTO {
+  configId: string;
+  packageId: string;
+  admin: string;
+  treasury: string;
+  version: number;
+  paused: boolean;
+  protocolFeeBps: number;
+  minValidatorStake: number;
+  vouchCoverageBps: number;
+  challengerBond: number;
+  juryQuorum: number;
+  juryThresholdBps: number;
+  juryMinStake: number;
+  challengerBountyBps: number;
+  disputeWindowMs: number;
+  compensationGraceMs: number;
+  minWrapDurationMs: number;
+  network: string;
+}
+
 export interface AddressResult {
   address: string;
   roles: string[];
@@ -88,6 +114,8 @@ export interface DataSource {
   recentEvents(limit?: number): Promise<ProtocolEvent[]>;
   eventsForAsset(assetId: string, limit?: number): Promise<ProtocolEvent[]>;
   getGovernance(): Promise<GovernanceResult>;
+  /** The live ProtocolConfig (params + dispute/validator thresholds), Tier-2 object-proxy. */
+  getProtocolConfig(): Promise<ProtocolConfigDTO>;
   getTx(digest: string): Promise<TxRow | null>;
   getAddress(address: string): Promise<AddressResult>;
   health(): Promise<HealthResult>;

@@ -32,6 +32,7 @@ import type {
   HealthResult,
   ProtocolStatsDTO,
   CategoryStatDTO,
+  ProtocolConfigDTO,
 } from "./source";
 import type { Asset, Dispute, ObjectRef, ProtocolEvent, TxRow, Validator, WalrusDoc } from "@/lib/types";
 import type { RankedHolder } from "@/lib/mock/holders";
@@ -87,6 +88,9 @@ export const mockSource: DataSource = {
   },
   async getGovernance(): Promise<GovernanceResult> {
     return { history: paramHistory, paused: protocolConfig.paused, config: configToDisplay() };
+  },
+  async getProtocolConfig(): Promise<ProtocolConfigDTO> {
+    return protocolConfig;
   },
   async getTx(digest): Promise<TxRow | null> {
     return txByDigest(digest) ?? null;

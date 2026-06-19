@@ -14,6 +14,8 @@ import {
   type TxIntent,
 } from "@/lib/tx/intents";
 import { applyOptimistic, useOptimistic } from "@/lib/tx/optimistic";
+import { isLive } from "@/lib/data";
+import { SUI_NETWORK } from "@/lib/tx/config";
 import { cn, num, shortDigest } from "@/lib/format";
 import { Alert, Check, Close, Wallet } from "@/components/ui/icons";
 
@@ -250,8 +252,9 @@ export function ActionButton({
                   )}
 
                   <p className="rounded-lg border border-dashed border-border px-3 py-2 text-[11px] text-muted-2">
-                    Mock execution — no transaction is submitted (contract not yet deployed). The wallet
-                    signing flow swaps in once the protocol is live.
+                    {isLive
+                      ? `Live execution — this submits a real transaction to ${SUI_NETWORK} and your wallet will ask you to sign.`
+                      : "Mock execution — no transaction is submitted (contract not yet deployed). The wallet signing flow swaps in once the protocol is live."}
                   </p>
                 </>
               )}
