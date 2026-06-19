@@ -1,13 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import {
-  assets,
-  disputesForPool,
-  protocolConfig,
-  validatorByPool,
-  validators,
-} from "@/lib/mock/data";
-import { eventsForActor } from "@/lib/mock/activity";
+import { protocolConfig, validators } from "@/lib/mock/data";
+import { data, isLive } from "@/lib/data";
 import { num, pct, shortDate, usd, usdCompact } from "@/lib/format";
 import {
   Avatar,
@@ -28,6 +22,7 @@ import { DisputeAction } from "@/components/tx/DisputeAction";
 import { ChevronRight, Lock, Coins, Shield } from "@/components/ui/icons";
 
 export function generateStaticParams() {
+  if (isLive) return []; // live: render on demand from the indexer
   return validators.map((v) => ({ id: v.poolId }));
 }
 
@@ -37,12 +32,16 @@ export default async function ValidatorDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const v = validatorByPool[id];
+  const v = await data.getValidator(id);
   if (!v) notFound();
 
-  const vouched = assets.filter((a) => a.validatorPoolId === v.poolId);
-  const pendingDisputes = disputesForPool(v.poolId);
-  const events = eventsForActor(v.address);
+  const [allAssets, allDisputes, events] = await Promise.all([
+    data.listAssets(),
+    data.listDisputes(),
+    data.addressActivity(v.address),
+  ]);
+  const vouched = allAssets.filter((a) => a.validatorPoolId === v.poolId);
+  const pendingDisputes = allDisputes.filter((d) => d.targetPoolId === v.poolId);
   const utilization = v.stake > 0 ? (v.locked / v.stake) * 100 : 0;
   const repColor =
     v.reputation >= 85 ? "var(--positive)" : v.reputation >= 60 ? "var(--warning)" : "var(--danger)";

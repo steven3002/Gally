@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
+import type { Asset } from "@/lib/types";
 import { useWatchlist } from "@/lib/watchlist";
-import { assetById, assets } from "@/lib/mock/data";
 import { AssetMini } from "@/components/asset/AssetCard";
 import { Star } from "@/components/ui/icons";
 
-export function WatchlistPanel() {
+export function WatchlistPanel({ assets }: { assets: Asset[] }) {
   const { ids, hydrated } = useWatchlist();
-  const watched = ids.map((id) => assetById[id]).filter(Boolean);
+  const byId = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a])), [assets]);
+  const watched = ids.map((id) => byId[id]).filter(Boolean);
 
   // before hydration, render nothing visual-shifting; show a stable skeleton
   const suggestions = assets

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/shell/AppShell";
+import { isLive } from "@/lib/data";
+import { WalletProviders } from "@/components/providers/WalletProviders";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,7 +46,15 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full">
-        <AppShell>{children}</AppShell>
+        {/* Live mode mounts the dapp-kit wallet stack; mock mode renders the exact
+            same tree as before (no provider), so SSR + the e2e suite are unaffected. */}
+        {isLive ? (
+          <WalletProviders>
+            <AppShell>{children}</AppShell>
+          </WalletProviders>
+        ) : (
+          <AppShell>{children}</AppShell>
+        )}
       </body>
     </html>
   );

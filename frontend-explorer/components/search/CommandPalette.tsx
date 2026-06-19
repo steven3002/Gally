@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { searchAll, type SearchResult } from "@/lib/mock/registry";
+import { data, isLive } from "@/lib/data";
 import type { ObjectKind } from "@/lib/types";
 import { cn } from "@/lib/format";
 import { startNavProgress } from "@/components/shell/NavigationProgress";
@@ -41,7 +42,24 @@ export function CommandPalette() {
   // value without re-subscribing (a ref write in an effect is not setState).
   const openRef = useRef(open);
 
-  const results = useMemo(() => searchAll(q, 24), [q]);
+  // Mock: synchronous fixture search. Live: debounced indexer search through the seam.
+  const [liveResults, setLiveResults] = useState<SearchResult[]>([]);
+  const results = isLive ? liveResults : searchAll(q, 24);
+
+  useEffect(() => {
+    if (!isLive) return;
+    const term = q.trim();
+    // Defer all state updates into the timer so nothing runs synchronously in the
+    // effect body (debounce doubles as the empty-query reset).
+    const t = setTimeout(() => {
+      if (!term) {
+        setLiveResults([]);
+        return;
+      }
+      data.searchAll(term, 24).then(setLiveResults).catch(() => setLiveResults([]));
+    }, 140);
+    return () => clearTimeout(t);
+  }, [q]);
 
   useEffect(() => {
     openRef.current = open;

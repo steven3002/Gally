@@ -5,6 +5,7 @@ import { accountByAddr } from "@/lib/mock/accounts";
 import { holdingsOf } from "@/lib/mock/holders";
 import { eventsForActor } from "@/lib/mock/activity";
 import { assetById, portfolioReceipts } from "@/lib/mock/data";
+import { data } from "@/lib/data";
 import {
   Avatar,
   Card,
@@ -54,10 +55,15 @@ const ROLE_LABEL: Record<AccountRole, string> = {
  * `/portfolio` renders it for the DEMO_WALLET with the `demo` framing — so there
  * is one address-page implementation and no duplicated holdings logic.
  */
-export function AddressView({ address, demo = false }: { address: string; demo?: boolean }) {
+export async function AddressView({ address, demo = false }: { address: string; demo?: boolean }) {
   const account = accountByAddr(address);
-  const holdings = holdingsOf(address);
-  const events = eventsForActor(address);
+  // `/portfolio` (demo wallet) stays on the mock Position seam (FE-M8a contract — the
+  // connected wallet's own balances move to wallet-RPC in FE-M8b). Any other address
+  // (`/address/:addr`) reads roles/holdings/activity through the data seam (live|mock).
+  const res = demo ? null : await data.getAddress(address);
+  const holdings = demo ? holdingsOf(address) : res!.holdings;
+  const events = demo ? eventsForActor(address) : await data.addressActivity(address);
+  const roles: string[] = demo ? account.roles : res!.roles;
   const receipts = demo ? portfolioReceipts : [];
 
   const deeds = holdings.reduce((s, h) => s + h.shareCount, 0);
@@ -107,10 +113,10 @@ export function AddressView({ address, demo = false }: { address: string; demo?:
               <IdLink id={address} lead={14} tail={10} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {account.roles.map((r) => (
-                <Pill key={r} tone={ROLE_TONE[r]}>{ROLE_LABEL[r]}</Pill>
+              {roles.map((r) => (
+                <Pill key={r} tone={ROLE_TONE[r as AccountRole] ?? "neutral"}>{ROLE_LABEL[r as AccountRole] ?? r}</Pill>
               ))}
-              {!account.known && <span className="text-[11px] text-muted-2">unlabelled address</span>}
+              {!account.known && roles.length === 0 && <span className="text-[11px] text-muted-2">unlabelled address</span>}
             </div>
           </div>
         </div>

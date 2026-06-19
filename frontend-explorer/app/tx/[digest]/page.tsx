@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { txByDigest } from "@/lib/mock/activity";
-import { assetById } from "@/lib/mock/data";
+import { data } from "@/lib/data";
 import { accountByAddr } from "@/lib/mock/accounts";
 import { shortDate, relTime, suiscanUrl, shortAddr } from "@/lib/format";
+import type { Asset } from "@/lib/types";
 import { Card, CardHeader, Empty, Avatar } from "@/components/ui/primitives";
 import { KV, Bar } from "@/components/ui/bits";
 import { IdLink } from "@/components/ui/IdLink";
@@ -11,7 +11,7 @@ import { Activity, ChevronRight, ExternalLink } from "@/components/ui/icons";
 
 export default async function TxPage({ params }: { params: Promise<{ digest: string }> }) {
   const { digest } = await params;
-  const tx = txByDigest(decodeURIComponent(digest));
+  const tx = await data.getTx(decodeURIComponent(digest));
 
   if (!tx) {
     return (
@@ -26,6 +26,8 @@ export default async function TxPage({ params }: { params: Promise<{ digest: str
   // affected entities
   const assetIds = Array.from(new Set(tx.events.map((e) => e.assetId).filter(Boolean))) as string[];
   const actors = Array.from(new Set(tx.events.map((e) => e.actor).filter(Boolean))) as string[];
+  const assetEntries = await Promise.all(assetIds.map(async (id) => [id, await data.getAsset(id)] as const));
+  const assetMap: Record<string, Asset | null> = Object.fromEntries(assetEntries);
 
   return (
     <div className="space-y-6">
@@ -81,8 +83,8 @@ export default async function TxPage({ params }: { params: Promise<{ digest: str
                         href={`/assets/${id}`}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs text-foreground hover:border-border-strong"
                       >
-                        <Avatar seed={id} label={assetById[id]?.ticker ?? "?"} size={16} rounded="rounded" />
-                        {assetById[id]?.name ?? id}
+                        <Avatar seed={id} label={assetMap[id]?.ticker ?? "?"} size={16} rounded="rounded" />
+                        {assetMap[id]?.name ?? id}
                       </Link>
                     ))}
                   </div>

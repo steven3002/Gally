@@ -1,11 +1,5 @@
 import Link from "next/link";
-import {
-  assets,
-  categoryStats,
-  disputes,
-  protocolStats,
-} from "@/lib/mock/data";
-import { recentEvents } from "@/lib/mock/activity";
+import { data } from "@/lib/data";
 import { pct, usdCompact } from "@/lib/format";
 import { Card, CardHeader, SectionHeader, Stat } from "@/components/ui/primitives";
 import { CategoryIcon } from "@/components/ui/primitives";
@@ -24,14 +18,22 @@ import {
   Users,
 } from "@/components/ui/icons";
 
-export default function ExplorePage() {
+export default async function ExplorePage() {
+  const [assets, sectorsRaw, disputes, protocolStats, recent] = await Promise.all([
+    data.listAssets(),
+    data.getCategoryStats(),
+    data.listDisputes(),
+    data.getProtocolStats(),
+    data.recentEvents(6),
+  ]);
+
   const trending = [...assets]
     .filter((a) => a.state === "OPERATIONAL" || a.state === "FUNDING")
     .sort((a, b) => (b.accumulator?.apy ?? 0) - (a.accumulator?.apy ?? 0))
     .slice(0, 3);
 
   const topAssets = [...assets].sort((a, b) => b.raised - a.raised).slice(0, 6);
-  const sectors = categoryStats().sort((a, b) => b.raised - a.raised);
+  const sectors = [...sectorsRaw].sort((a, b) => b.raised - a.raised);
   const openDisputes = disputes.filter((d) => d.status === "OPEN");
 
   return (
@@ -238,7 +240,7 @@ export default function ExplorePage() {
               action={<Layers className="h-4 w-4 text-muted-2" />}
             />
             <div className="mt-2">
-              <WatchlistPanel />
+              <WatchlistPanel assets={assets} />
             </div>
           </Card>
 
@@ -255,7 +257,7 @@ export default function ExplorePage() {
               }
             />
             <div className="mt-2">
-              <EventList events={recentEvents(6)} limit={6} />
+              <EventList events={recent} limit={6} />
             </div>
           </Card>
         </div>

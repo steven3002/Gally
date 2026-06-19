@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/PageHeader";
 import { AssetsExplorer } from "@/components/asset/AssetsExplorer";
+import { data } from "@/lib/data";
 
 export default async function AssetsPage({
   searchParams,
@@ -7,6 +8,7 @@ export default async function AssetsPage({
   searchParams: Promise<{ category?: string }>;
 }) {
   const { category } = await searchParams;
+  const assets = await data.listAssets();
 
   return (
     <div>
@@ -15,7 +17,7 @@ export default async function AssetsPage({
         subtitle="Every real-world project raised, executing, or distributing yield on Gally."
         crumbs={[{ label: "Explore", href: "/" }, { label: "Assets" }]}
       />
-      <AssetsExplorer initialCategory={category} />
+      <AssetsExplorer initialCategory={category} assets={assets} />
     </div>
   );
 }

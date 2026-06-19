@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { searchAll } from "@/lib/mock/registry";
+import { data } from "@/lib/data";
 import type { ObjectKind } from "@/lib/types";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, Empty } from "@/components/ui/primitives";
@@ -21,7 +21,7 @@ export default async function SearchPage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const { q = "" } = await searchParams;
-  const results = searchAll(q, 60);
+  const results = await data.searchAll(q, 60);
 
   return (
     <div>

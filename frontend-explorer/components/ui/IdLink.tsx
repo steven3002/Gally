@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Check, Copy } from "./icons";
 import { cn, shortAddr } from "@/lib/format";
 import { routeForId } from "@/lib/mock/registry";
+import { isLive } from "@/lib/data";
 
 /**
  * A clickable, copyable on-chain identifier (FE-M2). Resolves any id/address/tx
@@ -29,7 +30,10 @@ export function IdLink({
   className?: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const route = routeForId(id);
+  // Mock: resolve the kind synchronously from the fixture. Live: route through the
+  // universal `/objects/:id` resolver, which identifies the kind via the indexer and
+  // redirects (the sync mock map doesn't know live ids).
+  const route = isLive ? `/objects/${id}` : routeForId(id);
   const text = label ?? (id.length > lead + tail + 2 ? shortAddr(id, lead, tail) : id);
 
   function copy(e: React.MouseEvent) {

@@ -6,10 +6,13 @@ import { NAV, isActive } from "./nav";
 import { GallyWordmark, Close } from "@/components/ui/icons";
 import { cn } from "@/lib/format";
 import { protocolStats, protocolConfig } from "@/lib/mock/data";
+import { data } from "@/lib/data";
+import { useLive } from "@/lib/data/useLive";
 import { usdCompact } from "@/lib/format";
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const stats = useLive(protocolStats, () => data.getProtocolStats());
 
   return (
     <div className="flex h-full flex-col">
@@ -82,10 +85,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             </span>
           </div>
           <div className="tnum mt-1 text-xl font-bold tracking-tight text-foreground">
-            {usdCompact(protocolStats.tvl)}
+            {usdCompact(stats.tvl)}
           </div>
           <div className="mt-0.5 text-[11px] text-muted">
-            {protocolStats.activeAssets} active assets · {protocolStats.validators} validators
+            {stats.activeAssets} active assets · {stats.validators} validators
           </div>
         </div>
       </div>

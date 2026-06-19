@@ -1,12 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import {
-  disputes,
-  disputeById,
-  validatorByPool,
-  assetById,
-} from "@/lib/mock/data";
-import { eventsForAsset } from "@/lib/mock/activity";
+import { disputes } from "@/lib/mock/data";
+import { data, isLive } from "@/lib/data";
 import { evidenceOf } from "@/lib/mock/documents";
 import { accountByAddr } from "@/lib/mock/accounts";
 import { cn, relTime, shortAddr, shortDate, usd } from "@/lib/format";
@@ -16,27 +11,32 @@ import { VoteBar } from "@/components/dispute/DisputeCard";
 import { CrankButton } from "@/components/tx/CrankButton";
 import { cranksForDispute } from "@/lib/mock/cranks";
 import { WalrusDoc } from "@/components/ui/WalrusDoc";
+import type { ProtocolEvent } from "@/lib/types";
 import { IdLink } from "@/components/ui/IdLink";
 import { ChevronRight, Scale, Shield, Check, Close, Users } from "@/components/ui/icons";
 
 export function generateStaticParams() {
+  if (isLive) return []; // live: render on demand from the indexer
   return disputes.map((d) => ({ id: d.id }));
 }
 
 export default async function DisputeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const d = disputeById[id];
+  const d = await data.getDispute(id);
   if (!d) notFound();
 
-  const target = validatorByPool[d.targetPoolId];
-  const asset = assetById[d.assetId];
+  const [target, asset, assetEvents] = await Promise.all([
+    data.getValidator(d.targetPoolId),
+    data.getAsset(d.assetId),
+    data.eventsForAsset(d.assetId, 100),
+  ]);
   const evidence = evidenceOf(d.id);
   const open = d.status === "OPEN";
   const upheld = d.status === "UPHELD";
   const resolveCrank = cranksForDispute(d)[0]; // resolve_dispute when the vote window has elapsed
 
   // Jury roll-call: reconstructed from the JurorVoted events for this asset (§18.3).
-  const jurorVotes = eventsForAsset(d.assetId)
+  const jurorVotes = (assetEvents as ProtocolEvent[])
     .filter((e) => e.type === "JurorVoted")
     .map((e) => ({
       address: e.actor ?? "",
