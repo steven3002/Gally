@@ -18,14 +18,18 @@ export function Card({
   children,
   as: As = "div",
   hover = false,
+  "data-tour": dataTour,
 }: {
   className?: string;
   children: ReactNode;
   as?: "div" | "section" | "article";
   hover?: boolean;
+  /** Optional product-tour spotlight anchor. */
+  "data-tour"?: string;
 }) {
   return (
     <As
+      data-tour={dataTour}
       className={cn(
         "rounded-[var(--radius-card)] border border-border bg-surface shadow-[var(--shadow-sm)]",
         hover &&

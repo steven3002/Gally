@@ -307,7 +307,7 @@ export default async function AssetDetailPage({
       </nav>
 
       {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div data-tour="asset-header" className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-4">
           <Avatar seed={asset.id} label={asset.ticker} size={56} />
           <div>
@@ -334,7 +334,7 @@ export default async function AssetDetailPage({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div data-tour="asset-fund" className="flex items-center gap-2">
           <div className="rounded-xl border border-border bg-surface p-1">
             <WatchButton assetId={asset.id} size="h-5 w-5" />
           </div>
@@ -357,7 +357,7 @@ export default async function AssetDetailPage({
       </div>
 
       {/* Stepper */}
-      <Card className="p-4">
+      <Card data-tour="asset-lifecycle" className="p-4">
         <StageStepper asset={asset} />
       </Card>
 
@@ -497,7 +497,7 @@ export default async function AssetDetailPage({
           </Card>
 
           {/* Tabs */}
-          <Card className="p-5">
+          <Card data-tour="asset-tabs" className="p-5">
             <Tabs tabs={tabs} />
           </Card>
         </div>
@@ -506,7 +506,7 @@ export default async function AssetDetailPage({
         <div className="space-y-6 xl:col-span-4">
           {/* Validator */}
           {validator && (
-            <Card className="p-5">
+            <Card data-tour="asset-validator" className="p-5">
               <CardHeader title="Validator attestation" className="px-0 pt-0" />
               <Link
                 href={`/validators/${validator.poolId}`}
@@ -553,7 +553,7 @@ export default async function AssetDetailPage({
 
           {/* Accumulator / token */}
           {acc && (
-            <Card className="p-5">
+            <Card data-tour="asset-yield" className="p-5">
               <CardHeader
                 title="Yield accumulator"
                 subtitle={`Token ${acc.tokenSymbol} · 6 decimals`}
