@@ -379,6 +379,27 @@ impl SuiClient {
         self.sign_and_execute(&tx_bytes_b64, signer)
             .with_context(|| format!("{module}::{function}"))
     }
+
+    /// Operator-funded SUI grant (Devnet, DEV-G1 — no faucet): pay `amount_mist` SUI to
+    /// `recipient` from the operator's own coins via `unsafe_paySui` (the node merges the
+    /// input coins, pays the recipient, takes gas, and returns the change to the operator).
+    pub fn pay_sui(&self, signer: &Keypair, recipient: &str, amount_mist: u64, gas_budget: u64) -> Result<Value> {
+        let coins = self.get_coins(&signer.address, "0x2::sui::SUI", 50)?;
+        if coins.is_empty() {
+            return Err(anyhow!("operator {} has no SUI coins to fund from", signer.address));
+        }
+        let input: Vec<String> = coins.iter().map(|c| c.id.clone()).collect();
+        let build = self.rpc(
+            "unsafe_paySui",
+            json!([signer.address, input, [recipient], [amount_mist.to_string()], gas_budget.to_string()]),
+        )?;
+        let tx_bytes_b64 = build
+            .get("txBytes")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("unsafe_paySui: no txBytes"))?
+            .to_string();
+        self.sign_and_execute(&tx_bytes_b64, signer).context("pay_sui")
+    }
 }
 
 /// Parse a `u64` JSON-string field (R2). `None` if missing/unparseable.

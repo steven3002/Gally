@@ -8,6 +8,9 @@ import { PauseBanner } from "./PauseBanner";
 import { NavigationProgress } from "./NavigationProgress";
 import { CommandPalette } from "@/components/search/CommandPalette";
 import { Toaster } from "@/components/notifications/Toaster";
+import { DevnetBanner } from "@/components/onboarding/DevnetBanner";
+import { Onboarding } from "@/components/onboarding/Onboarding";
+import { isLive } from "@/lib/data";
 import { cn } from "@/lib/format";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -58,6 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
+        <DevnetBanner />
         <Topbar onOpenMenu={() => setMobileOpen(true)} />
         <PauseBanner />
         <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8">
@@ -70,6 +74,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Transaction & alert toasts (FE-M7.2) */}
       <Toaster />
+
+      {/* DEV-M1 — Devnet first-time onboarding (claim tokens + guided tour); live only. */}
+      {isLive && <Onboarding />}
     </div>
   );
 }
