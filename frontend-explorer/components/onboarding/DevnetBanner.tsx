@@ -35,7 +35,8 @@ export function DevnetBanner() {
       <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
       <span>
         Connected to <strong className="font-bold uppercase tracking-wide">Sui {SUI_NETWORK}</strong> — a public test
-        network. Tokens have no real value.
+        network (tokens have no real value). <strong className="font-bold">Time is accelerated</strong> for this live
+        demo (≈ 7-day periods → 45s), so deadlines, APYs and yield move far faster than real life.
       </span>
       <button
         aria-label="Dismiss"

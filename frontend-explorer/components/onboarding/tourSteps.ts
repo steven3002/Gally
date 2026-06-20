@@ -22,6 +22,7 @@ export const OVERVIEW_TOUR: TourStep[] = [
   { anchor: "validators", title: "Validators", body: "Stake-backed attestors vouch project legals, approve milestones and sit on dispute juries — their stake is slashable if they're wrong." },
   { anchor: "governance", title: "Governance", body: "Every ProtocolConfig parameter — fees, the validator min-stake, jury quorum, dispute windows — read live from chain." },
   { anchor: "cranks", title: "Keeper Cranks", body: "Permissionless maintenance: anyone (you included) can run cranks — rollover, compensation sweeps, closures — to keep the protocol healthy." },
+  { anchor: "take-tour", title: "Tour any page, anytime", body: "That's the essentials! Whenever you open a new page — an asset, your portfolio, validators, governance — click “Take a tour” up here for a guided walk-through of that page." },
 ];
 
 /** Back-compat alias used by the first-run onboarding prompt. */
@@ -83,6 +84,19 @@ export const CRANKS_TOUR: TourStep[] = [
   { anchor: "", title: "Permissionless cranks", body: "Anyone — including you — can run protocol maintenance: yield rollover sweeps, compensation sweeps, raise finalization and closures." },
   { anchor: "cranks-list", title: "Eligible work", body: "Each crank shows whether its on-chain precondition is met right now. Run an eligible one to keep the protocol healthy (and exercise the live transaction path)." },
 ];
+
+/** A short, page-aware label for the "Take tour" button (it tours the CURRENT page). */
+export function tourLabelForPath(pathname: string): string {
+  if (/^\/assets\/.+/.test(pathname)) return "Tour this asset";
+  if (pathname === "/assets") return "Tour marketplace";
+  if (/^\/tokens\/.+/.test(pathname)) return "Tour this token";
+  if (pathname.startsWith("/validators")) return "Tour validators";
+  if (pathname.startsWith("/governance")) return "Tour governance";
+  if (pathname.startsWith("/disputes")) return "Tour this dispute";
+  if (pathname.startsWith("/cranks")) return "Tour cranks";
+  if (pathname === "/portfolio" || pathname.startsWith("/address/")) return "Tour portfolio";
+  return "Take a tour";
+}
 
 /** Pick the tour that matches the current route. */
 export function tourForPath(pathname: string): TourStep[] {
