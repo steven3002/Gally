@@ -57,9 +57,9 @@ flowchart TD
 - **unit tests.** Compile against this source and mint with the test-only
   `coin::mint_for_testing<USDC>`; `init` does not run under test.
 
-> ⚠️ **"USDC is mintable" is a SIM/LOCAL build property, never a protocol property**
-> (`milestone/live-simulation/guard_rails.md` R1). Mainnet has no local minting authority — only
-> Circle mints real USDC. Never write protocol logic that assumes it can mint settlement funds.
+> ⚠️ **"USDC is mintable" is a SIM/LOCAL build property, never a protocol property.**
+> Mainnet has no local minting authority — only Circle mints real USDC. Never write
+> protocol logic that assumes it can mint settlement funds.
 
 ## Why 6 decimals matters
 

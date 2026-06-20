@@ -6,12 +6,9 @@ plus a wallet-connected transaction layer scoped to the *user* (investor / holde
 
 > **Status (2026-06): live-capable.** The build runs on a baked-in mock dataset **by default** (so it
 > builds and renders fully offline), and flips to **live data** — the [Backend Indexer](../Backend%20Indexer),
-> Sui object reads, and a connected wallet — behind one env flag. Both read and write paths went live
-> in FE-M8a/M8b. Every shape in `lib/` mirrors the protocol spec, so the mock↔live swap is mechanical
-> and component code is unchanged.
->
-> **Authoritative spec:** `../milestone/frontend explorer/explorer_spec.md`. Guard rails + resume
-> protocol: `../milestone/frontend explorer/guard_rails.md`. Local agent notes: `AGENTS.md`.
+> Sui object reads, and a connected wallet — behind one env flag. Both read and write paths are live.
+> Every shape in `lib/` mirrors the on-chain object model, so the mock↔live swap is mechanical and
+> component code is unchanged. (Contributor notes live in `AGENTS.md`.)
 
 ## Run it
 
@@ -19,7 +16,7 @@ plus a wallet-connected transaction layer scoped to the *user* (investor / holde
 mock data. To point at a running indexer, set `NEXT_PUBLIC_DATA_SOURCE=live` (+ the indexer base URL).
 
 Stack: **Next.js 16 (App Router) · React 19 · Tailwind v4**. **Zero UI-library dependencies** — all
-icons and charts are hand-rolled inline SVG, so it builds offline (a hard constraint, `explorer_spec.md §1`).
+icons and charts are hand-rolled inline SVG, so it builds offline (a hard constraint of this build).
 
 ## The seam: one component tree, two data backends
 
@@ -55,8 +52,7 @@ flowchart TD
 
 ### Reads — five sources behind one seam (`lib/data/*`)
 
-Reads have multiple *sources* but one entry surface (`explorer_spec.md §6`; tier taxonomy in
-`../milestone/live-data-parity/data_parity_plan.md`):
+Reads have multiple *sources* but one entry surface:
 
 1. **Indexer DB** — history, time-series, discovery lists, holders, portfolio/activity, governance log
    (most of what the explorer renders).
@@ -64,7 +60,7 @@ Reads have multiple *sources* but one entry surface (`explorer_spec.md §6`; tie
    current object state: full `ProtocolConfig`, live `Asset`/`ValidatorPool`/accumulator fields, legal-doc
    dynamic fields.
 3. **Walrus** (client-direct, sha256-verified) — the document *bytes*; on-chain holds only
-   `blob_id + sha256` (SIM-M6 mock-Walrus stand-in until the real-Walrus milestone).
+   `blob_id + sha256` (a mock-Walrus stand-in is used until the real-Walrus layer lands).
 4. **Connected-wallet owned objects** (RPC) — *your* `GallyShare` / `Coin<T>` / receipts and exact
    claimable yield (computed against the live accumulator index). `/portfolio` renders these in live mode.
 5. **Frontend-derived** — values computed in-app from the above (health/solvency, risk clocks).
@@ -101,10 +97,10 @@ keys**.
 
 ## How it maps to the protocol
 
-`lib/types.ts` is the object inventory + event catalog (spec §3/§18); the mock dataset (`lib/mock/*`)
-is a faithful, deterministic projection (fixed `NOW`, seeded PRNG — no hydration drift) used offline
-and as the live-mode demo fallback. Wallet state is a small store (connected account); read pages never
-read it — only the action layer and the topbar account control do.
+`lib/types.ts` mirrors the on-chain object model + event catalog; the mock dataset (`lib/mock/*`) is a
+faithful, deterministic projection (fixed `NOW`, seeded PRNG — no hydration drift) used offline and as
+the live-mode demo fallback. Wallet state is a small store (connected account); read pages never read
+it — only the action layer and the topbar account control do.
 
 ## Build & test
 

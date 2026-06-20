@@ -5,16 +5,13 @@ local Sui chain, then continuously drives **real `gally_core` transactions** (co
 tranche releases, revenue, yield claims, wraps, disputes, cranks…) so the Backend Indexer fills up
 and the Frontend Explorer renders **live, continuously-updating** data.
 
-> **The chain is the only IPC.** The bot runs *no* web server (guard-rail **R6**/SIM-D7). Everything
-> it does is an on-chain transaction; everything you observe comes from the indexer reading that chain.
+> **The chain is the only IPC.** The bot runs *no* web server. Everything it does is an on-chain
+> transaction; everything you observe comes from the indexer reading that chain.
 
 This runbook gets you from a clean checkout to a live, self-updating explorer two ways:
 
 - **[A. One command](#a-one-command-run_stacksh)** — `./run_stack.sh` does the entire bring-up.
 - **[B. Manual bring-up](#b-manual-bring-up)** — the same steps by hand, for when you want control.
-
-Specs: `milestone/live-simulation/protocol_flow.md` (§5 architecture, §5.1 config, §5.3 the
-Dual-State Engine / SIM-D8, §6 tick machine, §10 re-seed) + `guard_rails.md`.
 
 ---
 
@@ -29,15 +26,15 @@ Dual-State Engine / SIM-D8, §6 tick machine, §10 re-seed) + `guard_rails.md`.
                                             │                          │  (captures the post-publish IDs)
                                             ▼                          ▼
    Frontend Explorer  ◄──  Backend Indexer  ◄──  Postgres   ◄──  Root Simulator bot
-   (FE-M8 live mode)        (REST + WS)          (gally-pg)     (--seed-all genesis, then --daemon traffic)
+   (live mode)              (REST + WS)          (gally-pg)     (--seed-all genesis, then --daemon traffic)
 ```
 
-The bot owns two long-running behaviours (the **Dual-State Engine**, §5.3):
+The bot owns two long-running behaviours (the **Dual-State Engine**):
 
 | `--pace` | tick cadence | time regime | use it for |
 |---|---|---|---|
 | `real-world` *(default)* | 30 s | protocol time params are immutable law; parallel cohorts keep *some* event flowing | believable public demo / long soak |
-| `accelerated` | 2 s | AdminCap-warps dispute/grace/vouch/min-wrap windows to ~5 s (R8: the `Clock` itself is **never** stepped) | fast end-to-end / CI / "see everything in minutes" |
+| `accelerated` | 2 s | AdminCap-warps dispute/grace/vouch/min-wrap windows to ~5 s (the `Clock` itself is **never** stepped) | fast end-to-end / CI / "see everything in minutes" |
 
 ---
 
@@ -51,9 +48,9 @@ The bot owns two long-running behaviours (the **Dual-State Engine**, §5.3):
 - **Postgres** for the indexer: a container named `gally-pg`
   (`docker run -d --name gally-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16`).
 
-> **Sim USDC is local-only (R1).** This stack publishes the **SIM-D1 `usdc.move` profile** — a
-> locally-mintable Mock USDC. It is *never* the production Circle-USDC type and must never be
-> published to a shared network.
+> **Sim USDC is local-only.** This stack publishes the **locally-mintable Mock USDC profile** of the
+> `usdc` package. It is *never* the production Circle-USDC type and must never be published to a
+> shared network.
 
 ---
 
@@ -76,13 +73,13 @@ It performs, in order:
    `sui start --with-faucet --force-regenesis`, open `ssh -L 9000 -L 9123`, and **poll
    `127.0.0.1:9000` until JSON-RPC answers** with a chain id.
 2. **Fund + deploy** — faucet the operator until it holds a coin ≥ the gas budget, then publish
-   `gally_core` → `gally_mock_faucet` → **N entity-token templates** (the SIM-D4 pool) to the fresh
+   `gally_core` → `gally_mock_faucet` → **N entity-token templates** (the entity-token pool) to the fresh
    chain, parsing every post-publish ID. Handles the Sui 1.73 env-aware publish
    (`[environments] localnet = "<chain-id>"` + a reset `Published.toml`) automatically.
 3. **`config.toml`** — written for you with the operator key + all captured IDs; `sim_state.json`
    records the entity-token pool.
 4. **Postgres + indexer** — start `gally-pg`, create the `gally_live` DB, build and launch the
-   BI-M8 indexer (background) at `127.0.0.1:8088`.
+   the indexer (background) at `127.0.0.1:8088`.
 5. **Bot** — `--seed-all` genesis (an asset in **every** lifecycle state, K=3 validators, a positive
    yield index, a funded faucet), then — if `--soak N` — a bounded `--daemon` activity run.
 
@@ -118,14 +115,14 @@ pkill -f -- "-L 9000:127.0.0.1:9000"     # the ssh tunnel
 ssh trace 'pkill -x sui'                  # the remote node
 ```
 
-### Devnet bring-up (`run_devnet.sh`, DEV-M1)
+### Devnet bring-up (`run_devnet.sh`)
 
 `./run_devnet.sh` is the same bring-up against **official Sui Devnet** instead of a throwaway local
 node. Two things change because there is no controllable node and gas is scarce:
 
 - **Operator-funded gas (`GAS_SOURCE=operator`).** There is no per-run faucet for the cohort, so the
   bot funds its fake users out of the operator wallet (`unsafe_paySui`) instead of a SUI faucet.
-- **Dynamic gas throttling (DEV-G1).** Before genesis the bot reads the operator's **live balance** and
+- **Dynamic gas throttling.** Before genesis the bot reads the operator's **live balance** and
   computes how many users it can afford, **overriding `USER_COUNT` down** to fit (with a warning) so a
   thin grant can never out-of-gas mid-run — pure logic in `gas.rs` (`plan_gas` / `affordable_users`).
   It publishes `usdc` + `gally_core` + `gally_mock_faucet` + templates to devnet while **preserving**
@@ -143,7 +140,7 @@ re-publish / re-seed) — so a restart after a devnet hiccup picks up where it l
 ssh trace 'pkill -x sui; rm -rf /tmp/.tmp*; nohup sui start --with-faucet --force-regenesis >sui.log 2>&1 &'
 ssh -L 9000:127.0.0.1:9000 -L 9123:127.0.0.1:9123 -N trace &      # tunnel; wait until 127.0.0.1:9000 answers
 
-# 2. publish + capture IDs (gally_core SIM-D1 profile, then gally_mock_faucet)
+# 2. publish + capture IDs (gally_core, then gally_mock_faucet)
 sui client faucet                                                  # fund the operator
 cd gally_core          && sui client publish --json --gas-budget 3000000000  # → GALLY_PACKAGE_ID, PROTOCOL_CONFIG_ID, ADMIN_CAP_ID, USDC_TREASURY_CAP_ID
 cd ../gally_mock_faucet && sui client publish --json --gas-budget 3000000000 # → FAUCET_PACKAGE_ID, MOCK_FAUCET_ID
@@ -163,7 +160,7 @@ SIM_CONFIG=../config.toml cargo run -- --seed-all          # genesis: every life
 SIM_CONFIG=../config.toml cargo run -- --daemon            # continuous real-world traffic
 #   or:  cargo run -- --daemon --pace accelerated          # speed-run everything
 
-# 6. frontend in live mode (FE-M8), pointed at the indexer → open the explorer and watch it update
+# 6. frontend in live mode, pointed at the indexer → open the explorer and watch it update
 ```
 
 ---
@@ -176,9 +173,9 @@ gally_sim_bot [--pace real-world|accelerated] [--tick-ms N] [--check] [--once] [
 
 | Flag | Effect |
 |---|---|
-| `--seed-all` | **Genesis (SIM-M3):** AdminCap time-warp, K validators, an asset in *every* lifecycle state, the SIM-D4 entity-token pool, a funded faucet. Idempotent (re-run = no-op via `sim_state.json`). |
-| `--fund` | One claim+contribute funding pass over the user cohort, then exit (SIM-M3). |
-| `--daemon` | **Activity generator (SIM-M4):** per tick, re-seed the faucet if low + one weighted-random protocol action covering every §18 event family. Runs forever unless `--cycles`. |
+| `--seed-all` | **Genesis:** AdminCap time-warp, K validators, an asset in *every* lifecycle state, the entity-token pool, a funded faucet. Idempotent (re-run = no-op via `sim_state.json`). |
+| `--fund` | One claim+contribute funding pass over the user cohort, then exit. |
+| `--daemon` | **Activity generator:** per tick, re-seed the faucet if low + one weighted-random protocol action covering every protocol event family. Runs forever unless `--cycles`. |
 | `--cycles N` | Bound the daemon (or re-seed loop) to N ticks, then exit — CI-style soak. |
 | `--pace P` | `real-world` (30 s ticks, organic) \| `accelerated` (2 s ticks, warped windows, enables disputes). Overrides `PACE`. |
 | `--tick-ms N` | Override the profile's default cadence. |
@@ -229,15 +226,14 @@ Env vars override `config.toml` (env wins). Point `SIM_CONFIG` at the file, or k
 | `GALLY_PACKAGE_ID` | the published `gally_core` package | `gally_core` publish output |
 | `PROTOCOL_CONFIG_ID` | the shared `ProtocolConfig` (all tunable params + pause) | created by `gally_core::init` |
 | `ADMIN_CAP_ID` | the `AdminCap` (time-warp, param setters, wind-down) — operator-owned | created by `gally_core::init` |
-| `USDC_TREASURY_CAP_ID` | `TreasuryCap<USDC>` for the **sim** Mock-USDC (R1, local-only) | `gally_core` (SIM-D1) publish output |
+| `USDC_TREASURY_CAP_ID` | `TreasuryCap<USDC>` for the **sim** Mock-USDC (local-only) | `usdc` publish output |
 | `FAUCET_PACKAGE_ID` | the published `gally_mock_faucet` package | faucet publish output |
 | `MOCK_FAUCET_ID` | the shared `MockFaucet` (the USDC reservoir the bot re-seeds) | created by the faucet's `init` |
 
-> The spec's §5.1 also names `CONFIG_ID` / `FAUCET_OPERATOR_CAP_ID` / `ENTITY_TOKEN_POOL_SIZE`. The
-> shipped bot reads `PROTOCOL_CONFIG_ID` for the config object, manages the faucet via the operator
-> key directly (no separate operator-cap key in v1), and takes the pool size from
-> `run_stack.sh --pool` / `ENTITY_POOL_SIZE` at publish time (recorded in `sim_state.json`). Without
-> the REQUIRED IDs the bot runs **read-only** (connect + read faucet + fund user gas).
+> The bot reads `PROTOCOL_CONFIG_ID` for the config object, manages the faucet via the operator key
+> directly (no separate operator-cap key in v1), and takes the pool size from `run_stack.sh --pool` /
+> `ENTITY_POOL_SIZE` at publish time (recorded in `sim_state.json`). Without the REQUIRED IDs the bot
+> runs **read-only** (connect + read faucet + fund user gas).
 
 ---
 
@@ -253,22 +249,22 @@ Env vars override `config.toml` (env wins). Point `SIM_CONFIG` at the file, or k
   weighted catalog in `src/action.rs`.
 - **Throttled, structured logging.** `RUST_LOG=info` (per-action one-liners with the events emitted)
   or `RUST_LOG=warn` (only re-seeds, skips, errors) for long soaks. The daemon also tracks on-chain
-  **event-family coverage** as it goes — stdout counters, **never an HTTP endpoint (R6)**.
+  **event-family coverage** as it goes — stdout counters, **never an HTTP endpoint**.
 
 ---
 
 ## Known limits
 
-- **Real-time `Clock` (R8).** The on-chain `0x6` `Clock` is never fast-forwarded (impossible on a live
+- **Real-time `Clock`.** The on-chain `0x6` `Clock` is never fast-forwarded (impossible on a live
   node). `accelerated` only *shrinks the deadlines the clock is compared against* (via AdminCap
   setters + short per-asset deadlines), so short **real** waits suffice; it does not step time.
-- **OPERATIONAL asset count is bounded by the entity-token pool (SIM-D4).** Each successful raise
+- **OPERATIONAL asset count is bounded by the entity-token pool.** Each successful raise
   consumes one pre-published `entity_token_template` copy (one virgin `TreasuryCap<T>` per finalize).
   Publish at least as many templates as the OPERATIONAL assets you want (`--pool`, default 6).
-- **Validators are operated by the operator key in v1 (SIM-D5).** All validator pools are registered
+- **Validators are operated by the operator key in v1.** All validator pools are registered
   and run by the single operator address; the sim does not model independent third-party validators.
-- **Sim USDC is local-only (R1).** The SIM-D1 `usdc.move` profile is a locally-mintable stand-in for
-  Circle USDC — distinct from, and never to be confused with, the production-USDC swap.
+- **Sim USDC is local-only.** The locally-mintable Mock USDC profile is a stand-in for Circle USDC —
+  distinct from, and never to be confused with, the production-USDC swap.
 - **`accelerated` inflates APY.** Warped windows compress yield accrual into seconds, so
   backend-derived APY reads high under accelerated time; `real-world` is faithful.
 
@@ -276,7 +272,7 @@ Env vars override `config.toml` (env wins). Point `SIM_CONFIG` at the file, or k
 
 ## Acceptance walkthrough ("the explorer comes alive")
 
-With the stack up (`./run_stack.sh --soak …` then `--daemon`), open the explorer (FE-M8 live mode)
+With the stack up (`./run_stack.sh --soak …` then `--daemon`), open the explorer (live mode)
 and confirm, over a few minutes of traffic:
 
 - [ ] **Assets** lists demo assets in multiple lifecycle states; states change during the soak.
@@ -303,7 +299,7 @@ and confirm, over a few minutes of traffic:
 
 ## Developer reference
 
-**Transport (SIM-M2 decision).** Synchronous `ureq` JSON-RPC + lightweight crypto (`ed25519-dalek`,
+**Transport.** Synchronous `ureq` JSON-RPC + lightweight crypto (`ed25519-dalek`,
 `blake2`, `base64`) — **not** `tokio`+`reqwest`, **not** `sui-sdk`. A lazy sequential tick loop
 (read → maybe act → sleep) gains nothing from async, and the lean TLS-free tree keeps the build cheap
 on a low-RAM box. Txns are built by the node (`unsafe_moveCall`) or as a serialized PTB, then signed
@@ -322,20 +318,20 @@ via `sui_executeTransactionBlock`.
 | `ptb.rs` | build multi-command PTBs via `sui client ptb … --serialize-unsigned-transaction` |
 | `gas.rs` | lazy SUI gas-faucet top-up |
 | `reseed.rs` | `should_reseed` + mint(`TreasuryCap<USDC>`)→`refill` executor |
-| `seed.rs` / `activity.rs` | SIM-M3 funding-slice genesis + the user claim+contribute loop |
-| `lifecycle.rs` | SIM-M3 full genesis: every lifecycle state + K validators + entity-token pool |
-| `action.rs` | SIM-M4 weighted §8 action catalog + pure precondition selectors |
-| `daemon.rs` | SIM-M4/M5 tick loop: reseed + one weighted action; error containment; graceful shutdown; coverage tracker |
-| `catalog.rs` / `walrus.rs` | SIM-M6 trustless-metadata catalog + LI-Q3 mock-Walrus |
+| `seed.rs` / `activity.rs` | funding-slice genesis + the user claim+contribute loop |
+| `lifecycle.rs` | full genesis: every lifecycle state + K validators + entity-token pool |
+| `action.rs` | weighted action catalog + pure precondition selectors |
+| `daemon.rs` | tick loop: reseed + one weighted action; error containment; graceful shutdown; coverage tracker |
+| `catalog.rs` / `walrus.rs` | trustless-metadata catalog + mock-Walrus |
 | `rng.rs` | dependency-free PRNG |
-| `sim_state.rs` | `sim_state.json` cache of seeded object ids (re-derivable; never a source of truth — SIM-D6/R5) |
+| `sim_state.rs` | `sim_state.json` cache of seeded object ids (re-derivable; never a source of truth) |
 | `main.rs` | BOOT → connect → keys → ENSURE_GAS → install Ctrl-C handler → dispatch `--fund`/`--seed-all`/`--daemon`/re-seed loop |
 
 **Build & test**
 
 ```bash
 cargo build                 # 0 warnings
-cargo test                  # unit tests (no node needed), incl. SIM-M5 hardening tests
+cargo test                  # unit tests (no node needed), incl. hardening tests
 ```
 
 > Build-env note: on a low-RAM box the crates.io endpoints may need an IPv4 `/etc/hosts` pin and

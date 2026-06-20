@@ -5,10 +5,9 @@ this Rust service ingests every one of them into PostgreSQL and serves the histo
 frontend over a read-only REST + WebSocket API. It also proxies live Sui object reads so the
 frontend talks to **one host** that fronts three data sources.
 
-> **Authoritative specs:** `../milestone/backend indexer/backend.md` (purpose, scope, API surface) and
-> `../milestone/backend indexer/logic_flow.md` (DB schema, object map, ingestion logic, response
-> shapes, **and the binding event reference §10**). Guard rails + status:
-> `../milestone/backend indexer/guard_rails.md`.
+> **The chain is the source of truth, not this service.** The indexer is a faithful, idempotent
+> projection of on-chain events — it can be wiped and rebuilt from any starting checkpoint and
+> converge to the same state.
 
 ## What it is — and isn't
 
@@ -61,16 +60,16 @@ Three properties make this safe to re-run and impossible to corrupt:
   logged and archived raw, never dropped or fabricated.
 
 > **Wire reality:** Sui delivers `u64`/`u128` as JSON **strings** and `vector<u8>` as byte arrays, so
-> the deserializers are string-aware (`logic_flow.md §10.2`). And the event contract that the code
-> implements is `logic_flow.md §10` (transcribed from the shipped Move source) — **not**
-> `protocol_flow.md §18`, which has drifted (`backend.md §8`). Source wins.
+> the deserializers are string-aware. The event contract the code implements is transcribed
+> **field-for-field from the shipped `gally_core` Move source** — if anything ever disagrees with a
+> design note, the source wins and the deserializers are re-derived from it.
 
 ## What gets indexed
 
 All **36 event families** from `gally_core` are ingested. They fold into purpose-built tables — money
 events carry both a **delta** and a **post-action aggregate** (`raised_after`, `total_wrapped_after`,
-`index_after`) so time-series are reconstructable without ever re-reading a past object state
-(the historical-state rule, `protocol_flow.md §18 P3`):
+`index_after`) so time-series are reconstructable without ever re-reading a past object state (object
+reads only ever return *current* state — so any value needed for history must live in the event):
 
 | Event family | Feeds | Serves |
 |---|---|---|
@@ -86,7 +85,7 @@ events carry both a **delta** and a **post-action aggregate** (`raised_after`, `
 
 Holder ledgers and per-address holdings are **derived on read** from `position_events` (no table) and
 are **protocol-attributed** — the indexer tracks the address the protocol credited, which can differ
-from the current object owner after a peer-to-peer deed transfer (`backend.md §4.3`).
+from the current object owner after a peer-to-peer deed transfer.
 
 ## API surface (read-only)
 
@@ -114,11 +113,11 @@ then subscribes):
 
 ### The three sources behind one host
 
-The frontend's read layer (`explorer_spec.md §6`) maps onto: **(1)** the indexer DB for
-history/series/aggregation; **(2)** the `GET /objects/:id` proxy for current object state (full
-`ProtocolConfig`, live `Asset`/`ValidatorPool`/accumulator fields, legal-doc dynamic fields); **(3)**
-Walrus, read client-direct and sha256-verified, for document *bytes* (only `blob_id + sha256` live
-on-chain). Connected-wallet owned-object balances are read straight from RPC, not from here.
+The frontend's read layer maps onto: **(1)** the indexer DB for history/series/aggregation; **(2)**
+the `GET /objects/:id` proxy for current object state (full `ProtocolConfig`, live
+`Asset`/`ValidatorPool`/accumulator fields, legal-doc dynamic fields); **(3)** Walrus, read
+client-direct and sha256-verified, for document *bytes* (only `blob_id + sha256` live on-chain).
+Connected-wallet owned-object balances are read straight from RPC, not from here.
 
 ## Stack & layout
 
@@ -126,7 +125,7 @@ Rust · **Tokio** · **Axum** (HTTP + WS) · **SQLx** (runtime-checked, async) �
 `tracing` · `prometheus` · `sqlx migrate` (applied at startup). The crate is split into `ingestion/`
 (loop + per-domain handlers + event structs), `db/` (migrations + models + queries), `api/` (Axum
 router + per-resource routes + the object proxy), and `sui_client/` (the thin JSON-RPC/object-proxy
-wrapper) — full map in `logic_flow.md §8`.
+wrapper).
 
 ## Build & test
 
