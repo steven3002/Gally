@@ -1,7 +1,7 @@
 ---
 title: "Glossary"
 part: "Reference"
-order: 17
+order: 18
 summary: "Every Gally term in one place, alphabetically: from accumulator and coverage to rollover, soulbound, tranche, vouch, and wrapping."
 keywords: ["glossary", "definitions", "terms", "accumulator", "coverage", "deed", "index", "rollover", "soulbound", "tranche", "vouch", "wrap", "compensation", "crank"]
 ---
@@ -25,13 +25,27 @@ for. It is their slashable bond on that project's legitimacy.
 **Crank** — a permissionless maintenance action anyone can call once its on-chain conditions hold
 (finalize, abort, sweep, flag-default, resolve, close). See the [Keeper guide](/docs/guides/keeper).
 
+**Decentralized Legal Oracle** — the validator network's real role: parties who stake USDC to attest
+to, and continuously maintain, the **legal enforceability and compliance** of an asset's Smart Trust —
+not merely to confirm a document exists.
+
 **Deed** — the everyday name for a `GallyShare`: an owned, transferable Sui object representing
 fractional ownership, where one share equals one USDC of original principal.
 
 **Diamond-Hand multiplier** — the emergent effect by which unwrapped holders earn a larger yield share
 as others wrap, because the index counts only unwrapped supply.
 
-**Entity** — the real-world party (builder, business, manufacturer) raising capital for a project.
+**Digital twin** — the on-chain reflection (funding goal, tranche schedule, revenue split, closure
+terms) of the off-chain Smart Trust's legally agreed terms. The numbers aren't invented on-chain — they
+mirror the legal contract.
+
+**Dual-layer security** — Gally's model: on-chain *code* (escrow, never-pausable exits, slashing, the
+yield engine) for mathematical safety, plus the off-chain *Smart Trust* (a court-enforceable contract)
+for legal enforcement. Code + courts.
+
+**Entity** — the real-world party (builder, business, manufacturer) that operates the asset and raises
+capital. Legally bound by the Smart Trust and computationally restricted on-chain — trusted to operate,
+never trusted with unconditional custody of funds.
 
 **Grace window** — the period after a slashing or default during which wrapping is frozen so every
 holder can unwrap and become eligible for compensation before it is swept.
@@ -60,17 +74,25 @@ per-share yield in integer math.
 **Slashing** — the seizure of a validator's coverage (or an entity's collateral) to compensate
 investors after proven misbehavior.
 
+**Smart Trust** — the legally binding, court-enforceable contract that ties the operating entity and the
+real asset to the deeds. It defines ownership and voting rights, the entity's obligations,
+operation/maintenance, tax handling, and local/state/federal compliance — the off-chain half of Gally's
+[dual-layer security](/docs/smart-trust). Its document hashes are pinned on-chain and vouched by a
+validator.
+
 **Soulbound** — a Sui object that cannot be transferred by generic code (it lacks the `store`
 ability). The capability keys and the contribution receipt are soulbound.
 
 **Tranche** — one deadline-bound, validator-gated slice of a project's escrowed capital, released only
 after its milestone is proven and approved.
 
-**Validator** — a staked party who vouches for projects' legal documents and approves their milestones,
-and who serves on dispute juries. Backed by slashable USDC.
+**Validator** — a decentralized legal oracle: a staked party who vouches for an asset's Smart Trust
+(its legal strength + compliance), approves milestones, and serves on dispute juries. Liable for
+damages — backed by slashable USDC.
 
-**Vouch** — a validator's stake-backed attestation that a project's legal documents are authentic,
-which moves the project into funding.
+**Vouch** — a validator's stake-backed attestation that an asset's Smart Trust is authentic, legally
+sufficient, and compliant — which moves the project into funding and remains the validator's standing
+liability.
 
 **Wrapping / unwrapping** — converting a deed into a standard `Coin<T>` for DeFi liquidity (wrap) and
 back into a yield-earning deed (unwrap). Wrapped coins forfeit yield; unwrapping owes zero retroactive

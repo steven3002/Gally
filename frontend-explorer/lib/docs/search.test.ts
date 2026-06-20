@@ -11,9 +11,9 @@ import {
 
 describe("docs content set", () => {
   it("has all 18 pages with unique orders 1..18", () => {
-    expect(DOCS_PAGES.length).toBe(18);
+    expect(DOCS_PAGES.length).toBe(19);
     const orders = DOCS_PAGES.map((p) => p.order).sort((a, b) => a - b);
-    expect(orders).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
+    expect(orders).toEqual(Array.from({ length: 19 }, (_, i) => i + 1));
   });
 
   it("every page has the required fields and renders HTML", () => {
@@ -29,13 +29,14 @@ describe("docs content set", () => {
   it("groups into the four parts covering every page", () => {
     const groups = docNav();
     expect(groups.map((g) => g.part)).toEqual([...DOCS_PARTS]);
-    expect(groups.reduce((n, g) => n + g.pages.length, 0)).toBe(18);
+    expect(groups.reduce((n, g) => n + g.pages.length, 0)).toBe(19);
   });
 
   it("resolves routes and catch-all slugs", () => {
     expect(pageByRoute("/docs")?.order).toBe(1);
     expect(pageBySlug(["guides", "investor"])?.route).toBe("/docs/guides/investor");
     expect(pageBySlug(["wrapping"])?.title).toMatch(/Wrapping/);
+    expect(pageBySlug(["smart-trust"])?.title).toMatch(/Smart Trust/);
     expect(pageBySlug(["does-not-exist"])).toBeUndefined();
   });
 
@@ -62,6 +63,11 @@ describe("smart docs search", () => {
   it("finds the wrapping page for collateral/DeFi queries", () => {
     const routes = searchDocs("wrap collateral").map((r) => r.route);
     expect(routes).toContain("/docs/wrapping");
+  });
+
+  it("finds the Smart Trust legal page", () => {
+    const routes = searchDocs("smart trust legal").map((r) => r.route);
+    expect(routes).toContain("/docs/smart-trust");
   });
 
   it("finds refund guidance", () => {

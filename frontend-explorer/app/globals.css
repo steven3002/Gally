@@ -255,34 +255,38 @@ body {
 ---------------------------------------------------------------------------- */
 .doc-prose {
   color: var(--foreground);
-  font-size: 15px;
-  line-height: 1.7;
-  max-width: 46rem;
+  font-size: 16.75px;
+  line-height: 1.75;
+  max-width: 48rem;
 }
 .doc-prose > :first-child {
   margin-top: 0;
 }
 .doc-prose h2 {
-  font-size: 1.4rem;
+  font-size: 1.7rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
-  margin: 2.2rem 0 0.8rem;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 2.6rem 0 0.95rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
   scroll-margin-top: 5rem;
 }
 .doc-prose h3 {
-  font-size: 1.12rem;
+  font-size: 1.32rem;
   font-weight: 650;
-  margin: 1.6rem 0 0.5rem;
+  letter-spacing: -0.01em;
+  margin: 1.9rem 0 0.55rem;
   scroll-margin-top: 5rem;
 }
 .doc-prose h4 {
-  font-size: 1rem;
+  font-size: 1.12rem;
   font-weight: 600;
-  margin: 1.2rem 0 0.4rem;
+  margin: 1.3rem 0 0.4rem;
   scroll-margin-top: 5rem;
 }
 .doc-prose p {
-  margin: 0.85rem 0;
+  margin: 0.95rem 0;
 }
 .doc-prose a {
   color: var(--primary);
@@ -341,6 +345,14 @@ body {
   border: 0;
   border-top: 1px solid var(--border);
 }
+.doc-prose .doc-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.75rem auto;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+}
 
 /* Tables */
 .doc-table-wrap {
@@ -352,7 +364,7 @@ body {
 .doc-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13.5px;
+  font-size: 14.5px;
 }
 .doc-table th {
   text-align: left;

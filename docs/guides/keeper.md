@@ -1,7 +1,7 @@
 ---
 title: "Keeper & Maintenance (Cranks)"
 part: "Use"
-order: 10
+order: 11
 summary: "The permissionless 'anyone can poke the protocol' actions — finalize, abort, sweeps, flag-default, resolve, close — what each one does, when it's needed, and how to run one from the explorer's Cranks page."
 keywords: ["crank", "keeper", "permissionless", "finalize", "abort", "sweep rollover", "sweep compensation", "flag default", "resolve dispute", "close asset", "maintenance"]
 ---

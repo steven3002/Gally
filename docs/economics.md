@@ -1,7 +1,7 @@
 ---
 title: "The Economic Model"
 part: "Understand"
-order: 4
+order: 5
 summary: "How the money math works: goal-equals-supply pricing, the three-way revenue split, the lazy yield index and claim formula, the Diamond-Hand multiplier, rollover, compensation, solvency, and the no-retroactive-yield theorem."
 keywords: ["economics", "yield", "index", "claim formula", "revenue split", "diamond hand", "apy", "rollover", "compensation", "solvency", "wrap math", "scale", "fixed point"]
 ---
@@ -25,7 +25,7 @@ This single decision removes an entire class of oracle risk.
 ## The three-way revenue split
 
 When revenue arrives at an operational project, the contract splits **every** deposit atomically — the
-entity is never trusted to "send the investors' share." For gross revenue $G$, a protocol fee rate
+entity never has to be *relied on* to "send the investors' share." For gross revenue $G$, a protocol fee rate
 $f$, and an investor split $s$ (both in basis points):
 
 $$

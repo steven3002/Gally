@@ -1,7 +1,7 @@
 ---
 title: "Parameters Reference"
 part: "Reference"
-order: 18
+order: 19
 summary: "Every protocol parameter the admin can tune, what it controls, and its hard cap or floor — with live values always visible on the explorer's Governance page."
 keywords: ["parameters", "config", "protocol fee", "min stake", "coverage", "challenger bond", "jury quorum", "jury threshold", "bounty", "grace window", "cooldown", "governance", "hard caps"]
 ---

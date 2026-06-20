@@ -1,7 +1,7 @@
 ---
 title: "Run & Build"
 part: "Build & Operate"
-order: 15
+order: 16
 summary: "Bring the whole stack up with one command, build and test each component, and understand the four environments (mock, local, devnet, mainnet) and how USDC resolves in each."
 keywords: ["run", "build", "test", "run_stack.sh", "run_devnet.sh", "devnet", "localnet", "mainnet", "environments", "usdc resolution", "quickstart", "operator", "developer"]
 ---

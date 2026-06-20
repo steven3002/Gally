@@ -1,7 +1,7 @@
 ---
 title: "Investor Guide"
 part: "Use"
-order: 8
+order: 9
 summary: "Every action a holder performs, step by step: contribute, claim your deeds, refund, claim yield, wrap and unwrap for liquidity, split and merge, and redeem — with what you'll see and what can go wrong."
 keywords: ["investor", "contribute", "claim shares", "claim deed", "refund", "claim yield", "wrap", "unwrap", "split", "merge", "redeem", "exit", "how to invest"]
 ---

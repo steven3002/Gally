@@ -1,7 +1,7 @@
 ---
 title: "System Architecture"
 part: "Build & Operate"
-order: 14
+order: 15
 summary: "How the components cooperate: the on-chain protocol, the event indexer, the explorer, the settlement coin, the per-entity token, and the live-simulation harness — connected only through the chain."
 keywords: ["architecture", "components", "indexer", "explorer", "the chain is the only ipc", "data path", "usdc", "entity token", "faucet", "simulation bot", "monorepo"]
 ---

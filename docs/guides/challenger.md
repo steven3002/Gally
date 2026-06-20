@@ -1,7 +1,7 @@
 ---
 title: "Challenger Guide"
 part: "Use"
-order: 9
+order: 10
 summary: "How any user polices the validators: what you can challenge and when, posting a bond and evidence, what happens during the jury vote, and exactly what you win or lose under each verdict."
 keywords: ["challenger", "dispute", "challenge validator", "bond", "evidence", "jury", "slashing", "bounty", "fraud", "how to dispute"]
 ---
@@ -14,8 +14,16 @@ evidence and a bond.
 
 ## What you can challenge, and when
 
-You challenge a **validator's attestation** on a specific project — for example, you've found that a
-permit they signed off on is forged, or a milestone they approved never happened.
+You challenge a **validator's attestation** on a specific project. Because that attestation vouches for
+the asset's **[Smart Trust](/docs/smart-trust)** — its legal strength and ongoing compliance — you can
+contest far more than obvious fraud:
+
+- a forged permit, or a milestone that was approved but never actually happened;
+- the **Smart Trust failing to deliver** what it legally promised; or
+- **legal rot** — local laws changed and the validator never updated the documents to keep the asset
+  compliant.
+
+Conditions:
 
 - The project must be in **`EXECUTING`** or **`OPERATIONAL`**, with the validator's coverage still
   locked against it. (During `FUNDING` there's nothing to dispute — contributors are already protected

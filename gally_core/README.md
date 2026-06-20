@@ -1,9 +1,11 @@
 # gally_core
 
-Sui Move package implementing the Gally protocol: trustless RWA capitalization,
-milestone-escrowed funding, validator-staked legal attestation, lazy-index yield
-distribution, and a 1:1 share↔coin wrap machine. This is the on-chain heart of the
-system — every other component reads from or writes to the objects defined here.
+Sui Move package implementing the Gally protocol: **dual-layer (code + courts)** RWA
+capitalization — milestone-escrowed funding, validator-staked attestation of each asset's
+legally binding **Smart Trust**, lazy-index yield distribution, and a 1:1 share↔coin wrap
+machine. This is the on-chain heart of the system — every other component reads from or
+writes to the objects defined here. The contract enforces the *mathematical* layer; the
+Smart Trust (off-chain, court-enforceable) is the *legal* layer it attests to.
 
 Build & test: `sui move build && sui move test`.
 
