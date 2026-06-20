@@ -12,6 +12,30 @@ wrap machine is the *only* thing that can ever mint or burn this coin.
 > the spec is the source of truth. **Never change `DECIMALS` (6).** It is
 > enforced on-chain at finalize (`EInvalidDecimals`).
 
+## The mechanic: virgin cap, one-way handoff
+
+A Move one-time witness (OTW) must be a struct whose name equals its module name
+uppercased — so a *generic* on-chain token factory is impossible. Each entity
+therefore publishes its **own copy** of this package, and the unique cap it
+produces is handed to the protocol once and custodied **forever**. After the
+handoff, the protocol's wrap machine is the sole mint/burn authority, which is
+what keeps `Coin<T>` total supply equal to wrapped shares (`gally_core` I-W1).
+
+```mermaid
+sequenceDiagram
+    participant E as Entity
+    participant T as Token package (this)
+    participant C as gally_core accumulator
+    E->>T: publish (runs init once)
+    Note over T: create Coin<T> — 0 supply, 6 decimals<br/>freeze CoinMetadata (immutable)
+    T-->>E: virgin TreasuryCap<T>  (the only one)
+    Note over E: raise reaches goal (raised == goal)
+    E->>C: finalize_successful_raise<T>(cap, &metadata)
+    Note over C: assert metadata.decimals == 6  (EInvalidDecimals)<br/>assert total_supply == 0  (ECapNotVirgin)
+    Note over C: custody TreasuryCap<T> forever —<br/>no function ever returns it
+    C-->>C: only wrap_shares mints · only unwrap_coins burns
+```
+
 ## Prerequisites
 
 - Sui CLI installed; an active address with gas (`sui client active-address`,
