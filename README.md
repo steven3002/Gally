@@ -1,4 +1,8 @@
-# Gally — Capital Protocol
+<p align="center">
+  <img src="Gally_logo.png" alt="Gally logo" width="380">
+</p>
+
+<h1 align="center">Gally — Capital Protocol</h1>
 
 > A decentralized protocol on **Sui** that lets retail investors pool **USDC** to fund vetted
 > real-world projects (housing, machinery, trade finance, agriculture, energy, infrastructure) and
