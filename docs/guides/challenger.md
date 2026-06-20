@@ -1,7 +1,7 @@
 ---
 title: "Challenger Guide"
 part: "Use"
-order: 8
+order: 9
 summary: "How any user polices the validators: what you can challenge and when, posting a bond and evidence, what happens during the jury vote, and exactly what you win or lose under each verdict."
 keywords: ["challenger", "dispute", "challenge validator", "bond", "evidence", "jury", "slashing", "bounty", "fraud", "how to dispute"]
 ---

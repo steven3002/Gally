@@ -1,7 +1,7 @@
 ---
 title: "Glossary"
 part: "Reference"
-order: 16
+order: 17
 summary: "Every Gally term in one place, alphabetically: from accumulator and coverage to rollover, soulbound, tranche, vouch, and wrapping."
 keywords: ["glossary", "definitions", "terms", "accumulator", "coverage", "deed", "index", "rollover", "soulbound", "tranche", "vouch", "wrap", "compensation", "crank"]
 ---

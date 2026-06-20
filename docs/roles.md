@@ -1,7 +1,7 @@
 ---
 title: "Validators, Entities & Admin"
 part: "Use"
-order: 10
+order: 11
 summary: "The roles you'll see on-chain but don't drive from the investor dApp: what validators, entities, and the admin each do, what backs their honesty, and how the explorer surfaces them."
 keywords: ["validator", "entity", "builder", "admin", "roles", "vouch", "approve milestone", "stake", "tranche", "collateral", "governance", "register validator"]
 ---

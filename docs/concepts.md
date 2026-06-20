@@ -70,8 +70,10 @@ a DEX or use as collateral — and **unwrapped** back into a deed. The trade-off
 The index denominator $u$ counts unwrapped supply only. So as more holders wrap (chasing liquidity),
 the remaining unwrapped holders each earn a *bigger* slice. This "Diamond-Hand multiplier" is not a
 setting anyone tunes — it falls straight out of the division. Wrapping and unwrapping can never create
-retroactive yield for the time a deed spent wrapped; that is guaranteed by construction (see
-[Economics](/docs/economics) and [Security](/docs/security)).
+retroactive yield for the time a deed spent wrapped; that is guaranteed by construction. The
+dedicated [Wrapping, Liquidity & Collateral](/docs/wrapping) page covers the mechanism, the use cases
+(DEX trading, lending collateral), and why the coin is trustworthy collateral; the math is in
+[Economics](/docs/economics).
 
 ## Disputes, slashing & compensation
 

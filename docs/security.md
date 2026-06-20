@@ -1,7 +1,7 @@
 ---
 title: "Trust & Security Model"
 part: "Understand"
-order: 5
+order: 6
 summary: "Why a stranger can trust Gally with money: bounded trust assumptions, capability keys, validator slashing, the dispute jury, the asymmetric pause, the five rules that are never violated, document attestation, the full attack/defense table, and the honest limitations."
 keywords: ["security", "trust", "is it safe", "slashing", "capabilities", "admincap", "pause", "jury", "dispute", "attacks", "sha256", "walrus", "limitations", "audit"]
 ---
