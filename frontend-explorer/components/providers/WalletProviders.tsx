@@ -13,16 +13,23 @@ import { SuiClientProvider, WalletProvider, createNetworkConfig } from "@mysten/
 import "@mysten/dapp-kit/dist/index.css";
 import { SUI_NETWORK, SUI_RPC_URL } from "@/lib/tx/config";
 
+// IMPORTANT: register EVERY public network (incl. devnet). Otherwise `defaultNetwork`
+// falls back to the `localnet` alias and dapp-kit asks the wallet to sign for the
+// `sui:localnet` chain — which public wallets (Slush) don't recognise, so the tx
+// executes on the wrong chain and the protocol package "does not exist" (DEV-M1 fix).
 const { networkConfig } = createNetworkConfig({
   localnet: { url: SUI_RPC_URL, network: "localnet" },
+  devnet: { url: "https://fullnode.devnet.sui.io:443", network: "devnet" },
   testnet: { url: "https://fullnode.testnet.sui.io:443", network: "testnet" },
   mainnet: { url: "https://fullnode.mainnet.sui.io:443", network: "mainnet" },
 });
 
 const queryClient = new QueryClient();
 
+type Net = "localnet" | "devnet" | "testnet" | "mainnet";
+
 export function WalletProviders({ children }: { children: React.ReactNode }) {
-  const defaultNetwork = (["localnet", "testnet", "mainnet"].includes(SUI_NETWORK) ? SUI_NETWORK : "localnet") as "localnet" | "testnet" | "mainnet";
+  const defaultNetwork: Net = (["localnet", "devnet", "testnet", "mainnet"].includes(SUI_NETWORK) ? SUI_NETWORK : "localnet") as Net;
   return (
     <QueryClientProvider client={queryClient}>
       <SuiClientProvider networks={networkConfig} defaultNetwork={defaultNetwork}>

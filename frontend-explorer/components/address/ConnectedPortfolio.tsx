@@ -21,6 +21,7 @@ import { useOwnedDeeds, useOwnedCoinBalances, buildConnectedHoldings } from "@/l
 import { useOptimistic } from "@/lib/tx/optimistic";
 import { CATEGORY_COLOR, num, pct, usd, usdCompact, suiscanUrl } from "@/lib/format";
 import { Avatar, Card, Empty, SectionHeader, Stat } from "@/components/ui/primitives";
+import { RandomNftAvatar } from "@/components/onboarding/RandomNftAvatar";
 import { StatePill } from "@/components/ui/bits";
 import { Donut } from "@/components/ui/charts";
 import { IdLink } from "@/components/ui/IdLink";
@@ -104,7 +105,7 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
       {/* Header — the CONNECTED wallet, read live from RPC */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-4">
-          <Avatar seed={address} size={56} label="You" rounded="rounded-2xl" />
+          <RandomNftAvatar address={address} size={56} label="You" rounded="rounded-2xl" />
           <div className="min-w-0">
             <h1 className="flex flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-foreground">
               Portfolio

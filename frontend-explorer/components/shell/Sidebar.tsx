@@ -6,7 +6,7 @@ import { NAV, isActive } from "./nav";
 import { GallyWordmark, Close } from "@/components/ui/icons";
 import { cn } from "@/lib/format";
 import { protocolStats, protocolConfig } from "@/lib/mock/data";
-import { data } from "@/lib/data";
+import { data, isLive } from "@/lib/data";
 import { useLive } from "@/lib/data/useLive";
 import { usdCompact } from "@/lib/format";
 
@@ -14,6 +14,9 @@ import { usdCompact } from "@/lib/format";
 const TOUR_ANCHORS: Record<string, string> = {
   "/assets": "marketplace",
   "/portfolio": "portfolio",
+  "/validators": "validators",
+  "/governance": "governance",
+  "/disputes": "disputes",
   "/cranks": "cranks",
 };
 
@@ -101,11 +104,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </div>
 
-      {/* Explorer footer (network now lives on the wallet control in the topbar) */}
+      {/* Footer — capability badge (this is a transactional dApp in live mode) + version */}
       <div className="border-t border-border px-5 py-3">
         <div className="flex items-center gap-2 text-[11px] text-muted">
-          <span className="h-1.5 w-1.5 rounded-full bg-positive" />
-          Read-only explorer
+          <span className={`h-1.5 w-1.5 rounded-full ${isLive ? "bg-primary" : "bg-positive"}`} />
+          {isLive ? "Live dApp — invest, claim & crank" : "Read-only explorer"}
           <span className="ml-auto rounded-md bg-surface-2 px-1.5 py-0.5 font-medium text-muted-2">
             v{protocolConfig.version}
           </span>
