@@ -1,7 +1,7 @@
 ---
 title: "Worked Examples"
 part: "Use"
-order: 12
+order: 13
 summary: "Six real-world situations Gally was designed for, each told end-to-end: community housing, heavy machinery, inventory/trade finance, a business bootstrap, DeFi collateralization, and a facilitator default."
 keywords: ["scenarios", "examples", "use cases", "housing", "machinery", "trade finance", "inventory", "bootstrap", "equity", "collateral", "defi", "default", "rental yield", "revenue share"]
 ---

@@ -1,7 +1,7 @@
 ---
 title: "Investor Guide"
 part: "Use"
-order: 7
+order: 8
 summary: "Every action a holder performs, step by step: contribute, claim your deeds, refund, claim yield, wrap and unwrap for liquidity, split and merge, and redeem — with what you'll see and what can go wrong."
 keywords: ["investor", "contribute", "claim shares", "claim deed", "refund", "claim yield", "wrap", "unwrap", "split", "merge", "redeem", "exit", "how to invest"]
 ---
@@ -60,7 +60,9 @@ can go wrong. Every one of these is a transaction your wallet signs; the app nev
 ## Wrap for liquidity — and unwrap back
 
 A deed can be **wrapped** into a plain `Coin<T>` you can trade or use as collateral elsewhere, then
-**unwrapped** back into a deed.
+**unwrapped** back into a deed. (For the full picture — the mechanism, the conditions, the DeFi use
+cases, and why the coin is trustworthy collateral — see
+[Wrapping, Liquidity & Collateral](/docs/wrapping).)
 
 **Wrap:**
 1. Choose **Wrap** on a deed and sign.

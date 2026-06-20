@@ -63,7 +63,9 @@ $$\text{yield per unwrapped deed} \;\propto\; \frac{1}{u} \;\uparrow \quad \text
 
 In the extreme, if everyone but you wraps, you receive essentially the entire investor portion of each
 deposit. This amplification is **emergent** — there is no multiplier parameter to set or game. It is
-simply the reward for staying unwrapped, funded by the yield that wrapped holders forfeit.
+simply the reward for staying unwrapped, funded by the yield that wrapped holders forfeit. For what the
+wrapped coin is *for* — DEX trading, lending collateral, and why it's a trustworthy claim — see
+[Wrapping, Liquidity & Collateral](/docs/wrapping).
 
 ## Rollover: revenue while nobody is unwrapped
 

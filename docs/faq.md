@@ -1,7 +1,7 @@
 ---
 title: "FAQ"
 part: "Reference"
-order: 15
+order: 16
 summary: "Plain-language answers to the questions newcomers actually ask: is my money safe, what if the raise fails or the builder runs, why wrapped coins don't earn, what the admin can do, and how this differs from a normal token."
 keywords: ["faq", "is my money safe", "raise fails", "builder runs", "wrapped no yield", "admin power", "everyone wraps", "validators", "audit", "mainnet", "erc-20", "difference"]
 ---

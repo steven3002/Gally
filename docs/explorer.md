@@ -1,7 +1,7 @@
 ---
 title: "Reading the Explorer"
 part: "Use"
-order: 11
+order: 12
 summary: "A guided tour of the Gally explorer: the marketplace, an asset page, validators, governance, your portfolio, disputes, tokens, cranks, the activity feed, and universal search and ID resolution."
 keywords: ["explorer", "app tour", "marketplace", "assets", "asset page", "validators", "governance", "portfolio", "disputes", "tokens", "cranks", "activity", "search", "navigation"]
 ---
