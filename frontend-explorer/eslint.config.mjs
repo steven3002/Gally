@@ -15,6 +15,7 @@ const eslintConfig = defineConfig([
     // Build-time docs generator (plain Node ESM) + its generated output.
     "scripts/**",
     "lib/docs/generated.ts",
+    "lib/docs/nav.generated.ts",
   ]),
 ]);
 

@@ -14,32 +14,14 @@ export interface DocPartGroup {
   pages: DocPage[];
 }
 
-/** A lightweight nav link (no page HTML) — safe to pass into client components. */
-export interface DocNavLink {
-  title: string;
-  route: string;
-}
-export interface DocNavGroup {
-  part: string;
-  pages: DocNavLink[];
-}
-
 const ordered = (): DocPage[] => [...DOCS_PAGES].sort((a, b) => a.order - b.order);
 
-/** The four-part sidebar tree, parts in canonical order, pages by `order`. */
+/** The four-part tree, parts in canonical order, pages by `order` (server use). */
 export function docNav(): DocPartGroup[] {
   return DOCS_PARTS.map((part) => ({
     part,
     pages: ordered().filter((p) => p.part === part),
   })).filter((g) => g.pages.length > 0);
-}
-
-/** Slim nav (title + route only) for client components — no page HTML shipped. */
-export function docNavLinks(): DocNavGroup[] {
-  return docNav().map((g) => ({
-    part: g.part,
-    pages: g.pages.map((p) => ({ title: p.title, route: p.route })),
-  }));
 }
 
 export function pageByRoute(route: string): DocPage | undefined {
