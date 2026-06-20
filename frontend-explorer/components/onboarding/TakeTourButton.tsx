@@ -9,21 +9,23 @@
 
 import { usePathname } from "next/navigation";
 import { useTour } from "./Tour";
-import { tourForPath } from "./tourSteps";
+import { tourForPath, tourLabelForPath } from "./tourSteps";
 import { Compass } from "@/components/ui/icons";
 
 export function TakeTourButton() {
   const { start, active } = useTour();
   const pathname = usePathname();
+  const label = tourLabelForPath(pathname);
   return (
     <button
       onClick={() => start(tourForPath(pathname))}
       disabled={active}
+      data-tour="take-tour"
       title="Take a guided tour of this page"
       aria-label="Take a guided tour of this page"
       className="hidden shrink-0 items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 py-2 text-[11px] font-bold text-muted transition-colors hover:border-border-strong hover:text-foreground disabled:opacity-50 lg:inline-flex"
     >
-      <Compass className="h-4 w-4" /> Take tour
+      <Compass className="h-4 w-4" /> {label}
     </button>
   );
 }
