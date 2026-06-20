@@ -115,6 +115,21 @@ Bring the whole stack up end-to-end with one command:
 Each publishes the contracts, starts the indexer, seeds demo data, and runs an activity bot so the
 explorer fills with live, continuously-updating data. See each component's README for its own runbook.
 
+### Live deployment — Sui Devnet
+
+The protocol is published on **Sui Devnet** (RPC `https://fullnode.devnet.sui.io:443`):
+
+| Object | ID |
+|---|---|
+| **`gally_core` package** | `0x154f007808084283212118536cf212c997abc5aa8bfc7ccdc3cb546bb3680e74` |
+| `usdc` package | `0x05aebd94af5bcde02c41b18a6eb62ceb0fdee27ed42b12a15e7c43e3fc09ca9b` |
+| `gally_mock_faucet` package | `0xccf91720b4200a19bd310fda56e2a7c7120ee9b2b6d28bc0092342eaa368017b` |
+| `ProtocolConfig` (shared) | `0xe5c1c11d59e9ecdb02787f274adb1ab6cf0a2179a628144decb326cf6368fcaf` |
+| `MockFaucet` (shared) | `0xf06c0ac5303bb542a5077af84826cbea1cf5f61e09c4ef3a0af307378a7b4880` |
+
+> ⚠️ Sui Devnet is periodically wiped (≈ weekly). After a reset these IDs go stale — re-run
+> `./run_devnet.sh` to republish and the new IDs are written back to `config.toml`.
+
 ---
 
 ## What's in this repo
