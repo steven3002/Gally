@@ -1,84 +1,200 @@
-name: CI — Gally Core Tests
+name: CI
+
+# Routes every test suite that can run on a stock GitHub runner.
+# Deliberately EXCLUDED: anything needing a live Sui node / full stack
+# (run_stack.sh, run_devnet.sh, the genesis+soak, FE live e2e). Those are
+# operator/integration flows, not unit/build tests.
+#
+# NOTE: every Move command uses `--build-env mainnet`. The packages depend on the
+# `usdc` package, whose dependency only resolves under an explicit build env;
+# `mainnet` is the offline-resolvable one (usdc/Published.toml maps it to Circle's
+# published USDC), so the whole graph builds without a chain.
 
 on:
   push:
     branches: [main, develop]
-    paths:
-      - "gally_core/**"
-      - "frontend-explorer/**"
-      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main, develop]
-    paths:
-      - "gally_core/**"
-      - "frontend-explorer/**"
-      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  sui-move-tests:
-    name: Sui Move Build & Test
+  # ── Sui Move: build + unit tests for every package, plus the deploy-script test ──
+  move-tests:
+    name: Move build & test (+ script test)
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Sui CLI
         run: |
-          # Step 1: Install suiup (official Sui version manager)
-          # suiup installs to ~/.local/bin/
           curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh
-
-          # suiup and sui both live in ~/.local/bin/
           export PATH="${HOME}/.local/bin:${PATH}"
-
-          # Step 2: Install Sui via suiup
           suiup install sui@mainnet
-
-          # Persist PATH for subsequent steps
-          echo "${HOME}/.local/bin" >> $GITHUB_PATH
-
-          # Verify install succeeded in this same step
+          echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
           sui --version
 
-      - name: Build gally_core
-        working-directory: gally_core
-        run: sui move build
+      - name: usdc — build
+        working-directory: usdc
+        run: sui move build --build-env mainnet
 
-      - name: Run gally_core tests
-        working-directory: gally_core
-        run: sui move test
+      - name: entity_token_template — test
+        working-directory: entity_token_template
+        run: sui move test --build-env mainnet
 
-  frontend-tests:
-    name: Frontend Typecheck, Lint & Unit Tests
+      - name: gally_mock_faucet — test
+        working-directory: gally_mock_faucet
+        run: sui move test --build-env mainnet
+
+      - name: gally_core — test
+        working-directory: gally_core
+        run: sui move test --build-env mainnet
+
+      # Script test: the deploy helper must emit a buildable, spec-conformant package.
+      - name: instantiate.sh — generate & build a token package
+        working-directory: entity_token_template
+        run: |
+          bash scripts/instantiate.sh ci_probe_deed \
+            --out "${RUNNER_TEMP}/ci_probe_deed" \
+            --name "CI Probe Deed" --symbol CIPD \
+            --description "CI script-test token" --force
+          cd "${RUNNER_TEMP}/ci_probe_deed"
+          sui move test --build-env mainnet
+
+  # ── Backend Indexer (Rust): build + tests against a Postgres service container ──
+  indexer-tests:
+    name: Backend Indexer — build & test
     runs-on: ubuntu-latest
-
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gally_indexer
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/gally_indexer
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          node-version: "20"
+          workspaces: "Backend Indexer"
+      - name: Build
+        working-directory: Backend Indexer
+        run: cargo build --locked
+      - name: Test
+        working-directory: Backend Indexer
+        run: cargo test --locked
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+  # ── Live Simulation Bot (Rust): build + unit tests (no node needed) ──
+  bot-tests:
+    name: Live Simulation Bot — build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          version: latest
+          workspaces: "Live Simulation Bot"
+      - name: Build
+        working-directory: Live Simulation Bot
+        run: cargo build --locked
+      - name: Test
+        working-directory: Live Simulation Bot
+        run: cargo test --locked
 
-      - name: Install dependencies
+  # ── Frontend Explorer: typecheck, lint, unit tests, production build ──
+  frontend-tests:
+    name: Frontend — typecheck, lint, unit & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend-explorer/pnpm-lock.yaml
+      - name: Install
         working-directory: frontend-explorer
         run: pnpm install --frozen-lockfile
-
       - name: Typecheck
         working-directory: frontend-explorer
         run: pnpm typecheck
-
       - name: Lint
         working-directory: frontend-explorer
         run: pnpm lint
-
       - name: Unit tests (Vitest)
         working-directory: frontend-explorer
         run: pnpm test
+      - name: Build
+        working-directory: frontend-explorer
+        run: pnpm build
+
+  # ── Frontend Explorer: end-to-end (Playwright, on mock data — no node/RPC) ──
+  frontend-e2e:
+    name: Frontend — e2e (Playwright, mock data)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend-explorer/pnpm-lock.yaml
+      - name: Install
+        working-directory: frontend-explorer
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        working-directory: frontend-explorer
+        run: pnpm exec playwright install --with-deps chromium
+      - name: e2e (auto-starts the app via build && start)
+        working-directory: frontend-explorer
+        run: pnpm test:e2e
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend-explorer/playwright-report
+          retention-days: 7
+
+  # ── Shell scripts: syntax gate (hard) + shellcheck (advisory) ──
+  shell-scripts:
+    name: Shell scripts — syntax & lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n syntax check (hard gate)
+        run: |
+          set -e
+          for s in run_stack.sh run_devnet.sh \
+                   entity_token_template/scripts/instantiate.sh \
+                   .github/scripts/ci_local.sh; do
+            echo "checking: $s"
+            bash -n "$s"
+          done
+      - name: shellcheck (advisory — errors only)
+        continue-on-error: true
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck --severity=error \
+            run_stack.sh run_devnet.sh \
+            entity_token_template/scripts/instantiate.sh \
+            .github/scripts/ci_local.sh
