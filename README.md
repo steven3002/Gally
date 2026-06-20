@@ -53,7 +53,7 @@ $$\Delta\text{index} = \frac{P \times \text{SCALE}}{u}, \qquad \text{SCALE} = 10
 Each deed remembers the index value at its last claim, so what you're owed is always just the
 difference since then:
 
-$$\text{payout} = \frac{(\text{index}_{\text{global}} - \text{index}_{\text{personal}}) \times \text{share\_count}}{\text{SCALE}}$$
+$$\text{payout} = \frac{(\text{global index} - \text{personal index}) \times \text{share count}}{\text{SCALE}}$$
 
 All of this is `u128` fixed-point, **multiply-before-divide**, and floors in the protocol's favor —
 the rounding dust stays in the reward pool as a solvency buffer, so the pool always covers what it
