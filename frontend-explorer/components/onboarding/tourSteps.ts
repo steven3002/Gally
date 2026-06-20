@@ -22,6 +22,7 @@ export const OVERVIEW_TOUR: TourStep[] = [
   { anchor: "validators", title: "Validators", body: "Stake-backed attestors vouch project legals, approve milestones and sit on dispute juries — their stake is slashable if they're wrong." },
   { anchor: "governance", title: "Governance", body: "Every ProtocolConfig parameter — fees, the validator min-stake, jury quorum, dispute windows — read live from chain." },
   { anchor: "cranks", title: "Keeper Cranks", body: "Permissionless maintenance: anyone (you included) can run cranks — rollover, compensation sweeps, closures — to keep the protocol healthy." },
+  { anchor: "docs", title: "Documentation", body: "New here? The docs explain everything — the deeds, the yield math, the dual-layer Smart Trust security model, and step-by-step guides for investing, disputing and cranking. Open them and press “/” to search." },
   { anchor: "take-tour", title: "Tour any page, anytime", body: "That's the essentials! Whenever you open a new page — an asset, your portfolio, validators, governance — click “Take a tour” up here for a guided walk-through of that page." },
 ];
 
@@ -85,6 +86,13 @@ export const CRANKS_TOUR: TourStep[] = [
   { anchor: "cranks-list", title: "Eligible work", body: "Each crank shows whether its on-chain precondition is met right now. Run an eligible one to keep the protocol healthy (and exercise the live transaction path)." },
 ];
 
+/** Documentation site (`/docs` + sub-pages). */
+export const DOCS_TOUR: TourStep[] = [
+  { anchor: "", title: "The Documentation", body: "A complete guide to Gally — the concepts, the lifecycle, the economic model, the Smart Trust legal layer, role guides and worked examples. Everything a newcomer needs to act." },
+  { anchor: "docs-nav", title: "Browse by section", body: "Four parts — Understand, Use, Build & Operate, Reference. Each section collapses, and the page you're reading is highlighted." },
+  { anchor: "docs-search", title: "Search everything", body: "Press “/” or click here for instant, offline search across every page — jump straight to the section that answers your question." },
+];
+
 /** A short, page-aware label for the "Take tour" button (it tours the CURRENT page). */
 export function tourLabelForPath(pathname: string): string {
   if (/^\/assets\/.+/.test(pathname)) return "Tour this asset";
@@ -95,6 +103,7 @@ export function tourLabelForPath(pathname: string): string {
   if (pathname.startsWith("/disputes")) return "Tour this dispute";
   if (pathname.startsWith("/cranks")) return "Tour cranks";
   if (pathname === "/portfolio" || pathname.startsWith("/address/")) return "Tour portfolio";
+  if (pathname.startsWith("/docs")) return "Tour the docs";
   return "Take a tour";
 }
 
@@ -108,5 +117,6 @@ export function tourForPath(pathname: string): TourStep[] {
   if (pathname.startsWith("/disputes")) return DISPUTES_TOUR;
   if (pathname.startsWith("/cranks")) return CRANKS_TOUR;
   if (pathname === "/portfolio" || pathname.startsWith("/address/")) return PORTFOLIO_TOUR;
+  if (pathname === "/docs" || pathname.startsWith("/docs/")) return DOCS_TOUR;
   return OVERVIEW_TOUR;
 }

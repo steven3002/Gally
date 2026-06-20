@@ -1,7 +1,7 @@
 ---
 title: "Getting Started"
 part: "Use"
-order: 7
+order: 8
 summary: "Zero to your first action: connect a Sui wallet, understand which network you're on, claim test USDC, and contribute to your first project — all in about five minutes."
 keywords: ["getting started", "connect wallet", "test usdc", "faucet", "claim tokens", "devnet", "first contribution", "how to start", "onboarding"]
 ---

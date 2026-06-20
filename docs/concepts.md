@@ -40,13 +40,25 @@ submits proof of a real-world milestone and a **validator approves it**. Approva
 separate steps, on purpose: the approval is visible on-chain *before* any money moves, leaving a public
 window to dispute a bad approval while the capital is still safe in escrow.
 
+## The Smart Trust (the legal layer)
+
+Every asset is bound by a **[Smart Trust](/docs/smart-trust)** — a legally binding, court-enforceable
+contract that ties the operating entity and the real asset to your deeds. It defines ownership and
+voting rights, the entity's obligations, how the asset is run and maintained, how tax is handled, and
+the local/state/federal compliance that gives deed-holders legal standing. The on-chain numbers (goal,
+tranche schedule, revenue split) are the **digital twin** of this contract — not figures an operator
+invented. This is the off-chain half of Gally's dual-layer (code + courts) security.
+
 ## The validator network (a decentralized legal oracle)
 
 Validators are the bridge to off-chain reality. To **vouch** for a project, a validator locks a slice
 of USDC stake — called **coverage** — against that specific project, and cryptographically signs the
-content hashes of its legal documents (deeds, permits, invoices) stored on Walrus. That locked stake
-*is* their bond: it says "these documents are authentic and bind this entity to this schedule." Lying
-or approving a fraud gets the stake slashed to compensate investors.
+content hashes of the **Smart Trust** documents (deeds, permits, invoices) stored on Walrus. That
+locked stake *is* their bond: it attests the documents are authentic, legally sufficient, and bind this
+entity — and that the validator will keep them compliant as laws change. A false vouch, an approved
+fraud, or letting the legal documents go stale gets the stake slashed to compensate investors. **You
+trust the entity because the validator is bonded to the Smart Trust — not because you trust the entity
+directly.**
 
 ## Yield by lazy index
 
@@ -77,17 +89,23 @@ dedicated [Wrapping, Liquidity & Collateral](/docs/wrapping) page covers the mec
 
 ## Disputes, slashing & compensation
 
-Gally stays trustless by letting **anyone** contest a validator. A challenger posts a fixed bond and
-submits counter-evidence; the targeted validator's pool is frozen instantly, and a **jury** of other
-validators votes. If the challenge is upheld, the validator's coverage is slashed: the challenger gets
-a bounty and their bond back, and the remainder flows into a **compensation pool** for investors. If
-it's rejected, the bond is forfeited (half to the jurors, half to the wrongly-accused validator).
+Anyone can contest a validator's attestation — and that includes the **legal strength of the Smart
+Trust** itself, not just missed deadlines or faked milestones. If the physical contract fails to
+deliver, or local laws change and the validator never updated the documents, that is disputable. A
+challenger posts a fixed bond and counter-evidence; the targeted validator's pool freezes instantly,
+and a **jury** of other validators votes. If upheld, the validator's coverage is slashed — the
+challenger gets a bounty and their bond back, and the remainder flows into a **compensation pool** for
+investors. If rejected, the bond is forfeited (half to the jurors, half to the wrongly-accused
+validator). On-chain this slashes the validator; off-chain, the Smart Trust also gives holders standing
+to pursue the entity.
 
 ## Default & the three-layer compensation stack
 
-If a builder misses a tranche deadline, **anyone** can flag the default. Investors are then made whole
-from three layers, in order: **undeployed escrow → the validator's slashed coverage → the entity's own
-collateral**. Those funds become a compensation pool that is distributed to every holder.
+If a builder misses a tranche deadline, **anyone** can flag the default — and the builder is in breach
+of both the on-chain protocol and the legal Smart Trust. Investors are made whole from up to three
+layers, in order: **undeployed escrow → the validator's slashed coverage** (when the vouch is
+successfully disputed) **→ the entity's own collateral**. Those funds become a compensation pool
+distributed to every holder.
 
 ## Permissionless maintenance ("cranks")
 

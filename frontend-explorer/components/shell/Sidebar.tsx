@@ -18,6 +18,7 @@ const TOUR_ANCHORS: Record<string, string> = {
   "/governance": "governance",
   "/disputes": "disputes",
   "/cranks": "cranks",
+  "/docs": "docs",
 };
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {

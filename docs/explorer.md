@@ -1,7 +1,7 @@
 ---
 title: "Reading the Explorer"
 part: "Use"
-order: 12
+order: 13
 summary: "A guided tour of the Gally explorer: the marketplace, an asset page, validators, governance, your portfolio, disputes, tokens, cranks, the activity feed, and universal search and ID resolution."
 keywords: ["explorer", "app tour", "marketplace", "assets", "asset page", "validators", "governance", "portfolio", "disputes", "tokens", "cranks", "activity", "search", "navigation"]
 ---
@@ -27,7 +27,8 @@ The deepest view in the explorer. For one project you'll find:
   backing what it owes?) and, where relevant, default-risk and grace-window countdowns.
 - **The tranche timeline** — each milestone, its deadline, whether it's been proven and approved, and
   its release, with links to the on-chain proof documents.
-- **Legal documents** — the validator-attested Walrus references, with their content hashes.
+- **Legal documents (the Smart Trust)** — the validator-attested Walrus references behind the asset's
+  [Smart Trust](/docs/smart-trust), with their `SHA-256` content hashes.
 - **Revenue & yield** — the deposit history, the index curve, and the three-way split (protocol fee →
   investors → entity) for each deposit.
 

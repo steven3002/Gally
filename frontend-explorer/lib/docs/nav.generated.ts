@@ -15,6 +15,10 @@ export const DOCS_NAV: DocNavGroup[] = [
         "route": "/docs/concepts"
       },
       {
+        "title": "The Smart Trust",
+        "route": "/docs/smart-trust"
+      },
+      {
         "title": "The Asset Lifecycle",
         "route": "/docs/lifecycle"
       },

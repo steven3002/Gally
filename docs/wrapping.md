@@ -1,7 +1,7 @@
 ---
 title: "Wrapping, Liquidity & Collateral"
 part: "Understand"
-order: 5
+order: 6
 summary: "The two states of your position — a yield-earning deed or a fully liquid coin. How wrapping works (burn/mint with automatic yield withdrawal), the conditions around it, what you give up and gain, why the 1:1 peg makes the coin real DeFi collateral, and how staying unwrapped pushes your APY up."
 keywords: ["wrap", "unwrap", "coin", "liquidity", "collateral", "dex", "trading", "lending", "borrowing", "defi", "diamond hand", "apy", "yield eligibility", "mint", "burn", "peg", "force claim", "auto withdrawal", "cooldown", "cetus", "suilend", "composable"]
 ---
@@ -123,9 +123,10 @@ confidence because the bridge back to the underlying asset is **contractually bi
   yield-earning deed at any time, at 1:1, with no oracle and no gatekeeper.
 
 So a coin isn't a synthetic IOU whose value depends on trusting an issuer — it is a faithful, redeemable
-claim on the actual asset. A lending market can treat it as exactly that. That contractual binding is
-the difference between "a token that represents an asset" and "a token you can responsibly lend
-against."
+claim on the actual asset. And the deed it redeems to is itself a legally-backed claim under the asset's
+[Smart Trust](/docs/smart-trust), so the collateral is sound on both layers — code *and* courts. A
+lending market can treat it as exactly that. That contractual binding is the difference between "a token
+that represents an asset" and "a token you can responsibly lend against."
 
 ## Staying unwrapped pushes your APY up
 

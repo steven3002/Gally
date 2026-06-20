@@ -1,7 +1,7 @@
 ---
 title: "The Asset Lifecycle"
 part: "Understand"
-order: 3
+order: 4
 summary: "Every project moves through a strict state machine: pending vouch, funding, executing, operational, closed — with failed, default, and compensation branches. Where your money sits and how you exit at each step."
 keywords: ["lifecycle", "state machine", "pending vouch", "funding", "executing", "operational", "closed", "failed", "defaulted", "compensating", "cancelled", "exit", "refund"]
 ---
@@ -13,12 +13,19 @@ transitions drawn below are allowed** — anything else is rejected by the contr
 diagram is the fastest way to understand the whole protocol, because every action belongs to exactly
 one state.
 
+## It starts with the Smart Trust
+
+Before any of this, the project's **[Smart Trust](/docs/smart-trust)** — its legally binding,
+court-enforceable contract — is drafted, and a validator stakes coverage to **vouch** for it. The
+on-chain raise is the *digital twin* of that contract, so origination is really:
+**draft the Smart Trust → a validator vouches it → funding opens.**
+
 ## The lifecycle at a glance
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING_VOUCH: entity lists a project
-    PENDING_VOUCH --> FUNDING: a validator vouches & locks coverage
+    [*] --> PENDING_VOUCH: entity drafts the Smart Trust & lists the project
+    PENDING_VOUCH --> FUNDING: validator vouches the Smart Trust & locks coverage
     PENDING_VOUCH --> CANCELLED: no vouch before timeout
     FUNDING --> FUNDED: goal met before the deadline
     FUNDING --> FAILED: deadline passed, goal missed
@@ -35,9 +42,10 @@ stateDiagram-v2
 
 ## Each state, in plain words
 
-- **`PENDING_VOUCH`** — the entity has listed the project (its goal, tranche schedule, revenue split,
-  and its own collateral), but no validator has vouched yet. Nobody can contribute. If no validator
-  vouches within a timeout, the listing can be **cancelled** and the entity's collateral returned.
+- **`PENDING_VOUCH`** — the entity has drafted the **Smart Trust** and listed the project (its goal,
+  tranche schedule, revenue split, and its own collateral — all mirroring the legal contract), but no
+  validator has vouched yet. Nobody can contribute. If no validator vouches within a timeout, the
+  listing can be **cancelled** and the entity's collateral returned.
 - **`FUNDING`** — a validator has vouched and locked coverage; the raise is open. Investors contribute
   USDC and receive soulbound receipts. This continues until the goal is met or the deadline passes.
 - **`FAILED`** — the deadline passed without hitting the goal. The raise is dead and every contributor

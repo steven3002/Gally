@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Gally_logo.png" alt="Gally logo" width="380">
+  <img src="public-meta/Gally_logo.png" alt="Gally logo" width="380">
 </p>
 
 <h1 align="center">Gally — Capital Protocol</h1>
@@ -17,8 +17,10 @@ run it.** Each component has its own README with the deep detail.
 ## Why it exists
 
 Real-world-asset (RWA) yield is mostly closed to retail: deals are large, illiquid, and require
-*trusting an operator* to actually pay out. Gally makes every trust assumption either **removed** or
-**collateralized**, so ordinary investors can fund real projects and earn from them safely.
+*trusting an operator* to actually pay out. Gally makes every trust assumption either **removed**,
+**collateralized**, or **legally bound**, so ordinary investors can fund real projects and earn from
+them safely. Security is **dual-layer** — on-chain code for mathematical safety, plus an off-chain,
+court-enforceable **Smart Trust** for legal enforcement (code + courts).
 
 - **Pooled, all-or-nothing funding.** Investors contribute USDC into an on-chain escrow. The raise
   either reaches its goal and converts to deeds, or it fails and **everyone refunds in full** —
@@ -26,14 +28,20 @@ Real-world-asset (RWA) yield is mostly closed to retail: deals are large, illiqu
 - **Milestone-escrowed release.** A funded project's money is **not** handed to the builder up front.
   It sits in escrow and is released tranche-by-tranche, each one gated by a validator-approved proof
   with a hard deadline. Miss a deadline → default & compensation path.
-- **Accountability by stake.** Validators lock USDC to vouch for a project's legals; lying or
-  approving fraud gets them **slashed** and investors compensated. Anyone can post a bond to dispute
-  a vouch, and a jury of other validators votes on it.
+- **The Smart Trust (code + courts).** Every asset is bound by a legally binding, court-enforceable
+  contract that ties the operating entity and the real asset to the deeds — defining rights, operation,
+  tax and compliance. The on-chain numbers are its *digital twin*. So the tokens are receipts for a
+  legally defensible reality, not just numbers on a screen.
+- **Accountability by stake.** Validators are a *decentralized legal oracle*: they lock USDC to vouch
+  for an asset's Smart Trust (its legal strength **and** ongoing compliance). Vouching for fraud or
+  letting the legal documents go stale gets them **slashed** and investors compensated. Anyone can post
+  a bond to dispute a vouch — including the Smart Trust's legal validity — and a jury votes on it.
 - **Self-custody, always.** Every investor action is permissionless. Even under an emergency pause,
   exits (refund, claim, unwrap, redeem) **always** work — the protocol can never trap your funds.
 
-> **Trust thesis in one line:** the *entity* is never trusted, the *validator* is trusted only up to
-> their locked stake, and the *admin* is trusted only with parameters — never with your money.
+> **Trust thesis in one line:** you don't blindly trust the *operator* — you trust a *validator* who
+> has staked real capital to vouch for the asset's legally binding **Smart Trust**, backed by an
+> *admin* trusted only with parameters, never with your money.
 
 ---
 
