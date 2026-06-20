@@ -2,18 +2,10 @@
 
 Sui Move package implementing the Gally protocol: trustless RWA capitalization,
 milestone-escrowed funding, validator-staked legal attestation, lazy-index yield
-distribution, and a 1:1 share↔coin wrap machine.
+distribution, and a 1:1 share↔coin wrap machine. This is the on-chain heart of the
+system — every other component reads from or writes to the objects defined here.
 
-**Authoritative specification:** `../milestone/gally core/protocol_flow.md`.
-Code conforms to the spec; amend the spec before deviating in code.
-Milestone status: root `CLAUDE.md`.
-
-## Build & test
-
-```sh
-sui move build
-sui move test
-```
+Build & test: `sui move build && sui move test`.
 
 ## Module map
 
@@ -53,12 +45,12 @@ from `../entity_token_template/`:
 
 `Coin<T>` itself is a vanilla `sui::coin` with zero custom logic, which is what
 makes it instantly listable on DEXs and usable as DeFi collateral. Yield
-eligibility lives entirely on the unwrapped `GallyShare` side (spec §11–§12).
+eligibility lives entirely on the unwrapped `GallyShare` side.
 
-## Yield & wrap math (the `accumulator`, spec §15)
+## Yield & wrap math (the `accumulator`)
 
 Yield is distributed by a **lazy index**, never by looping over holders (invariant
-I-M4 — no code path iterates holders, contributors, or shares). On a revenue
+**I-M4** — no code path iterates holders, contributors, or shares). On a revenue
 deposit, the investor portion $P$ moves the global index by, for unwrapped supply
 $u = \text{total\_minted} - \text{total\_wrapped}$:
 
@@ -79,9 +71,9 @@ Two edge branches: when $u = 0$ (everyone wrapped) revenue accrues to
 `rollover_reserve` instead of dividing by zero, and is swept into the index once
 unwrapped supply returns; the denominator excluding wrapped supply is exactly the
 **Diamond-Hand multiplier** — wrapped holders forfeit yield to the holders who
-stayed unwrapped (spec §11–§12, [`../Opportunity Cost Yield Multiplier.md`](../Opportunity%20Cost%20Yield%20Multiplier.md)).
+stayed unwrapped (see [`../Opportunity Cost Yield Multiplier.md`](../Opportunity%20Cost%20Yield%20Multiplier.md)).
 
-## Lifecycle & closure (M7, spec §14)
+## Lifecycle & closure
 
 ```
 PENDING_VOUCH ─vouch─▶ FUNDING ─finalize─▶ EXECUTING ─last tranche─▶ OPERATIONAL ─close─▶ CLOSED
@@ -93,8 +85,8 @@ PENDING_VOUCH ─vouch─▶ FUNDING ─finalize─▶ EXECUTING ─last tranche
 
 `CLOSED` is the terminal absorbing state. It has three triggers, each a thin
 public wrapper over one private `close` helper (Move cannot express an "optional
-capability" parameter, so the §17 `close_asset` row is realised as three
-functions):
+capability" parameter, so the single `close_asset` access-control row is realised
+as three functions):
 
 - `close_at_return_target<T>` — trade-finance term complete: `acc.lifetime_investor_revenue ≥ asset.return_target`. Permissionless. Listed via `create_term_asset` (`return_target ≥ funding_goal`).
 - `close_after_compensation<T>` — post-default: grace elapsed and the compensation pool emptied by `sweep_compensation`. Permissionless.
@@ -112,14 +104,14 @@ All three mirror a `closed` flag onto the accumulator and emit
 
 Index math is u128 with a 1e9 fixed-point scale. Payouts assert `≤ u64::MAX`
 (`EPayoutOverflow`). Lifetime investor revenue per share-unit beyond ~2^34 raw
-USDC units exceeds the design envelope (spec §15.1) — astronomically above any
-realistic asset. Truncation dust accrues only in the safe direction (favoring
+USDC units exceeds the design envelope — astronomically above any realistic
+asset. Truncation dust accrues only in the safe direction (favoring
 `reward_pool`, keeping I-M2 an inequality) and is reclaimable solely at closure.
 
-## §17 access-control conformance checklist (M7 hardening audit)
+## Access-control conformance checklist (hardening audit)
 
-Every public entry was reviewed against the spec §17 matrix; the capability and
-pause columns are each enforced by exactly the right assert.
+Every public entry was reviewed against the protocol's access-control matrix; the
+capability and pause columns are each enforced by exactly the right assert.
 
 | Function | Capability | Pause | Version | Note |
 |---|---|---|---|---|

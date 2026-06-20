@@ -7,10 +7,10 @@ and sends the **virgin `TreasuryCap`** to you — which you then hand to
 `gally_core::asset::finalize_successful_raise<T>`. After that, the protocol's
 wrap machine is the *only* thing that can ever mint or burn this coin.
 
-> **Canonical spec:** `milestone/entity_token_template/template_flow.md`
-> (decisions T1–T7, invariants I-T1–I-T5). This README is the operator runbook;
-> the spec is the source of truth. **Never change `DECIMALS` (6).** It is
-> enforced on-chain at finalize (`EInvalidDecimals`).
+> This README is the operator runbook for publishing one entity's deed token and
+> handing it to the protocol. **Never change `DECIMALS` (6).** It is enforced
+> on-chain at finalize (`EInvalidDecimals`) and is what keeps the token at USDC
+> parity (1 share = 1 USDC).
 
 ## The mechanic: virgin cap, one-way handoff
 
@@ -114,8 +114,8 @@ never-minted cap is accepted.
 
 | Guarantee | How |
 |---|---|
-| Zero supply until the protocol mints via wrapping | `init` never calls `coin::mint` (T6, I-T1) |
-| 6 decimals, USDC parity | fixed `const`, enforced at finalize (T3/T4, I-T2) |
-| Immutable name/symbol/icon | `public_freeze_object` at publish (T5, I-T3) |
-| No `gally_core` dependency | Sui framework only (T2, I-T4) |
-| Exactly one `TreasuryCap`, to you, then to the protocol forever | OTW + finalize handoff (I-T5) |
+| Zero supply until the protocol mints via wrapping | `init` never calls `coin::mint` |
+| 6 decimals, USDC parity | fixed `const`, enforced at finalize |
+| Immutable name/symbol/icon | `public_freeze_object` at publish |
+| No `gally_core` dependency | Sui framework only |
+| Exactly one `TreasuryCap`, to you, then to the protocol forever | OTW + finalize handoff |
