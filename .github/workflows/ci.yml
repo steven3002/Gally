@@ -33,7 +33,9 @@ jobs:
         run: |
           curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh
           export PATH="${HOME}/.local/bin:${PATH}"
-          suiup install sui@mainnet
+          # `-y` skips the interactive "set as default?" prompt; without it CI keeps
+          # the (empty) default and no `sui` binary is linked → exit 127 on next line.
+          suiup install sui@mainnet -y
           echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
           sui --version
 
