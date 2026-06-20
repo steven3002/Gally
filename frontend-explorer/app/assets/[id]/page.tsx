@@ -10,6 +10,7 @@ import {
   isCompensating,
 } from "@/lib/mock/health";
 import {
+  apyPct,
   bpsToPct,
   daysLeft,
   num,
@@ -25,6 +26,7 @@ import {
   Card,
   CardHeader,
   CategoryBadge,
+  Empty,
   ProgressBar,
   Stat,
 } from "@/components/ui/primitives";
@@ -233,38 +235,47 @@ export default async function AssetDetailPage({
     </Card>
   );
 
-  const holdersPanel = (
-    <div className="space-y-6">
-      <Card className="p-5">
-        <CardHeader title="Distribution" subtitle="Holder concentration & supply breakdown" className="px-0 pt-0" />
-        <div className="mt-4">
-          <Distribution holders={holders} supply={supply} tokenSymbol={acc?.tokenSymbol} />
-        </div>
-      </Card>
-      <Card>
-        <CardHeader
-          title="Top holders"
-          subtitle="Deeds (yield-bearing) + wrapped Coin<T>"
-          action={
-            <Link href={`/assets/${asset.id}/holders`} className="shrink-0 text-xs font-semibold text-primary transition-colors hover:text-primary-strong">
-              View all {holders.length} →
-            </Link>
-          }
+  const holdersPanel =
+    holders.length === 0 ? (
+      // The section ALWAYS exists (even pre-distribution) so it's discoverable — with a
+      // clear explanation of why the ledger is still empty rather than hiding the tab.
+      <Card className="p-8">
+        <Empty
+          icon={<Users className="h-8 w-8" />}
+          title="No holders yet"
+          hint="GallyShare deeds are minted when contributors redeem their receipts after the raise finalizes. Once the first holder claims, the distribution and full ledger appear here."
         />
-        <div className="mt-2">
-          <HolderTable holders={holders.slice(0, 8)} tokenSymbol={acc?.tokenSymbol} demoAddress={DEMO_WALLET} />
-        </div>
       </Card>
-    </div>
-  );
+    ) : (
+      <div className="space-y-6">
+        <Card className="p-5">
+          <CardHeader title="Distribution" subtitle="Holder concentration & supply breakdown" className="px-0 pt-0" />
+          <div className="mt-4">
+            <Distribution holders={holders} supply={supply} tokenSymbol={acc?.tokenSymbol} />
+          </div>
+        </Card>
+        <Card>
+          <CardHeader
+            title="Top holders"
+            subtitle="Deeds (yield-bearing) + wrapped Coin<T>"
+            action={
+              <Link href={`/assets/${asset.id}/holders`} className="shrink-0 text-xs font-semibold text-primary transition-colors hover:text-primary-strong">
+                View all {holders.length} →
+              </Link>
+            }
+          />
+          <div className="mt-2">
+            <HolderTable holders={holders.slice(0, 8)} tokenSymbol={acc?.tokenSymbol} demoAddress={DEMO_WALLET} />
+          </div>
+        </Card>
+      </div>
+    );
 
   const tabs = [
     { id: "overview", label: "Overview", content: overview },
     { id: "tranches", label: "Tranches", count: asset.tranches.length, content: tranchesPanel },
     { id: "yield", label: "Yield & revenue", content: yieldPanel },
-    ...(holders.length > 0
-      ? [{ id: "holders", label: "Holders", count: holders.length, content: holdersPanel }]
-      : []),
+    { id: "holders", label: "Holders", count: holders.length, content: holdersPanel },
     { id: "activity", label: "Activity", count: events.length, content: activityPanel },
     ...(disputes.length > 0
       ? [
@@ -397,7 +408,7 @@ export default async function AssetDetailPage({
         {operational ? (
           <>
             <Card className="p-5">
-              <Stat label="Effective APY" value={pct(acc!.apy)} icon={<Coins className="h-4 w-4" />} sub="trailing" />
+              <Stat label="Effective APY" value={apyPct(acc!.apy)} icon={<Coins className="h-4 w-4" />} sub="trailing" />
             </Card>
             <Card className="p-5">
               <Stat label="Yield distributed" value={usdCompact(acc!.lifetimeInvestorRevenue)} sub="lifetime to holders" />
@@ -466,7 +477,7 @@ export default async function AssetDetailPage({
                 <div className="mt-4 flex items-end justify-between gap-4">
                   <div>
                     <div className="tnum text-3xl font-bold tracking-tight text-positive">
-                      {pct(acc!.apy)}
+                      {apyPct(acc!.apy)}
                     </div>
                     <div className="mt-1 text-sm text-muted">effective APY · {usd(acc!.lifetimeInvestorRevenue)} distributed</div>
                   </div>

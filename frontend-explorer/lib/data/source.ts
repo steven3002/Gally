@@ -8,6 +8,7 @@
 
 import type {
   Asset,
+  AssetState,
   Category,
   Dispute,
   GovParamChange,
@@ -96,6 +97,19 @@ export interface AddressResult {
   holdings: Holding[];
 }
 
+/**
+ * A soulbound `ContributionReceipt` owned by an address (owned-object read). Minted on
+ * `contribute`, burned on `claim_shares`/`refund_contribution`. `amount` is human USDC,
+ * which equals the future deed count.
+ */
+export interface ReceiptDTO {
+  objectId: string;
+  assetId: string;
+  assetName: string;
+  amount: number;
+  state: AssetState;
+}
+
 export interface HealthResult {
   ok: boolean; // indexer reachable
   stale: boolean; // lagging the chain tip past threshold
@@ -118,6 +132,8 @@ export interface DataSource {
   getProtocolConfig(): Promise<ProtocolConfigDTO>;
   getTx(digest: string): Promise<TxRow | null>;
   getAddress(address: string): Promise<AddressResult>;
+  /** Soulbound ContributionReceipts owned by an address (owned-object read). */
+  getReceipts(address: string): Promise<ReceiptDTO[]>;
   health(): Promise<HealthResult>;
 
   // --- aggregates / derived (FE-M8a) ---

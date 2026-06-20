@@ -7,21 +7,24 @@ import { ActionButton } from "./ActionButton";
 /**
  * Actions on a soulbound `ContributionReceipt`: claim deeds once the raise
  * finalized (`asset::claim_shares`), or refund if it failed
- * (`asset::refund_contribution`, an exit — no pause gate).
+ * (`asset::refund_contribution`, an exit — no pause gate). Only rendered for the
+ * **connected owner** of the receipt — you can't claim/refund someone else's.
  */
 export function ReceiptActions({
+  owner,
   assetId,
   assetName,
   amount,
   state,
 }: {
+  owner: string;
   assetId: string;
   assetName: string;
   amount: number;
   state: AssetState;
 }) {
-  const { connected } = useWallet();
-  if (!connected) return null;
+  const { connected, address } = useWallet();
+  if (!connected || address !== owner) return null;
 
   if (state === "FAILED") {
     return (

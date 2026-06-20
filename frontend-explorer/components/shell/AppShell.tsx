@@ -10,6 +10,7 @@ import { CommandPalette } from "@/components/search/CommandPalette";
 import { Toaster } from "@/components/notifications/Toaster";
 import { DevnetBanner } from "@/components/onboarding/DevnetBanner";
 import { Onboarding } from "@/components/onboarding/Onboarding";
+import { TourProvider } from "@/components/onboarding/Tour";
 import { isLive } from "@/lib/data";
 import { cn } from "@/lib/format";
 
@@ -26,6 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
+    <TourProvider>
     <div className="flex min-h-screen w-full bg-background">
       {/* Top-of-viewport navigation progress (instant click feedback) */}
       <NavigationProgress />
@@ -78,5 +80,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* DEV-M1 — Devnet first-time onboarding (claim tokens + guided tour); live only. */}
       {isLive && <Onboarding />}
     </div>
+    </TourProvider>
   );
 }

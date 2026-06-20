@@ -1,10 +1,10 @@
 import Link from "next/link";
 import type { AccountRole, Category } from "@/lib/types";
-import { CATEGORY_COLOR, num, pct, usd, usdCompact, suiscanUrl, type Tone } from "@/lib/format";
+import { CATEGORY_COLOR, num, pct, apyPct, usd, usdCompact, suiscanUrl, type Tone } from "@/lib/format";
 import { accountByAddr } from "@/lib/mock/accounts";
 import { holdingsOf } from "@/lib/mock/holders";
 import { eventsForActor } from "@/lib/mock/activity";
-import { assetById, portfolioReceipts } from "@/lib/mock/data";
+import { assetById } from "@/lib/mock/data";
 import { data } from "@/lib/data";
 import {
   Avatar,
@@ -64,7 +64,9 @@ export async function AddressView({ address, demo = false }: { address: string; 
   const holdings = demo ? holdingsOf(address) : res!.holdings;
   const events = demo ? eventsForActor(address) : await data.addressActivity(address);
   const roles: string[] = demo ? account.roles : res!.roles;
-  const receipts = demo ? portfolioReceipts : [];
+  // Soulbound ContributionReceipts owned by this address (owned-object read via the seam:
+  // demo fixture in mock; live Sui-RPC read on the address page). Shown for ANY address.
+  const receipts = await data.getReceipts(address);
 
   const deeds = holdings.reduce((s, h) => s + h.shareCount, 0);
   const wrapped = holdings.reduce((s, h) => s + h.wrapped, 0);
@@ -226,7 +228,7 @@ export async function AddressView({ address, demo = false }: { address: string; 
                     {/* Secondary metrics — identical layout at every breakpoint. */}
                     <div className="mt-4 grid grid-cols-2 divide-x divide-border overflow-hidden rounded-xl border border-border bg-surface-2/50">
                       <MiniStat label="Claimable" value={h.pendingYield > 0 ? `+${usd(h.pendingYield)}` : "—"} cls={h.pendingYield > 0 ? "text-positive" : "text-muted-2"} />
-                      <MiniStat label="APY" value={h.apy > 0 ? pct(h.apy) : "—"} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
+                      <MiniStat label="APY" value={apyPct(h.apy)} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
                     </div>
                   </div>
 
@@ -274,13 +276,13 @@ export async function AddressView({ address, demo = false }: { address: string; 
         </div>
       )}
 
-      {/* Pending receipts (demo only — soulbound contribution receipts) */}
+      {/* Pending soulbound ContributionReceipts owned by this address */}
       {receipts.length > 0 && (
         <section>
           <SectionHeader title="Investment receipts" subtitle="Soulbound — convert to GallyShare deeds when the raise finalizes, or liquidate your position if it fails. Receipts do not earn yield." />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {receipts.map((r) => (
-              <Card key={r.assetId} className="flex items-center justify-between gap-3 p-4">
+              <Card key={r.objectId} className="flex items-center justify-between gap-3 p-4">
                 <div className="flex items-center gap-3">
                   <Avatar seed={r.assetId} size={36} rounded="rounded-lg" />
                   <div>
@@ -293,7 +295,7 @@ export async function AddressView({ address, demo = false }: { address: string; 
                     <div className="tnum text-sm font-semibold text-foreground">{usd(r.amount)}</div>
                     <div className="text-[11px] text-muted">{num(r.amount)} future deeds</div>
                   </div>
-                  <ReceiptActions assetId={r.assetId} assetName={r.assetName} amount={r.amount} state={r.state} />
+                  <ReceiptActions owner={address} assetId={r.assetId} assetName={r.assetName} amount={r.amount} state={r.state} />
                 </div>
               </Card>
             ))}

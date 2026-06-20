@@ -7,6 +7,8 @@ import { NotificationBell } from "@/components/notifications/NotificationCenter"
 import { ConnectButton } from "@/components/tx/ConnectButton";
 import { LiveConnectButton } from "@/components/tx/LiveConnectButton";
 import { ClaimTokensButton } from "@/components/onboarding/ClaimTokensButton";
+import { TakeTourButton } from "@/components/onboarding/TakeTourButton";
+import { UsdcBalancePill } from "@/components/tx/UsdcBalance";
 import { isLive } from "@/lib/data";
 import { IS_DEVNET, SUI_NETWORK } from "@/lib/tx/config";
 
@@ -25,14 +27,15 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* Search — opens the global ⌘K command palette */}
+      {/* Search — opens the global ⌘K command palette. Icon-only on mobile so the wallet
+          controls (balance + claim) fit a 375px topbar; full search bar from sm up. */}
       <button
         onClick={openPalette}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-left transition-colors hover:border-border-strong sm:max-w-md"
+        className="flex flex-none items-center gap-2 rounded-xl border border-border bg-surface px-2.5 py-2 text-left transition-colors hover:border-border-strong sm:min-w-0 sm:flex-1 sm:max-w-md sm:px-3"
         aria-label="Search the protocol"
       >
         <Search className="h-4 w-4 shrink-0 text-muted-2" />
-        <span className="w-full truncate text-sm text-muted-2">
+        <span className="hidden w-full truncate text-sm text-muted-2 sm:block">
           Search assets, accounts, validators, tx…
         </span>
         <kbd className="hidden rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted-2 sm:block">
@@ -41,8 +44,16 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
       </button>
 
       <div className="ml-auto flex items-center gap-1.5">
+        {/* Persistent "Take tour" — anyone can (re)start the guided tour (desktop). */}
+        {isLive && <TakeTourButton />}
         <ThemeToggle />
-        <NotificationBell />
+        {/* Notifications — non-critical, hidden on mobile to free room for wallet controls. */}
+        <span className="hidden sm:inline-flex">
+          <NotificationBell />
+        </span>
+
+        {/* Live wallet's USDC balance — so a user can always see what they have to invest. */}
+        {isLive && <UsdcBalancePill />}
 
         {/* Devnet: a persistent "Get test USDC" tap so a user can always fund up. */}
         {isLive && IS_DEVNET && <ClaimTokensButton />}

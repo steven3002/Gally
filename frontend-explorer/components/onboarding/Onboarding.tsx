@@ -9,28 +9,16 @@ import { useCallback, useState } from "react";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 import { useFirstTimeUser } from "@/lib/onboarding/useFirstTimeUser";
 import { ClaimTokensModal } from "./ClaimTokensModal";
-import { TourProvider, useTour, type TourStep } from "./Tour";
+import { useTour } from "./Tour";
+import { TOUR } from "./tourSteps";
 import { Compass } from "@/components/ui/icons";
-
-const TOUR: TourStep[] = [
-  { anchor: "", title: "Welcome to Gally", body: "A quick tour of the essentials — invest in real-world assets, earn yield, and help run the protocol. Skip or Free explore at any time." },
-  { anchor: "network", title: "You're on Devnet", body: "This chip shows the live chain you're connected to. Devnet is a public test network — tokens here have no real value." },
-  { anchor: "claim", title: "Get test USDC", body: "Tap here any time to claim free Devnet USDC from the faucet, so you always have funds to invest and transact." },
-  { anchor: "marketplace", title: "The Asset Marketplace", body: "Browse vetted real-world asset raises — housing, machinery, trade finance — and invest your USDC in one." },
-  { anchor: "portfolio", title: "Your Portfolio", body: "Your GallyShare deeds, wrapped tokens and claimable yield — read live from your wallet. Actions reconcile against the chain in real time." },
-  { anchor: "validators", title: "Validators", body: "Stake-backed attestors vouch project legals, approve milestones and sit on dispute juries — their stake is slashable if they're wrong." },
-  { anchor: "governance", title: "Governance", body: "Every ProtocolConfig parameter — fees, the validator min-stake, jury quorum, dispute windows — read live from chain." },
-  { anchor: "cranks", title: "Keeper Cranks", body: "Permissionless maintenance: anyone (you included) can run cranks — rollover, compensation sweeps, closures — to keep the protocol healthy." },
-];
 
 const seenKey = (addr: string) => `gally-onboarded-${addr}`;
 
+// The TourProvider is hoisted to the AppShell (so the topbar "Take tour" button can drive
+// it too), so Onboarding just renders its flow and uses the shared tour context.
 export function Onboarding() {
-  return (
-    <TourProvider>
-      <OnboardingFlow />
-    </TourProvider>
-  );
+  return <OnboardingFlow />;
 }
 
 type Phase = "idle" | "claim" | "tour-prompt";
@@ -84,7 +72,7 @@ function OnboardingFlow() {
   if (phase === "tour-prompt") {
     return (
       <div
-        className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-[rgba(2,6,23,0.6)] p-4 pt-20 backdrop-blur-sm animate-[gally-rise_160ms_ease-out]"
+        className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-[rgba(2,6,23,0.6)] p-4 backdrop-blur-sm animate-[gally-rise_160ms_ease-out]"
         role="dialog"
         aria-modal="true"
         onClick={() => {
@@ -92,7 +80,7 @@ function OnboardingFlow() {
           setPhase("idle");
         }}
       >
-        <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 text-center shadow-[var(--shadow-lg)]">
+        <div onClick={(e) => e.stopPropagation()} className="my-auto w-full max-w-sm rounded-2xl border border-border bg-surface p-6 text-center shadow-[var(--shadow-lg)]">
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary">
             <Compass className="h-6 w-6" />
           </span>

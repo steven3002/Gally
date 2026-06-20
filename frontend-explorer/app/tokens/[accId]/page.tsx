@@ -3,7 +3,7 @@ import Link from "next/link";
 import { assets, DEMO_WALLET } from "@/lib/mock/data";
 import { data, isLive } from "@/lib/data";
 import { graceOf } from "@/lib/mock/health";
-import { num, pct, suiscanUrl, usd } from "@/lib/format";
+import { num, pct, apyPct, suiscanUrl, usd } from "@/lib/format";
 import { Avatar, Card, CardHeader, Stat } from "@/components/ui/primitives";
 import { Bar, KV, Pill, StatePill } from "@/components/ui/bits";
 import { AreaChart, RingGauge } from "@/components/ui/charts";
@@ -141,7 +141,7 @@ export default async function TokenPage({ params }: { params: Promise<{ accId: s
           <Stat
             label="Cumulative index"
             value={acc.cumulativeIndex.toFixed(4)}
-            sub={acc.apy > 0 ? `${pct(acc.apy)} effective APY` : "USDC/share, lifetime"}
+            sub={acc.apy > 0 ? `${apyPct(acc.apy)} effective APY` : "USDC/share, lifetime"}
             deltaTone="positive"
           />
         </Card>

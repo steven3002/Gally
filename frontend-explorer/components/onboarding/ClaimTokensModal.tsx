@@ -119,13 +119,16 @@ export function ClaimTokensModal({ onClose, onClaimed }: { onClose: () => void; 
 
 function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
+    // Centered pop-up: a full-screen overlay above everything (topbar is z-30) that
+    // vertically + horizontally centers the card. `overflow-y-auto` + `my-auto` on the
+    // child keep it scrollable (never clipped) on short screens.
     <div
-      className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-[rgba(2,6,23,0.6)] p-4 pt-20 backdrop-blur-sm animate-[gally-rise_160ms_ease-out]"
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-[rgba(2,6,23,0.6)] p-4 backdrop-blur-sm animate-[gally-rise_160ms_ease-out]"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
-      <div onClick={(e) => e.stopPropagation()}>{children}</div>
+      <div onClick={(e) => e.stopPropagation()} className="my-auto">{children}</div>
     </div>
   );
 }
