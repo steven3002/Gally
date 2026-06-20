@@ -118,6 +118,22 @@ pkill -f -- "-L 9000:127.0.0.1:9000"     # the ssh tunnel
 ssh trace 'pkill -x sui'                  # the remote node
 ```
 
+### Devnet bring-up (`run_devnet.sh`, DEV-M1)
+
+`./run_devnet.sh` is the same bring-up against **official Sui Devnet** instead of a throwaway local
+node. Two things change because there is no controllable node and gas is scarce:
+
+- **Operator-funded gas (`GAS_SOURCE=operator`).** There is no per-run faucet for the cohort, so the
+  bot funds its fake users out of the operator wallet (`unsafe_paySui`) instead of a SUI faucet.
+- **Dynamic gas throttling (DEV-G1).** Before genesis the bot reads the operator's **live balance** and
+  computes how many users it can afford, **overriding `USER_COUNT` down** to fit (with a warning) so a
+  thin grant can never out-of-gas mid-run — pure logic in `gas.rs` (`plan_gas` / `affordable_users`).
+  It publishes `usdc` + `gally_core` + `gally_mock_faucet` + templates to devnet while **preserving**
+  the committed mainnet→Circle USDC mapping, points the indexer at the devnet RPC, then seeds + soaks.
+
+The daemon is resumable: it reads `sim_state.json` and **continues from the existing chain** (no
+re-publish / re-seed) — so a restart after a devnet hiccup picks up where it left off.
+
 ---
 
 ## B. Manual bring-up

@@ -19,6 +19,20 @@ on-chain artifact the simulation introduces.
   `gally_core` objects created elsewhere by the bot — never synthetic structs
   here.
 
+## Reservoir flow
+
+Minting lives outside the faucet (the operator's `TreasuryCap<USDC>`); the faucet
+only **splits out** on `claim` and **joins in** on `refill`. The bot watches the
+reservoir and re-seeds when it drops below the low-water mark — so a never-minting
+shared object stays perpetually fundable for any number of one-time claimers.
+
+```mermaid
+flowchart LR
+    op["Operator / bot<br/>(TreasuryCap&lt;USDC&gt;)"] -- "mint + refill(deposit)" --> res
+    res["MockFaucet reservoir<br/>Balance&lt;USDC&gt;"] -- "claim → split allocation" --> wallet["A wallet (once)"]
+    res -. "value &lt; low_water_mark" .-> op
+```
+
 ## Surface (`gally_mock_faucet::faucet`)
 
 | Function | Who | Effect |
@@ -43,8 +57,10 @@ locally-mintable mock on localnet/sim). On a live node that coin must be mintabl
 `usdc/sources/usdc.move` runs under its **SIM-D1 profile**: `init` creates the currency
 (6 decimals), freezes the metadata, and hands the `TreasuryCap<USDC>` to the publisher.
 
-> ⚠️ The SIM-D1 profile is **not** the production Circle-USDC swap. See
-> `gally_core/sources/usdc.move` header and `guard_rails.md` R1.
+> ⚠️ The SIM-D1 profile is **not** the production Circle-USDC swap. See the
+> [`../usdc/`](../usdc) package README (and `guard_rails.md` R1): on
+> `--build-env mainnet` the same `usdc` dependency resolves to Circle's published,
+> non-mintable USDC.
 
 ## Build & test
 

@@ -24,7 +24,12 @@ sui move test
 | `asset` | Project state machine: vouching, all-or-nothing raise, tranche escrow, default |
 | `share` | `GallyShare` deed: package-only mint/burn, split |
 | `accumulator` | Yield index math, claims, rollover, wrap/unwrap machine, `TreasuryCap<T>` custody |
-| `usdc` | ⚠️ Placeholder for canonical Circle USDC — replace before any non-test publication |
+| `dispute` | Challenger bonds, validator jury (one-pool-one-vote), slashing & restitution routing |
+
+> **Settlement coin.** The protocol settles in `usdc::usdc::USDC`, supplied by the external
+> [`../usdc/`](../usdc) package — **not** an in-package module. It resolves to Circle's published
+> USDC under `--build-env mainnet` and to a locally-mintable Mock USDC otherwise (tests mint via
+> `coin::mint_for_testing<usdc::usdc::USDC>`). See that package's README.
 
 ## The `entity_token_template` handshake
 
@@ -49,6 +54,32 @@ from `../entity_token_template/`:
 `Coin<T>` itself is a vanilla `sui::coin` with zero custom logic, which is what
 makes it instantly listable on DEXs and usable as DeFi collateral. Yield
 eligibility lives entirely on the unwrapped `GallyShare` side (spec §11–§12).
+
+## Yield & wrap math (the `accumulator`, spec §15)
+
+Yield is distributed by a **lazy index**, never by looping over holders (invariant
+I-M4 — no code path iterates holders, contributors, or shares). On a revenue
+deposit, the investor portion $P$ moves the global index by, for unwrapped supply
+$u = \text{total\_minted} - \text{total\_wrapped}$:
+
+$$\Delta\text{index} = \frac{P \times \text{SCALE}}{u}, \qquad \text{SCALE} = 10^{9}$$
+
+Each deed stores a personal index snapshot; a claim pays the difference and
+re-snapshots:
+
+$$\text{payout} = \frac{(\text{index}_{\text{global}} - \text{index}_{\text{personal}}) \times \text{share\_count}}{\text{SCALE}}$$
+
+All math is `u128`, scaled by `SCALE`, **multiply-before-divide**, flooring toward
+the pool. The floored remainder stays in `reward_pool`, which is what makes the
+solvency invariant an inequality in the safe direction:
+
+$$\text{value(reward\_pool)} \;\ge\; \sum_{\text{unwrapped deeds}} \text{unclaimed entitlement} \qquad (\text{I-M2})$$
+
+Two edge branches: when $u = 0$ (everyone wrapped) revenue accrues to
+`rollover_reserve` instead of dividing by zero, and is swept into the index once
+unwrapped supply returns; the denominator excluding wrapped supply is exactly the
+**Diamond-Hand multiplier** — wrapped holders forfeit yield to the holders who
+stayed unwrapped (spec §11–§12, [`../Opportunity Cost Yield Multiplier.md`](../Opportunity%20Cost%20Yield%20Multiplier.md)).
 
 ## Lifecycle & closure (M7, spec §14)
 
