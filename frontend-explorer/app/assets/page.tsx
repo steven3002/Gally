@@ -17,7 +17,9 @@ export default async function AssetsPage({
         subtitle="Every real-world project raised, executing, or distributing yield on Gally."
         crumbs={[{ label: "Explore", href: "/" }, { label: "Assets" }]}
       />
-      <AssetsExplorer initialCategory={category} assets={assets} />
+      <div data-tour="market-grid">
+        <AssetsExplorer initialCategory={category} assets={assets} />
+      </div>
     </div>
   );
 }

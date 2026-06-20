@@ -130,7 +130,7 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
             </div>
             {/* Spendable USDC — read live from the wallet, so the user always knows
                 how much they have to invest (and when to top up). */}
-            <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-positive/30 bg-positive-soft/50 px-2.5 py-1 text-xs font-semibold text-foreground">
+            <div data-tour="pf-balance" className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-positive/30 bg-positive-soft/50 px-2.5 py-1 text-xs font-semibold text-foreground">
               <Coins className="h-3.5 w-3.5 text-positive" />
               <span className="tnum">{usd(usdcBalance)}</span>
               <span className="font-medium text-muted">USDC available to invest</span>
@@ -148,7 +148,7 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div data-tour="pf-summary" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card className="p-5">
           <Stat label="Holdings value" value={usdCompact(principal)} icon={<Wallet className="h-4 w-4" />} sub={`${num(principal)} shares`} />
         </Card>
@@ -176,7 +176,7 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <section className="lg:col-span-2">
+          <section data-tour="pf-holdings" className="lg:col-span-2">
             <SectionHeader title="Holdings" subtitle="Read live from your connected wallet — deeds accrue yield; wrapped tokens earn none until unwrapped" />
             <div className="space-y-3">
               {holdings.map((h) => (
@@ -260,7 +260,7 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
       {/* Soulbound ContributionReceipts — read live from the wallet. Convert to deeds
           once the raise finalizes (claim_shares) or refund if it failed. */}
       {receiptViews.length > 0 && (
-        <section>
+        <section data-tour="pf-receipts">
           <SectionHeader title="Investment receipts" subtitle="Soulbound — convert to GallyShare deeds when the raise finalizes, or liquidate your position if it fails. Receipts do not earn yield." />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {receiptViews.map((r) => (
@@ -286,7 +286,7 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
       )}
 
       {/* Activity (indexer-derived, actor-scoped) */}
-      <section>
+      <section data-tour="pf-activity">
         <SectionHeader title="Activity" subtitle="Every protocol event where this wallet is the economic actor" href="/activity" hrefLabel="Full feed" />
         <Card>
           {events.length === 0 ? (

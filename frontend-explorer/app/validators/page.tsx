@@ -30,7 +30,7 @@ export default async function ValidatorsPage() {
         crumbs={[{ label: "Explore", href: "/" }, { label: "Validators" }]}
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div data-tour="val-stats" className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card className="p-5">
           <Stat label="Total stake" value={usdCompact(totalStake)} icon={<Coins className="h-4 w-4" />} sub="slashable USDC collateral" />
         </Card>
@@ -45,18 +45,20 @@ export default async function ValidatorsPage() {
         </Card>
       </div>
 
-      <div className="mb-4 flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-4 py-3 text-xs text-muted">
+      <div data-tour="val-min" className="mb-4 flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-4 py-3 text-xs text-muted">
         <Lock className="h-4 w-4 shrink-0 text-muted-2" />
         Minimum validator stake is{" "}
         <span className="font-semibold text-foreground">{usd(cfg.minValidatorStake)}</span>; each vouch
         locks {cfg.vouchCoverageBps / 100}% of the asset&apos;s funding goal as coverage.
       </div>
 
-      <Paginated pageSize={12} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {sorted.map((v) => (
-          <ValidatorCard key={v.poolId} validator={v} />
-        ))}
-      </Paginated>
+      <div data-tour="val-list">
+        <Paginated pageSize={12} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {sorted.map((v) => (
+            <ValidatorCard key={v.poolId} validator={v} />
+          ))}
+        </Paginated>
+      </div>
     </div>
   );
 }
