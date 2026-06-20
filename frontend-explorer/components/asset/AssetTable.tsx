@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { Asset } from "@/lib/types";
 import {
+  apyPct,
   daysLeft,
   pct,
   pctOf,
@@ -109,7 +110,7 @@ export function AssetTable({ assets, pageSize }: { assets: Asset[]; pageSize?: n
                     <div className="text-right">
                       {operational ? (
                         <span className="tnum text-sm font-semibold text-positive">
-                          {pct(a.accumulator?.apy ?? 0)}
+                          {apyPct(a.accumulator?.apy ?? 0)}
                         </span>
                       ) : (
                         <span className="tnum text-sm text-muted-2">—</span>

@@ -15,5 +15,5 @@ export const isLive = DATA_SOURCE === "live";
 
 export const data: DataSource = isLive ? liveSource : mockSource;
 
-export type { DataSource, SourceKind, HoldersResult, GovernanceResult, AddressResult, HealthResult, ProtocolConfigDTO } from "./source";
+export type { DataSource, SourceKind, HoldersResult, GovernanceResult, AddressResult, HealthResult, ProtocolConfigDTO, ReceiptDTO } from "./source";
 export { INDEXER_URL } from "./client";

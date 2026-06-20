@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Asset } from "@/lib/types";
 import {
+  apyPct,
   daysLeft,
   pct,
   pctOf,
@@ -53,7 +54,7 @@ export function AssetCard({ asset }: { asset: Asset }) {
             <>
               <div className="text-[11px] font-medium text-muted">Effective APY</div>
               <div className="tnum text-2xl font-bold tracking-tight text-positive">
-                {pct(asset.accumulator?.apy ?? 0)}
+                {apyPct(asset.accumulator?.apy ?? 0)}
               </div>
             </>
           ) : funding ? (
@@ -119,7 +120,7 @@ export function AssetMini({ asset }: { asset: Asset }) {
         <div className="text-right">
           {operational ? (
             <div className="tnum text-[13px] font-semibold text-positive">
-              {pct(asset.accumulator?.apy ?? 0)}
+              {apyPct(asset.accumulator?.apy ?? 0)}
             </div>
           ) : (
             <div className="tnum text-[13px] font-semibold text-foreground">

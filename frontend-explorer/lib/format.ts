@@ -1,4 +1,5 @@
 import type { AssetState, Category, DisputeStatus } from "./types";
+import { SUI_NETWORK } from "./tx/config";
 
 /** Fixed "now" so server/client render identically (no hydration drift). */
 export const NOW = Date.parse("2026-06-14T12:00:00Z");
@@ -42,6 +43,19 @@ export function pct(n: number, digits = 1): string {
   return `${n.toFixed(digits)}%`;
 }
 
+/**
+ * APY display. Under accelerated simulation time the backend's annualised APY can be
+ * wildly inflated (hundreds of thousands of %) — meaningless as a rate. So the DISPLAY
+ * is capped at a sane ceiling and rendered ">CAP%"; 0/unknown (e.g. list rows that don't
+ * carry an apy, or not-yet-yielding assets) renders as "—". Use this everywhere APY shows.
+ */
+export const APY_DISPLAY_CAP = 999;
+export function apyPct(apy: number, digits = 1): string {
+  if (!Number.isFinite(apy) || apy <= 0) return "—";
+  if (apy >= APY_DISPLAY_CAP) return `>${APY_DISPLAY_CAP.toLocaleString()}%`;
+  return `${apy.toFixed(digits)}%`;
+}
+
 export function pctSigned(n: number, digits = 1): string {
   return `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(digits)}%`;
 }
@@ -67,13 +81,24 @@ export function shortHash(h: string, lead = 10, tail = 8): string {
   return `${h.slice(0, lead)}…${h.slice(-tail)}`;
 }
 
-/** External Sui explorer deep-link (real once the package is deployed). */
+// Suiscan network segment for the chain the app is actually pointed at, so a Devnet
+// object/tx links to Suiscan's Devnet (not a hard-coded testnet that would show "unknown").
+// Suiscan has no localnet view → fall back to devnet (a local id won't resolve anywhere).
+const SUISCAN_NET: Record<string, string> = {
+  mainnet: "mainnet",
+  testnet: "testnet",
+  devnet: "devnet",
+  localnet: "devnet",
+};
+
+/** External Sui explorer deep-link, network-aware (mainnet/testnet/devnet). */
 export function suiscanUrl(
   id: string,
   kind: "object" | "account" | "tx" = "object",
 ): string {
   const seg = kind === "tx" ? "tx" : kind === "account" ? "account" : "object";
-  return `https://suiscan.xyz/testnet/${seg}/${id}`;
+  const net = SUISCAN_NET[SUI_NETWORK] ?? "testnet";
+  return `https://suiscan.xyz/${net}/${seg}/${id}`;
 }
 
 /** Relative time vs the fixed NOW. */

@@ -6,7 +6,7 @@
 // `Position` tier is NOT here (FE-M8b, wallet-RPC).
 
 import type { Asset, Category, Dispute, Holding, ObjectRef, ProtocolEvent, TxRow, Validator, WalrusDoc } from "@/lib/types";
-import type { AddressResult, CategoryStatDTO, DataSource, GovernanceResult, HealthResult, HoldersResult, ProtocolConfigDTO, ProtocolStatsDTO } from "./source";
+import type { AddressResult, CategoryStatDTO, DataSource, GovernanceResult, HealthResult, HoldersResult, ProtocolConfigDTO, ProtocolStatsDTO, ReceiptDTO } from "./source";
 import type { RankedHolder } from "@/lib/mock/holders";
 import type { Solvency } from "@/lib/mock/health";
 import type { CrankOp } from "@/lib/mock/cranks";
@@ -29,7 +29,7 @@ import {
 } from "./map";
 import { eventFeedOf, eventTypeOf } from "./events";
 import { usdc, indexHuman } from "./wire";
-import { GALLY_PACKAGE_ID, PROTOCOL_CONFIG_ID, SUI_NETWORK } from "@/lib/tx/config";
+import { GALLY_PACKAGE_ID, PROTOCOL_CONFIG_ID, SUI_NETWORK, SUI_RPC_URL } from "@/lib/tx/config";
 import type {
   WireAsset,
   WireDispute,
@@ -293,6 +293,52 @@ export const liveSource: DataSource = {
       });
     }
     return { address, roles: w.roles, holdings };
+  },
+
+  async getReceipts(address): Promise<ReceiptDTO[]> {
+    // Owned-object read via the Sui RPC — receipts aren't indexed (same tier as deeds),
+    // so an address page reads them straight from chain server-side. Degrades to [].
+    if (!address || !GALLY_PACKAGE_ID) return [];
+    const body = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "suix_getOwnedObjects",
+      params: [
+        address,
+        {
+          filter: { StructType: `${GALLY_PACKAGE_ID}::asset::ContributionReceipt` },
+          options: { showContent: true, showType: true },
+        },
+        null,
+        50,
+      ],
+    };
+    try {
+      const res = await fetch(SUI_RPC_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) return [];
+      const json = (await res.json()) as { result?: { data?: Array<{ data?: { objectId?: string; content?: { dataType?: string; fields?: Record<string, unknown> } } }> } };
+      const rows = json.result?.data ?? [];
+      const out: ReceiptDTO[] = [];
+      for (const o of rows) {
+        const c = o.data?.content;
+        if (!c || c.dataType !== "moveObject") continue;
+        const f = c.fields ?? {};
+        const assetId = String(f.asset_id ?? "");
+        if (!assetId) continue;
+        const wire = await safe(getJson<WireAsset>(`/assets/${assetId}`), null);
+        const a = wire ? mapAsset(wire) : null;
+        out.push({
+          objectId: String(o.data?.objectId ?? ""),
+          assetId,
+          assetName: a?.name ?? assetId.slice(0, 10),
+          amount: usdc(String(f.amount ?? "0")),
+          state: a?.state ?? "FUNDING",
+        });
+      }
+      return out;
+    } catch {
+      return [];
+    }
   },
 
   async health(): Promise<HealthResult> {

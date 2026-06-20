@@ -9,7 +9,7 @@
 // wallet is connected; this hook overlays the live truth when it is.
 
 import { useCurrentAccount, useSuiClientQuery } from "@mysten/dapp-kit";
-import type { Holding } from "@/lib/types";
+import type { AssetState, Holding } from "@/lib/types";
 import { GALLY_PACKAGE_ID } from "@/lib/tx/config";
 import { tokenTypeFromAccumulatorType } from "@/lib/tx/resolve";
 import { data } from "@/lib/data";
@@ -102,6 +102,76 @@ export function useOwnedCoinBalances(): { balances: Map<string, bigint>; isLoadi
     }
   }
   return { balances, isLoading, refetch: () => void refetch() };
+}
+
+/** A soulbound `ContributionReceipt` (asset.move): owned until the raise resolves. */
+export interface OwnedReceipt {
+  objectId: string;
+  assetId: string;
+  /** Human USDC contributed == future deed count (μ-unscaled). */
+  amount: number;
+}
+
+/**
+ * The connected wallet's owned `ContributionReceipt`s (live). These are minted on
+ * `contribute` and burned on `claim_shares`/`refund_contribution`, so — like deeds —
+ * they're a wallet-RPC owned-object read, not indexed. Inert when disconnected.
+ */
+export function useOwnedReceipts(): { receipts: OwnedReceipt[]; isLoading: boolean; refetch: () => void } {
+  const account = useCurrentAccount();
+  const { data, isLoading, refetch } = useSuiClientQuery(
+    "getOwnedObjects",
+    {
+      owner: account?.address ?? "",
+      filter: GALLY_PACKAGE_ID ? { StructType: `${GALLY_PACKAGE_ID}::asset::ContributionReceipt` } : undefined,
+      options: { showContent: true, showType: true },
+    },
+    { enabled: !!account },
+  );
+
+  const receipts: OwnedReceipt[] = (data?.data ?? []).flatMap((o) => {
+    const content = o.data?.content;
+    if (!content || content.dataType !== "moveObject") return [];
+    const f = content.fields as Record<string, unknown>;
+    return [
+      {
+        objectId: o.data!.objectId,
+        assetId: String(f.asset_id ?? ""),
+        amount: Number(BigInt((f.amount as string) ?? "0")) / MICRO,
+      },
+    ];
+  });
+
+  return { receipts, isLoading, refetch: () => void refetch() };
+}
+
+/** A receipt joined to its asset's name + current lifecycle state (for the UI + actions). */
+export interface ReceiptView {
+  objectId: string;
+  assetId: string;
+  assetName: string;
+  amount: number;
+  state: AssetState;
+}
+
+/**
+ * Join owned receipts to their asset metadata (name + state) via the data seam, so the
+ * portfolio can render each receipt and offer the right action (claim deeds once
+ * finalized, refund if it failed). Pure given the seam; bounded by the wallet's receipts.
+ */
+export async function buildReceiptViews(receipts: OwnedReceipt[]): Promise<ReceiptView[]> {
+  const out: ReceiptView[] = [];
+  for (const r of receipts) {
+    const asset = await data.getAsset(r.assetId).catch(() => null);
+    out.push({
+      objectId: r.objectId,
+      assetId: r.assetId,
+      assetName: asset?.name ?? r.assetId.slice(0, 10),
+      amount: r.amount,
+      state: asset?.state ?? "FUNDING",
+    });
+  }
+  return out;
 }
 
 /* ------------------------------------------------ owned-object → Position mapper */

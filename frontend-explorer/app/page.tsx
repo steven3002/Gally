@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { data } from "@/lib/data";
-import { pct, usdCompact } from "@/lib/format";
+import { apyPct, usdCompact } from "@/lib/format";
 import { Card, CardHeader, SectionHeader, Stat } from "@/components/ui/primitives";
 import { CategoryIcon } from "@/components/ui/primitives";
 import { Sparkline } from "@/components/ui/charts";
@@ -97,7 +97,7 @@ export default async function ExplorePage() {
               </div>
               <div>
                 <div className="text-white/60">Avg APY</div>
-                <div className="tnum font-semibold">{pct(protocolStats.avgApy)}</div>
+                <div className="tnum font-semibold">{apyPct(protocolStats.avgApy)}</div>
               </div>
             </div>
           </div>
@@ -108,7 +108,7 @@ export default async function ExplorePage() {
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card className="p-5">
           <Stat
-            label="Total Value Locked (TVL)"
+            label="Capital raised"
             value={usdCompact(protocolStats.totalRaised)}
             delta="+8.2%"
             deltaTone="positive"
@@ -129,7 +129,7 @@ export default async function ExplorePage() {
         <Card className="p-5">
           <Stat
             label="Avg effective APY"
-            value={pct(protocolStats.avgApy)}
+            value={apyPct(protocolStats.avgApy)}
             icon={<Gauge className="h-4 w-4" />}
             sub="operational assets"
           />

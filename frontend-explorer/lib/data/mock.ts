@@ -15,6 +15,8 @@ import {
   protocolConfig,
   protocolStats,
   categoryStats,
+  DEMO_WALLET,
+  portfolioReceipts,
 } from "@/lib/mock/data";
 import { holdersOf, supplyOf, holdingsOf, holderDistribution } from "@/lib/mock/holders";
 import { recentEvents as mockRecent, eventsForAsset as mockEventsForAsset, eventsForActor, txByDigest } from "@/lib/mock/activity";
@@ -33,6 +35,7 @@ import type {
   ProtocolStatsDTO,
   CategoryStatDTO,
   ProtocolConfigDTO,
+  ReceiptDTO,
 } from "./source";
 import type { Asset, Dispute, ObjectRef, ProtocolEvent, TxRow, Validator, WalrusDoc } from "@/lib/types";
 import type { RankedHolder } from "@/lib/mock/holders";
@@ -135,5 +138,10 @@ export const mockSource: DataSource = {
   },
   async addressActivity(address, limit = 30): Promise<ProtocolEvent[]> {
     return eventsForActor(address).slice(0, limit);
+  },
+  async getReceipts(address): Promise<ReceiptDTO[]> {
+    // Only the demo wallet carries soulbound receipts in the mock fixture.
+    if (address !== DEMO_WALLET) return [];
+    return portfolioReceipts.map((r) => ({ objectId: `${r.assetId}:receipt`, ...r }));
   },
 };

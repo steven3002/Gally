@@ -17,9 +17,10 @@ import { useCurrentAccount, useSuiClient } from "@mysten/dapp-kit";
 import { useQuery } from "@tanstack/react-query";
 import type { Category } from "@/lib/types";
 import { data } from "@/lib/data";
-import { useOwnedDeeds, useOwnedCoinBalances, buildConnectedHoldings } from "@/lib/data/position";
+import { useOwnedDeeds, useOwnedCoinBalances, useOwnedReceipts, buildConnectedHoldings, buildReceiptViews } from "@/lib/data/position";
+import { useUsdcBalance } from "@/components/tx/UsdcBalance";
 import { useOptimistic } from "@/lib/tx/optimistic";
-import { CATEGORY_COLOR, num, pct, usd, usdCompact, suiscanUrl } from "@/lib/format";
+import { CATEGORY_COLOR, num, pct, apyPct, usd, usdCompact, suiscanUrl } from "@/lib/format";
 import { Avatar, Card, Empty, SectionHeader, Stat } from "@/components/ui/primitives";
 import { RandomNftAvatar } from "@/components/onboarding/RandomNftAvatar";
 import { StatePill } from "@/components/ui/bits";
@@ -28,6 +29,7 @@ import { IdLink } from "@/components/ui/IdLink";
 import { EventList } from "@/components/events/EventList";
 import { UnwrapAlert } from "@/components/health/UnwrapAlert";
 import { HoldingActions } from "@/components/tx/HoldingActions";
+import { ReceiptActions } from "@/components/tx/ReceiptActions";
 import { Activity, Coins, ExternalLink, Lock, Wallet } from "@/components/ui/icons";
 
 export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
@@ -35,6 +37,8 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
   const client = useSuiClient();
   const { deeds, isLoading: deedsLoading, refetch: refetchDeeds } = useOwnedDeeds();
   const { balances, refetch: refetchBalances } = useOwnedCoinBalances();
+  const { receipts, refetch: refetchReceipts } = useOwnedReceipts();
+  const { usdc: usdcBalance } = useUsdcBalance();
   const { applied } = useOptimistic();
   const address = account?.address ?? "";
 
@@ -55,6 +59,15 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
     queryFn: () => data.addressActivity(address),
   });
 
+  // Soulbound ContributionReceipts (owned-object read), joined to asset name/state so the
+  // user can claim deeds once a raise finalizes or refund if it failed.
+  const receiptSig = receipts.map((r) => r.objectId).sort().join(",");
+  const { data: receiptViews = [] } = useQuery({
+    queryKey: ["connected-receipts", address, receiptSig],
+    enabled: !!account && receipts.length > 0,
+    queryFn: () => buildReceiptViews(receipts),
+  });
+
   // Reconcile against the real chain result: every successful live action pushes an
   // optimistic key; when that set changes we re-read the wallet's owned objects from
   // RPC, so the Position (deeds/wrapped/claimable) refreshes to the settled truth.
@@ -62,7 +75,8 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
     if (!account) return;
     refetchDeeds();
     refetchBalances();
-  }, [applied, account, refetchDeeds, refetchBalances]);
+    refetchReceipts();
+  }, [applied, account, refetchDeeds, refetchBalances, refetchReceipts]);
 
   if (!account) {
     return (
@@ -113,6 +127,13 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
             </h1>
             <div className="mt-1">
               <IdLink id={address} lead={14} tail={10} />
+            </div>
+            {/* Spendable USDC — read live from the wallet, so the user always knows
+                how much they have to invest (and when to top up). */}
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-positive/30 bg-positive-soft/50 px-2.5 py-1 text-xs font-semibold text-foreground">
+              <Coins className="h-3.5 w-3.5 text-positive" />
+              <span className="tnum">{usd(usdcBalance)}</span>
+              <span className="font-medium text-muted">USDC available to invest</span>
             </div>
           </div>
         </div>
@@ -189,7 +210,7 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
 
                     <div className="mt-4 grid grid-cols-2 divide-x divide-border overflow-hidden rounded-xl border border-border bg-surface-2/50">
                       <MiniStat label="Claimable" value={h.pendingYield > 0 ? `+${usd(h.pendingYield)}` : "—"} cls={h.pendingYield > 0 ? "text-positive" : "text-muted-2"} />
-                      <MiniStat label="APY" value={h.apy > 0 ? pct(h.apy) : "—"} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
+                      <MiniStat label="APY" value={apyPct(h.apy)} cls={h.apy > 0 ? "text-positive" : "text-muted-2"} />
                     </div>
                   </div>
 
@@ -234,6 +255,34 @@ export function ConnectedPortfolio({ fallback }: { fallback: ReactNode }) {
             </Card>
           </section>
         </div>
+      )}
+
+      {/* Soulbound ContributionReceipts — read live from the wallet. Convert to deeds
+          once the raise finalizes (claim_shares) or refund if it failed. */}
+      {receiptViews.length > 0 && (
+        <section>
+          <SectionHeader title="Investment receipts" subtitle="Soulbound — convert to GallyShare deeds when the raise finalizes, or liquidate your position if it fails. Receipts do not earn yield." />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {receiptViews.map((r) => (
+              <Card key={r.objectId} className="flex items-center justify-between gap-3 p-4">
+                <div className="flex items-center gap-3">
+                  <Avatar seed={r.assetId} size={36} rounded="rounded-lg" />
+                  <div>
+                    <a href={`/assets/${r.assetId}`} className="text-sm font-medium text-foreground hover:text-primary">{r.assetName}</a>
+                    <div className="mt-0.5"><StatePill state={r.state} /></div>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="text-right">
+                    <div className="tnum text-sm font-semibold text-foreground">{usd(r.amount)}</div>
+                    <div className="text-[11px] text-muted">{num(r.amount)} future deeds</div>
+                  </div>
+                  <ReceiptActions owner={address} assetId={r.assetId} assetName={r.assetName} amount={r.amount} state={r.state} />
+                </div>
+              </Card>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Activity (indexer-derived, actor-scoped) */}

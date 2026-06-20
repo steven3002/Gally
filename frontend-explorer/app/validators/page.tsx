@@ -7,7 +7,11 @@ import { usdCompact, usd } from "@/lib/format";
 import { Shield, Lock, Coins } from "@/components/ui/icons";
 
 export default async function ValidatorsPage() {
-  const validators = await data.listValidators();
+  const base = await data.listValidators();
+  // The list endpoint omits reputation + track-record (detail-only), so the cards and
+  // "Avg reputation" would read 0 while each validator's detail page shows the real score.
+  // Enrich each from its detail (bounded by the small validator set) so the numbers agree.
+  const validators = await Promise.all(base.map((v) => data.getValidator(v.poolId).then((d) => d ?? v)));
   // Live ProtocolConfig (object-proxy) — the real on-chain min-stake / coverage, not a mock.
   const cfg = await data.getProtocolConfig();
   const sorted = [...validators].sort((a, b) => b.stake - a.stake);
