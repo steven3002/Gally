@@ -50,7 +50,7 @@ fn main() -> Result<()> {
     let shutdown = install_shutdown();
 
     let cli = cli::Cli::parse(std::env::args().skip(1))?;
-    let cfg = config::Config::load(&cli).context("loading configuration")?;
+    let mut cfg = config::Config::load(&cli).context("loading configuration")?;
     let prof = cfg.pace.profile();
     info!(
         pace = cfg.pace.as_str(),
@@ -67,7 +67,21 @@ fn main() -> Result<()> {
         .with_context(|| format!("connecting to local node at {}", cfg.rpc_url))?;
     info!(rpc = %cfg.rpc_url, chain_id = %chain, "connected to local node");
 
-    // Fake-user cohort — stable addresses across restarts (SI-5).
+    // DEV-G1 gas throttle (operator-funded / Devnet): read the operator's live SUI balance
+    // and cap the cohort to what it can fund BEFORE any keys/txs are generated — overriding
+    // the requested USER_COUNT so no transaction is ever attempted unfunded (no OOG panics).
+    const REQUESTED_ASSETS: usize = 9; // genesis seeds one asset per lifecycle state
+    if cfg.gas_source == gas::GasSource::Operator {
+        match cfg.operator_address() {
+            Some(op) => {
+                let plan = gas::preflight_throttle(&client, &op, cfg.user_count, REQUESTED_ASSETS, &cfg.gas_budget);
+                cfg.user_count = plan.effective_users; // override the requested input
+            }
+            None => warn!("GAS_SOURCE=operator but OPERATOR_KEY unset — cannot throttle/fund the cohort"),
+        }
+    }
+
+    // Fake-user cohort — stable addresses across restarts (SI-5), sized by the throttle.
     let users = keys::load_or_generate_users(&cfg.user_keys_path, cfg.user_count)
         .context("loading fake-user keypairs")?;
     info!(
@@ -76,23 +90,40 @@ fn main() -> Result<()> {
         "fake-user cohort ready"
     );
 
-    // ENSURE_GAS — top up operator (if configured) + all users from the SUI faucet.
+    // GAS — fund the operator + cohort: faucet (localnet) or operator-funded (Devnet, DEV-G1).
     let gasf = gas::GasFaucet::new(&cfg.faucet_url);
-    match cfg.operator_address() {
-        Some(op) => {
-            info!(operator = %op, "operator key loaded");
-            if let Err(e) = gasf.ensure_gas(&client, &op, cfg.gas_threshold_mist) {
-                warn!(error = %e, "operator gas top-up failed");
+    match cfg.gas_source {
+        gas::GasSource::Faucet => {
+            match cfg.operator_address() {
+                Some(op) => {
+                    info!(operator = %op, "operator key loaded");
+                    if let Err(e) = gasf.ensure_gas(&client, &op, cfg.gas_threshold_mist) {
+                        warn!(error = %e, "operator gas top-up failed");
+                    }
+                }
+                None => warn!(
+                    "OPERATOR_KEY not set — running read-only (no re-seed). Set OPERATOR_KEY + the \
+                     post-publish IDs to enable live re-seed."
+                ),
+            }
+            for u in &users {
+                if let Err(e) = gasf.ensure_gas(&client, &u.address, cfg.gas_threshold_mist) {
+                    warn!(address = %u.address, error = %e, "user gas top-up failed");
+                }
             }
         }
-        None => warn!(
-            "OPERATOR_KEY not set — running read-only (no re-seed). Set OPERATOR_KEY + the \
-             post-publish IDs to enable live re-seed."
-        ),
-    }
-    for u in &users {
-        if let Err(e) = gasf.ensure_gas(&client, &u.address, cfg.gas_threshold_mist) {
-            warn!(address = %u.address, error = %e, "user gas top-up failed");
+        gas::GasSource::Operator => {
+            // Devnet: the operator IS the funded recovery-phrase wallet; it funds the cohort
+            // from its own SUI (no faucet). The throttle above guarantees this can't run dry.
+            match cfg.operator() {
+                Ok(op) => {
+                    info!(operator = %op.address, "operator (recovery-phrase wallet) loaded — funding cohort from its SUI");
+                    let addrs: Vec<String> = users.iter().map(|u| u.address.clone()).collect();
+                    let funded = gas::fund_users_from_operator(&client, &op.keypair, &addrs, &cfg.gas_budget);
+                    info!(funded, cohort = users.len(), "DEV-G1 operator-funded cohort gas");
+                }
+                Err(e) => warn!(error = %e, "GAS_SOURCE=operator but operator context invalid — cohort unfunded"),
+            }
         }
     }
 

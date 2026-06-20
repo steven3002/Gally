@@ -30,6 +30,12 @@ pub struct Config {
     pub user_keys_path: String,
     pub sim_state_path: String,
     pub gas_threshold_mist: u64,
+    /// Gas source: `faucet` (localnet `--with-faucet`) or `operator` (Devnet — the
+    /// operator wallet funds users from its own SUI, DEV-G1). Default `faucet`.
+    pub gas_source: crate::gas::GasSource,
+    /// Operator-funded gas budget (per-user grant / operator reserve / per-asset) driving
+    /// the DEV-G1 pre-flight throttle.
+    pub gas_budget: crate::gas::GasBudget,
     // Operational — required only for live re-seed (validated by `operator`).
     pub operator_key: Option<String>,
     pub gally_package_id: Option<String>,
@@ -116,6 +122,19 @@ impl Config {
             Some(s) => num("GAS_THRESHOLD_MIST", &s)?,
             None => DEFAULT_GAS_THRESHOLD_MIST,
         };
+        let gas_source = get("GAS_SOURCE")
+            .map(|s| crate::gas::GasSource::parse(&s))
+            .unwrap_or(crate::gas::GasSource::Faucet);
+        let mut gas_budget = crate::gas::GasBudget::default();
+        if let Some(s) = get("GAS_PER_USER_MIST") {
+            gas_budget.per_user_grant_mist = num("GAS_PER_USER_MIST", &s)?;
+        }
+        if let Some(s) = get("OPERATOR_GAS_RESERVE_MIST") {
+            gas_budget.operator_reserve_mist = num("OPERATOR_GAS_RESERVE_MIST", &s)?;
+        }
+        if let Some(s) = get("GAS_PER_ASSET_MIST") {
+            gas_budget.per_asset_mist = num("GAS_PER_ASSET_MIST", &s)?;
+        }
 
         Ok(Config {
             rpc_url: get("RPC_URL").unwrap_or_else(|| DEFAULT_RPC_URL.to_string()),
@@ -129,6 +148,8 @@ impl Config {
             sim_state_path: get("SIM_STATE_PATH")
                 .unwrap_or_else(|| DEFAULT_SIM_STATE_PATH.to_string()),
             gas_threshold_mist,
+            gas_source,
+            gas_budget,
             operator_key: get("OPERATOR_KEY"),
             gally_package_id: get("GALLY_PACKAGE_ID"),
             usdc_package_id: get("USDC_PACKAGE_ID"),

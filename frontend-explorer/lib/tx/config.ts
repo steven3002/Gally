@@ -9,8 +9,22 @@ export const SUI_NETWORK = process.env.NEXT_PUBLIC_SUI_NETWORK ?? "localnet";
 export const GALLY_PACKAGE_ID = process.env.NEXT_PUBLIC_GALLY_PACKAGE_ID ?? "";
 export const PROTOCOL_CONFIG_ID = process.env.NEXT_PUBLIC_PROTOCOL_CONFIG_ID ?? "";
 
-/** The USDC coin type. In the SIM-D1 profile this is the mock USDC inside gally_core. */
-export const USDC_TYPE = process.env.NEXT_PUBLIC_USDC_TYPE ?? (GALLY_PACKAGE_ID ? `${GALLY_PACKAGE_ID}::usdc::USDC` : "");
+/** Are we connected to the public Sui Devnet? (drives the onboarding banner.) */
+export const IS_DEVNET = SUI_NETWORK === "devnet";
+
+/** The standalone `usdc` package (canonical USDC type provider — the Devnet proxy). */
+export const USDC_PACKAGE_ID = process.env.NEXT_PUBLIC_USDC_PACKAGE_ID ?? GALLY_PACKAGE_ID;
+
+/**
+ * The USDC coin type. Since the USDC swap, USDC lives in its OWN `usdc` package
+ * (`usdc::usdc::USDC`) — Circle's on mainnet, the mintable proxy on localnet/devnet —
+ * so we resolve it from `USDC_PACKAGE_ID`, not gally_core.
+ */
+export const USDC_TYPE = process.env.NEXT_PUBLIC_USDC_TYPE ?? (USDC_PACKAGE_ID ? `${USDC_PACKAGE_ID}::usdc::USDC` : "");
+
+/** The `gally_mock_faucet` package + its shared `MockFaucet` (the Devnet token tap). */
+export const FAUCET_PACKAGE_ID = process.env.NEXT_PUBLIC_FAUCET_PACKAGE_ID ?? "";
+export const MOCK_FAUCET_ID = process.env.NEXT_PUBLIC_MOCK_FAUCET_ID ?? "";
 
 export interface TxConfigEnv {
   packageId: string;

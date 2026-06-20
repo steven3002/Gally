@@ -435,13 +435,19 @@ impl<'a> Daemon<'a> {
     }
 
     fn ensure_all_gas(&self) {
-        let _ = self
-            .gasf
-            .ensure_gas(self.client, &self.op.address, self.cfg.gas_threshold_mist);
-        for u in self.users {
-            let _ = self
-                .gasf
-                .ensure_gas(self.client, &u.address, self.cfg.gas_threshold_mist);
+        match self.cfg.gas_source {
+            crate::gas::GasSource::Faucet => {
+                let _ = self.gasf.ensure_gas(self.client, &self.op.address, self.cfg.gas_threshold_mist);
+                for u in self.users {
+                    let _ = self.gasf.ensure_gas(self.client, &u.address, self.cfg.gas_threshold_mist);
+                }
+            }
+            crate::gas::GasSource::Operator => {
+                // Devnet (DEV-G1): no faucet — the operator wallet lazily tops up each user
+                // from its own SUI. The operator itself is the funded recovery-phrase wallet.
+                let addrs: Vec<String> = self.users.iter().map(|u| u.address.clone()).collect();
+                let _ = crate::gas::fund_users_from_operator(self.client, &self.op.keypair, &addrs, &self.cfg.gas_budget);
+            }
         }
     }
 

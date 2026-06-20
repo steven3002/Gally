@@ -10,6 +10,13 @@ import { data } from "@/lib/data";
 import { useLive } from "@/lib/data/useLive";
 import { usdCompact } from "@/lib/format";
 
+// DEV-M1 — product-tour spotlight anchors: nav href → tour step key.
+const TOUR_ANCHORS: Record<string, string> = {
+  "/assets": "marketplace",
+  "/portfolio": "portfolio",
+  "/cranks": "cranks",
+};
+
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const stats = useLive(protocolStats, () => data.getProtocolStats());
@@ -52,6 +59,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                   <li key={item.href}>
                     <Link
                       href={item.href}
+                      data-tour={TOUR_ANCHORS[item.href]}
                       onClick={onNavigate}
                       className={cn(
                         "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",

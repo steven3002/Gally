@@ -15,7 +15,7 @@ path = "src/main.rs"
 # Lean synchronous stack — chosen for this low-RAM local box (see README "Transport
 # choice"). A lazy sequential tick loop gains nothing from async; this keeps the
 # dependency tree small and the build cheap.
-ureq = { version = "2", default-features = false }          # HTTP (localhost, no TLS) for JSON-RPC + gas faucet
+ureq = { version = "2", default-features = false, features = ["tls", "gzip"] }  # JSON-RPC + faucet; "tls" (rustls) added for HTTPS to public Devnet (DEV-M1)
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
