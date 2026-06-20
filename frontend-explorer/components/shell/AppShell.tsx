@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
+import { DocsSidebar } from "@/components/docs/DocsSidebar";
 import { Topbar } from "./Topbar";
 import { PauseBanner } from "./PauseBanner";
 import { NavigationProgress } from "./NavigationProgress";
@@ -26,15 +27,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }
 
+  // On /docs the single left sidebar becomes the docs nav (with a "Back to
+  // Explorer" link) — one sidebar, never two.
+  const isDocs = pathname === "/docs" || pathname.startsWith("/docs/");
+
   return (
     <TourProvider>
     <div className="flex min-h-screen w-full bg-background">
       {/* Top-of-viewport navigation progress (instant click feedback) */}
       <NavigationProgress />
 
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar — app nav, or the docs nav while in /docs */}
       <aside className="sticky top-0 hidden h-screen w-[252px] shrink-0 border-r border-border bg-surface lg:block">
-        <Sidebar />
+        {isDocs ? <DocsSidebar /> : <Sidebar />}
       </aside>
 
       {/* Mobile drawer */}
@@ -57,7 +62,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             mobileOpen ? "translate-x-0" : "-translate-x-full",
           )}
         >
-          <Sidebar onNavigate={() => setMobileOpen(false)} />
+          {isDocs ? (
+            <DocsSidebar onNavigate={() => setMobileOpen(false)} />
+          ) : (
+            <Sidebar onNavigate={() => setMobileOpen(false)} />
+          )}
         </aside>
       </div>
 

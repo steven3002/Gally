@@ -6,9 +6,7 @@ import { rankDocs, type DocSearchRecord } from "@/lib/docs/search";
 import { cn } from "@/lib/format";
 import { startNavProgress } from "@/components/shell/NavigationProgress";
 import { Search, Doc } from "@/components/ui/icons";
-
-/** Fire to open the docs search palette from anywhere on a /docs route. */
-export const OPEN_DOCS_SEARCH = "gally:open-docs-search";
+import { OPEN_DOCS_SEARCH } from "./events";
 
 export function DocsSearch({ index }: { index: DocSearchRecord[] }) {
   const router = useRouter();
