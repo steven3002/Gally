@@ -248,3 +248,218 @@ body {
   );
   background-size: 22px 22px;
 }
+
+/* ----------------------------------------------------------------------------
+   Documentation prose (the /docs pages) — styles the build-time-rendered HTML
+   from docs/*.md. Uses the design tokens so it tracks light/dark automatically.
+---------------------------------------------------------------------------- */
+.doc-prose {
+  color: var(--foreground);
+  font-size: 15px;
+  line-height: 1.7;
+  max-width: 46rem;
+}
+.doc-prose > :first-child {
+  margin-top: 0;
+}
+.doc-prose h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 2.2rem 0 0.8rem;
+  scroll-margin-top: 5rem;
+}
+.doc-prose h3 {
+  font-size: 1.12rem;
+  font-weight: 650;
+  margin: 1.6rem 0 0.5rem;
+  scroll-margin-top: 5rem;
+}
+.doc-prose h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1.2rem 0 0.4rem;
+  scroll-margin-top: 5rem;
+}
+.doc-prose p {
+  margin: 0.85rem 0;
+}
+.doc-prose a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.doc-prose a:hover {
+  color: var(--primary-strong);
+}
+.doc-prose strong {
+  font-weight: 650;
+  color: var(--foreground);
+}
+.doc-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.08em 0.35em;
+}
+.doc-prose pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+.doc-prose ul,
+.doc-prose ol {
+  margin: 0.85rem 0;
+  padding-left: 1.4rem;
+}
+.doc-prose ul {
+  list-style: disc;
+}
+.doc-prose ol {
+  list-style: decimal;
+}
+.doc-prose li {
+  margin: 0.35rem 0;
+}
+.doc-prose li > ul,
+.doc-prose li > ol {
+  margin: 0.3rem 0;
+}
+.doc-prose blockquote {
+  margin: 1.1rem 0;
+  padding: 0.6rem 1rem;
+  border-left: 3px solid var(--primary);
+  background: var(--primary-soft);
+  border-radius: 0 8px 8px 0;
+  color: var(--foreground);
+}
+.doc-prose hr {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* Tables */
+.doc-table-wrap {
+  margin: 1.2rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.doc-table th {
+  text-align: left;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--foreground);
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.doc-table td {
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  vertical-align: top;
+}
+.doc-table tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Math (native MathML) */
+.doc-math {
+  margin: 1.25rem 0;
+  overflow-x: auto;
+  text-align: center;
+}
+.doc-math math {
+  font-size: 1.15em;
+}
+
+/* Code / mermaid diagrams rendered as a readable flow */
+.doc-pre {
+  overflow-x: auto;
+  background: var(--surface-3);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--foreground);
+}
+.doc-diagram {
+  margin: 1.5rem 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  padding: 1rem 1.1rem;
+}
+.doc-diagram-cap {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-2);
+  font-weight: 600;
+  margin-bottom: 0.6rem;
+}
+.doc-diagram-flow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.doc-edge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.doc-node {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+.doc-arrow {
+  color: var(--primary);
+  font-weight: 700;
+}
+.doc-edge-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+.doc-note {
+  margin-top: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  border-left: 3px solid var(--primary);
+  background: var(--surface);
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.doc-diagram-src {
+  margin-top: 0.75rem;
+}
+.doc-diagram-src summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted-2);
+}
+.doc-diagram-src .doc-pre {
+  margin-top: 0.5rem;
+}

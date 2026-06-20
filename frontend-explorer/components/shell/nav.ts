@@ -2,6 +2,7 @@ import {
   Activity,
   Briefcase,
   Compass,
+  Doc,
   Layers,
   Scale,
   Settings,
@@ -31,6 +32,7 @@ export const NAV: NavGroup[] = [
       { label: "Disputes", href: "/disputes", icon: Scale, match: "/disputes" },
       { label: "Governance", href: "/governance", icon: Settings, match: "/governance" },
       { label: "Maintenance", href: "/cranks", icon: Wrench, match: "/cranks" },
+      { label: "Docs", href: "/docs", icon: Doc, match: "/docs" },
     ],
   },
   {

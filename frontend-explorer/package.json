@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "gen:docs": "node scripts/docs/gen.mjs",
+    "predev": "node scripts/docs/gen.mjs",
+    "prebuild": "node scripts/docs/gen.mjs",
+    "pretest": "node scripts/docs/gen.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

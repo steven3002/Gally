@@ -1,0 +1,151 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { rankDocs, type DocSearchRecord } from "@/lib/docs/search";
+import { cn } from "@/lib/format";
+import { startNavProgress } from "@/components/shell/NavigationProgress";
+import { Search, Doc } from "@/components/ui/icons";
+
+/** Fire to open the docs search palette from anywhere on a /docs route. */
+export const OPEN_DOCS_SEARCH = "gally:open-docs-search";
+
+export function DocsSearch({ index }: { index: DocSearchRecord[] }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [active, setActive] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const openRef = useRef(open);
+
+  const results = useMemo(() => rankDocs(index, q, 24), [index, q]);
+
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+
+  // Open on "/" (when not typing) or the custom event; close on Esc.
+  useEffect(() => {
+    function openSearch() {
+      setQ("");
+      setActive(0);
+      setOpen(true);
+    }
+    function onKey(e: KeyboardEvent) {
+      const el = e.target as HTMLElement | null;
+      const typing =
+        !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (e.key === "/" && !openRef.current && !typing && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        openSearch();
+      } else if (e.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener(OPEN_DOCS_SEARCH, openSearch);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(OPEN_DOCS_SEARCH, openSearch);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => inputRef.current?.focus(), 10);
+    return () => clearTimeout(t);
+  }, [open]);
+
+  function go(r: DocSearchRecord) {
+    setOpen(false);
+    startNavProgress();
+    router.push(`${r.route}${r.anchor ? `#${r.anchor}` : ""}`);
+  }
+
+  function onInputKey(e: React.KeyboardEvent) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((a) => Math.min(a + 1, results.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((a) => Math.max(a - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (results[active]) go(results[active]);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-[12vh]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search documentation"
+    >
+      <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={() => setOpen(false)} />
+      <div className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow-lg)]">
+        <div className="flex items-center gap-3 border-b border-border px-4">
+          <Search className="h-4 w-4 shrink-0 text-muted-2" />
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setActive(0);
+            }}
+            onKeyDown={onInputKey}
+            placeholder="Search the docs — try “wrap”, “refund”, “is it safe”…"
+            className="h-12 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-2"
+          />
+          <kbd className="hidden rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted-2 sm:block">
+            Esc
+          </kbd>
+        </div>
+
+        <div className="max-h-[55vh] overflow-y-auto p-2">
+          {q.trim() === "" ? (
+            <p className="px-3 py-8 text-center text-xs text-muted">
+              Search every page — concepts, the lifecycle, guides, the economic model, and more.
+            </p>
+          ) : results.length === 0 ? (
+            <p className="px-3 py-8 text-center text-xs text-muted">No matches for “{q}”.</p>
+          ) : (
+            results.map((r, i) => (
+              <button
+                key={`${r.route}${r.anchor}-${i}`}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => go(r)}
+                className={cn(
+                  "flex w-full items-start gap-3 rounded-lg px-2 py-2 text-left",
+                  i === active ? "bg-surface-2" : "hover:bg-surface-2/60",
+                )}
+              >
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-muted">
+                  <Doc className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-foreground">
+                    {r.heading}
+                  </span>
+                  <span className="block truncate text-[11px] text-muted-2">
+                    {r.pageTitle} · {r.part}
+                  </span>
+                  {r.text && (
+                    <span className="mt-0.5 block truncate text-xs text-muted">{r.text}</span>
+                  )}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-border px-4 py-2 text-[10px] text-muted-2">
+          <span>↑↓ navigate · ↵ open · Esc close</span>
+          <span>Gally Docs</span>
+        </div>
+      </div>
+    </div>
+  );
+}
