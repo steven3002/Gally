@@ -10,7 +10,7 @@ import Link from "next/link";
 import { ConnectModal } from "@mysten/dapp-kit";
 import { useWallet } from "@/lib/wallet";
 import { shortAddr } from "@/lib/format";
-import { Avatar } from "@/components/ui/primitives";
+import { RandomNftAvatar } from "@/components/onboarding/RandomNftAvatar";
 import { Wallet } from "@/components/ui/icons";
 
 export function LiveConnectButton() {
@@ -36,7 +36,7 @@ export function LiveConnectButton() {
           aria-haspopup="menu"
           aria-expanded={open}
         >
-          <Avatar seed={address} size={28} rounded="rounded-lg" />
+          <RandomNftAvatar address={address} size={28} rounded="rounded-lg" />
           <span className="hidden leading-none sm:block">
             <span className="text-xs font-semibold text-foreground">{shortAddr(address)}</span>
             <span className="mt-0.5 flex items-center gap-1 text-[10px] text-muted">

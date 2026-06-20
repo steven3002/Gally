@@ -2,13 +2,14 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, Stat } from "@/components/ui/primitives";
 import { Paginated } from "@/components/ui/Pager";
 import { ValidatorCard } from "@/components/validator/ValidatorCard";
-import { protocolConfig } from "@/lib/mock/data";
 import { data } from "@/lib/data";
 import { usdCompact, usd } from "@/lib/format";
 import { Shield, Lock, Coins } from "@/components/ui/icons";
 
 export default async function ValidatorsPage() {
   const validators = await data.listValidators();
+  // Live ProtocolConfig (object-proxy) — the real on-chain min-stake / coverage, not a mock.
+  const cfg = await data.getProtocolConfig();
   const sorted = [...validators].sort((a, b) => b.stake - a.stake);
   const totalStake = validators.reduce((s, v) => s + v.stake, 0);
   const totalLocked = validators.reduce((s, v) => s + v.locked, 0);
@@ -43,8 +44,8 @@ export default async function ValidatorsPage() {
       <div className="mb-4 flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-4 py-3 text-xs text-muted">
         <Lock className="h-4 w-4 shrink-0 text-muted-2" />
         Minimum validator stake is{" "}
-        <span className="font-semibold text-foreground">{usd(protocolConfig.minValidatorStake)}</span>; each vouch
-        locks {protocolConfig.vouchCoverageBps / 100}% of the asset&apos;s funding goal as coverage.
+        <span className="font-semibold text-foreground">{usd(cfg.minValidatorStake)}</span>; each vouch
+        locks {cfg.vouchCoverageBps / 100}% of the asset&apos;s funding goal as coverage.
       </div>
 
       <Paginated pageSize={12} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

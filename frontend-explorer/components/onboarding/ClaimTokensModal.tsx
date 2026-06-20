@@ -120,7 +120,7 @@ export function ClaimTokensModal({ onClose, onClaimed }: { onClose: () => void; 
 function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-[rgba(2,6,23,0.6)] p-4 backdrop-blur-sm animate-[gally-rise_160ms_ease-out]"
+      className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-[rgba(2,6,23,0.6)] p-4 pt-20 backdrop-blur-sm animate-[gally-rise_160ms_ease-out]"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

@@ -13,10 +13,14 @@ import { TourProvider, useTour, type TourStep } from "./Tour";
 import { Compass } from "@/components/ui/icons";
 
 const TOUR: TourStep[] = [
-  { anchor: "", title: "Welcome to Gally", body: "A 30-second tour of the essentials. You can Skip or Free explore at any time." },
-  { anchor: "marketplace", title: "The Asset Marketplace", body: "Browse vetted real-world asset raises — housing, machinery, trade finance — and invest your Devnet USDC in one." },
-  { anchor: "portfolio", title: "Your Portfolio", body: "Track your GallyShare deeds, wrapped tokens and claimable yield — read live from your connected wallet." },
-  { anchor: "cranks", title: "Keeper Cranks", body: "Permissionless maintenance: anyone can run cranks (rollover, compensation sweeps, closures) to keep the protocol healthy." },
+  { anchor: "", title: "Welcome to Gally", body: "A quick tour of the essentials — invest in real-world assets, earn yield, and help run the protocol. Skip or Free explore at any time." },
+  { anchor: "network", title: "You're on Devnet", body: "This chip shows the live chain you're connected to. Devnet is a public test network — tokens here have no real value." },
+  { anchor: "claim", title: "Get test USDC", body: "Tap here any time to claim free Devnet USDC from the faucet, so you always have funds to invest and transact." },
+  { anchor: "marketplace", title: "The Asset Marketplace", body: "Browse vetted real-world asset raises — housing, machinery, trade finance — and invest your USDC in one." },
+  { anchor: "portfolio", title: "Your Portfolio", body: "Your GallyShare deeds, wrapped tokens and claimable yield — read live from your wallet. Actions reconcile against the chain in real time." },
+  { anchor: "validators", title: "Validators", body: "Stake-backed attestors vouch project legals, approve milestones and sit on dispute juries — their stake is slashable if they're wrong." },
+  { anchor: "governance", title: "Governance", body: "Every ProtocolConfig parameter — fees, the validator min-stake, jury quorum, dispute windows — read live from chain." },
+  { anchor: "cranks", title: "Keeper Cranks", body: "Permissionless maintenance: anyone (you included) can run cranks — rollover, compensation sweeps, closures — to keep the protocol healthy." },
 ];
 
 const seenKey = (addr: string) => `gally-onboarded-${addr}`;
@@ -80,7 +84,7 @@ function OnboardingFlow() {
   if (phase === "tour-prompt") {
     return (
       <div
-        className="fixed inset-0 z-[90] flex items-center justify-center bg-[rgba(2,6,23,0.6)] p-4 backdrop-blur-sm animate-[gally-rise_160ms_ease-out]"
+        className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-[rgba(2,6,23,0.6)] p-4 pt-20 backdrop-blur-sm animate-[gally-rise_160ms_ease-out]"
         role="dialog"
         aria-modal="true"
         onClick={() => {
