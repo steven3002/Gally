@@ -43,6 +43,7 @@ import { Distribution } from "@/components/holders/Distribution";
 import { HolderTable } from "@/components/holders/HolderTable";
 import { WalrusDoc } from "@/components/ui/WalrusDoc";
 import { ContributeAction } from "@/components/tx/ContributeAction";
+import { DisputeAction } from "@/components/tx/DisputeAction";
 import { CrankPanel } from "@/components/tx/CrankPanel";
 import { cranksForAsset, cranksForAccumulator } from "@/lib/mock/cranks";
 import { SolvencyBadge, SolvencyMeter } from "@/components/health/SolvencyBadge";
@@ -74,13 +75,14 @@ export default async function AssetDetailPage({
   const asset = await data.getAsset(id);
   if (!asset) notFound();
 
-  const [validator, events, disputes, holders, legal, solvency] = await Promise.all([
+  const [validator, events, disputes, holders, legal, solvency, config] = await Promise.all([
     asset.validatorPoolId ? data.getValidator(asset.validatorPoolId) : Promise.resolve(null),
     data.eventsForAsset(asset.id, 100),
     data.disputesForAsset(asset.id),
     data.holderDistribution(asset.id),
     data.getLegalDocs(asset.id),
     data.getSolvency(asset.id),
+    data.getProtocolConfig(),
   ]);
   const acc = asset.accumulator;
   // Supply summary (derivable from the asset's accumulator — same as the mock `supplyOf`).
@@ -353,6 +355,17 @@ export default async function AssetDetailPage({
               remaining={Math.max(1, asset.fundingGoal - asset.raised)}
             />
           )}
+          {(asset.state === "EXECUTING" || operational) &&
+            asset.validatorPoolId &&
+            !asset.disputed &&
+            coverageLocked > 0 && (
+              <DisputeAction
+                poolId={asset.validatorPoolId}
+                validatorName={validator?.name ?? "the validator"}
+                assetId={asset.id}
+                bond={config.challengerBond}
+              />
+            )}
         </div>
       </div>
 

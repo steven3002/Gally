@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Asset, AssetState, Category } from "@/lib/types";
 import { cn, STATE_LABEL } from "@/lib/format";
+import { isLive } from "@/lib/data";
 import { AssetCard } from "./AssetCard";
 import { AssetTable } from "./AssetTable";
 import { Card } from "@/components/ui/primitives";
@@ -30,8 +31,9 @@ const STATES: (AssetState | "All")[] = [
   "FAILED",
 ];
 
-type Sort = "raised" | "apy" | "newest" | "progress";
+type Sort = "holders" | "raised" | "apy" | "newest" | "progress";
 const SORTS: { id: Sort; label: string }[] = [
+  { id: "holders", label: "Most holders" },
   { id: "raised", label: "Capital raised" },
   { id: "apy", label: "Highest APY" },
   { id: "newest", label: "Newest" },
@@ -46,7 +48,9 @@ export function AssetsExplorer({ initialCategory, assets }: { initialCategory?: 
       | "All",
   );
   const [state, setState] = useState<AssetState | "All">("All");
-  const [sort, setSort] = useState<Sort>("raised");
+  // Live: default to "Most holders" so the operational, actually-subscribed assets surface
+  // first (the chain accrues many empty assets). Mock: keep "raised" (stable for e2e).
+  const [sort, setSort] = useState<Sort>(isLive ? "holders" : "raised");
   const [view, setView] = useState<"grid" | "table">("grid");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -69,6 +73,9 @@ export function AssetsExplorer({ initialCategory, assets }: { initialCategory?: 
     });
     list = [...list].sort((a, b) => {
       switch (sort) {
+        case "holders":
+          // Most holders first; tiebreak by capital raised so it's a sensible default.
+          return (b.holders ?? 0) - (a.holders ?? 0) || b.raised - a.raised;
         case "apy":
           return (b.accumulator?.apy ?? 0) - (a.accumulator?.apy ?? 0);
         case "newest":

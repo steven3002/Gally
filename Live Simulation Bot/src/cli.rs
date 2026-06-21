@@ -24,6 +24,14 @@ pub struct Cli {
     /// SIM-M3: full genesis — seed an asset in every lifecycle state (+ K validators,
     /// AdminCap time-warp, non-zero yield index), then exit.
     pub seed_all: bool,
+    /// Curated judge showcase — headline assets fully funded by 30+ distinct cohort
+    /// investors, milestones + tranches disbursed, 3 open raises, 6 disputes (2 rejected
+    /// / 2 upheld / 2 voting), yields claimed/wrapped, governance events. One pass.
+    pub showcase: bool,
+    /// Append N extra OPERATIONAL headline assets, each fully funded by `EXTRA_INVESTORS`
+    /// distinct cohort investors who ALL convert their receipts → deeds (≥40 holders per
+    /// asset). Ignores `showcase_done`; reuses existing validators + the entity-token pool.
+    pub extra_headlines: bool,
     /// SIM-M4: the activity daemon — continuous weighted-random mock-transaction
     /// loop driving real `gally_core` activity from the fake-user cohort.
     pub daemon: bool,
@@ -54,6 +62,8 @@ impl Cli {
                 "--once" => cli.once = true,
                 "--fund" => cli.fund = true,
                 "--seed-all" => cli.seed_all = true,
+                "--showcase" => cli.showcase = true,
+                "--extra-headlines" => cli.extra_headlines = true,
                 "--daemon" => cli.daemon = true,
                 "--cycles" => {
                     let v = it.next().ok_or_else(|| anyhow!("--cycles requires a value"))?;
@@ -80,6 +90,7 @@ fn print_help() {
          --check     connect, read the faucet, report, then exit\n\
          --once      run one re-seed tick, then exit\n\
          --fund      seed a vouched FUNDING asset + run the user claim+contribute loop, then exit (SIM-M3)\n\
+         --showcase  seed the curated judge dataset (funded assets, disputes, yields), then exit\n\
          --seed-all  full genesis: an asset in every lifecycle state + K validators + yield index (SIM-M3)\n\
          --daemon    activity daemon: continuous weighted-random protocol traffic (SIM-M4)\n\
          --cycles N  run exactly N ticks then exit (CI-style soak; default: run forever)\n\n\

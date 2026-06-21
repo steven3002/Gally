@@ -68,18 +68,48 @@ async fn main() -> Result<()> {
         }
     });
 
-    let app = api::router(api::AppState {
-        pool,
-        objects,
-        hub,
-        metrics,
-        tip,
-        lag_alert_checkpoints: config.lag_alert_checkpoints as i64,
-    });
+    // Abuse resistance for the public, key-less API (`api::limit`): per-IP rate limit
+    // + global in-flight cap + timeout + body cap (request-scoped), and a process-wide
+    // WebSocket connection cap (set once here).
+    api::limit::configure_ws_cap(config.max_ws_connections);
+    let limits = api::limit::Limits::new(
+        config.rate_limit_per_sec,
+        config.rate_limit_burst,
+        config.max_concurrent_requests,
+        config.request_timeout_secs,
+        config.max_body_bytes,
+        api::limit::parse_trusted_ips(&config.rate_limit_trusted_ips),
+    );
+    tracing::info!(
+        rate_per_sec = config.rate_limit_per_sec,
+        burst = config.rate_limit_burst,
+        max_concurrent = config.max_concurrent_requests,
+        max_ws = config.max_ws_connections,
+        "API abuse-resistance limits active"
+    );
+
+    let app = api::router_with_limits(
+        api::AppState {
+            pool,
+            objects,
+            hub,
+            metrics,
+            tip,
+            lag_alert_checkpoints: config.lag_alert_checkpoints as i64,
+        },
+        limits,
+    );
     let listener = tokio::net::TcpListener::bind(&config.api_bind)
         .await
         .with_context(|| format!("failed to bind {}", config.api_bind))?;
     tracing::info!(bind = %config.api_bind, "API listening");
-    axum::serve(listener, app).await.context("API server error")?;
+    // `into_make_service_with_connect_info` exposes the TCP peer to the rate limiter
+    // (the fallback when no `X-Forwarded-For`/`X-Real-IP` proxy header is present).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .context("API server error")?;
     Ok(())
 }
