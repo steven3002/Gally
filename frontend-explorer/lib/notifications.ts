@@ -6,6 +6,7 @@ import { NOW, HOUR, usd } from "@/lib/format";
 import { DEMO_WALLET, portfolioReceipts } from "@/lib/mock/data";
 import { holdingsOf } from "@/lib/mock/holders";
 import { readApplied } from "@/lib/tx/optimistic";
+import { isLive } from "@/lib/data";
 
 /**
  * Notification store (FE-M7.2, spec §4 "Notifications").
@@ -44,6 +45,12 @@ const EVENT = "gally-notif-change";
 
 function seed(): AppNotification[] {
   const out: AppNotification[] = [];
+  // In LIVE mode the mock DEMO_WALLET holdings/receipts are not the connected wallet,
+  // so seeding alerts from them shows notifications about an account the user never
+  // connected. Suppress them: the bell then reflects only the connected wallet's own
+  // transaction outcomes (pushed by `useTx`), which is what "up to date with the
+  // current wallet" means. (Mock mode keeps the demo seeds for the offline tour.)
+  if (isLive) return out;
   // Optimistic reconciliation: an alert is dismissed once its action is submitted
   // (claim the yield → the "yield ready" alert clears, so the unread count drops).
   const applied = readApplied();

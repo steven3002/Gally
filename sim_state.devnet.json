@@ -1,0 +1,154 @@
+{
+  "validator_pool_id": null,
+  "validator_cap_id": null,
+  "asset_id": null,
+  "entity_cap_id": null,
+  "time_warped": false,
+  "validator_pools": [
+    "0x688f6ce05f633fa3a1c3fbb914c615d8bbb3c71d1971caf008bc5cb0dabaa808",
+    "0x809b742ab82d9317fc8904dcaabb296fad8a0d524aa72b19744a7cd8b3e94a06",
+    "0xe57b283e9ce5e82cee2bb73ae3312bf6d3db350e3ee44826141fc99027491df1",
+    "0xdce0cfc0c5dd531a4455fe05e0706cbc90a8482c8029a44e67ba9d2f23e3bdf4",
+    "0xabcdddd8cd84c18ba12b808bb421a893af090f9273a1c02feacb0dc9ef6c10c2",
+    "0x8455e76cb371a8906f37b9951162b63f4fdcaed077292cd97ea869ad0401fdf1",
+    "0x519e3f998c198ef8a1347f25fb264f59aa43f59ad09b3b301c59c48f856b06aa"
+  ],
+  "validator_caps": [
+    "0x74685845164c3b363919b35c093a40c8215fc9e201cfa65f73d40b4a3ab30587",
+    "0x17df8b38b2cd62ef80ebe2de80ab712ec66a509639f3d079402837dc6c5292f6",
+    "0x552112cd7b43c7c2cb127408e4c0b580ace0cf9610bb109010e6df1ad9706b8a",
+    "0xdfb8cd8319a6868109d1e1eeb8da8968a43dab480bfe602c9e897d1ba4cb2262",
+    "0xbece393d9cc6162912acb21a0ee796418309d484a62b8bed74898b5e3a3bba17",
+    "0xd402c7dce0057d055ffb97f36b49803e64f1023ab295fa8b3f4b961375b420a5",
+    "0xb5011f7e283f543027b5e4e3ad36551ed6e068e9c4ef51ff5366d909ef51fdc9"
+  ],
+  "entity_tokens": [
+    {
+      "package_id": "0xc2b4246e5c7398f4f5c4b84595af81cdb28f6c883b5fae4253375e312e84426c",
+      "module": "gally_entity_1",
+      "witness": "GALLY_ENTITY_1",
+      "treasury_cap_id": "0x9306a52e445e789d7986cce1bfb199685827c5824dd6745830decc6e41bda6a1",
+      "metadata_id": "0x7850d8c8fab0c257218bf495a81861f682ccba1b5d2fe91eb82fe3345ab16c03"
+    },
+    {
+      "package_id": "0xadbba5e2be688159af8816647e372d55cbe4f2cd20eb528e8079d8a002fb5e54",
+      "module": "gally_entity_2",
+      "witness": "GALLY_ENTITY_2",
+      "treasury_cap_id": "0x77ad10b80461f166368f00135ea1995d262cc84b76479b0e0c9744663559ed50",
+      "metadata_id": "0xa806418c187df452e9382ee8a30d51ffe189f4c204dd914845a0c966c683ec1c"
+    },
+    {
+      "package_id": "0xd1fcded232a6c8e262aa0a40d023f05567beb41078b37f0b33d47d4b82427d33",
+      "module": "gally_entity_3",
+      "witness": "GALLY_ENTITY_3",
+      "treasury_cap_id": "0xe61927c07b34ac8ee029438412145d4cda3b4589919f7427a9034f02845e6623",
+      "metadata_id": "0xdf88881ae2469f80eb394c8f8ad49000cb888704ce6a3d88ec00e364b7775192"
+    },
+    {
+      "package_id": "0xddb9a45714f37fba2d05729767eb6ad1b5c2b95dfb4180e3ce8eace8c38058ff",
+      "module": "gally_entity_4",
+      "witness": "GALLY_ENTITY_4",
+      "treasury_cap_id": "0xaf5089a320ec1e596e16ab770e8327d35d07535dc4261269e1d32555085a22ab",
+      "metadata_id": "0x75b66bd60d8be7e42417a81af7af82657b95b5405f4a94b2dfacab5c727ca773"
+    },
+    {
+      "package_id": "0xa89c9dd91d58a4944ecf5d22ce2911756ef17cd4f38f5e2a32ba19d3601b2916",
+      "module": "gally_entity_5",
+      "witness": "GALLY_ENTITY_5",
+      "treasury_cap_id": "0x5421672e0ec4adc3c9b5c74d36687b6a6cc3a2f833c75a2a00f479e87a26c0e3",
+      "metadata_id": "0x6a710adb0019c302fac9503a212e85978c4472ca41a42ffd898bbd29641731e5"
+    },
+    {
+      "package_id": "0x1c044dc5744728b6746b95818b863db24f2094aa446ea6120822552aad9bb1a3",
+      "module": "gally_entity_6",
+      "witness": "GALLY_ENTITY_6",
+      "treasury_cap_id": "0xda06ecb6147873e283ec1136948e859aee6c8c61ecbaf0f14f65f9007ee0e172",
+      "metadata_id": "0x274929b9be07565f5920f4e30391fc7535ea7135a750c55092c65f7efa9bcb84"
+    },
+    {
+      "package_id": "0x699ddd061b77ee6f03627dcf7e731247f6ffcc03623d536415c4f67a4a0092aa",
+      "module": "gally_entity_7",
+      "witness": "GALLY_ENTITY_7",
+      "treasury_cap_id": "0x6bb3306e540f989228f2cbbd1e8197b9c5d3279d8d527907a08d6a241c6ce246",
+      "metadata_id": "0x5ada567d87483201b97b86d3fffd6507bd7c8e8ae22e47e7f0650b0165e612e2"
+    },
+    {
+      "package_id": "0xc56085ebfd44187084e0e7989239361d9810e34d1af4bf00c4dfed4885b4bf39",
+      "module": "gally_entity_8",
+      "witness": "GALLY_ENTITY_8",
+      "treasury_cap_id": "0x46314e45ecd91dda3265c89e3fce40c71cbb6c5a97bc481c9715ccd8153c1097",
+      "metadata_id": "0xb4b23419ad49d73b05095f087018018156dff832a15c2b53cb845701388b840a"
+    },
+    {
+      "package_id": "0x70a6359a788b1ed5bb78cf074773ea1ea56a229f906aa297a132ea3a03503fb4",
+      "module": "gally_entity_9",
+      "witness": "GALLY_ENTITY_9",
+      "treasury_cap_id": "0x3090831625818926e07fee83516003338dfccbc568342191673e09daae8710dd",
+      "metadata_id": "0x54f4e88adfd580fa58a0c505264b560ba9654201f936fd61b3b40b2794909140"
+    },
+    {
+      "package_id": "0x95f29b37a2adae91aef25d3a08cf1e1daca4f131164d39bc3d2118d7b19b3939",
+      "module": "gally_entity_10",
+      "witness": "GALLY_ENTITY_10",
+      "treasury_cap_id": "0x84c43dba4ef2b51fdaecaf13eeb50e38fb4110cae4578994653735478e531fb0",
+      "metadata_id": "0x05c16ef38d3b6df94fd19363f338d53addfbd85a1544856aaf4037c4d0c50314"
+    },
+    {
+      "package_id": "0x36e03badf316ce4d9720b7d13f1a9548b6586180eade6334b9423e3db6c2bcbf",
+      "module": "gally_entity_11",
+      "witness": "GALLY_ENTITY_11",
+      "treasury_cap_id": "0x1491c9cbd31860a80b765dfd792a2586fc27306adf03a2faabcc48b06f04652c",
+      "metadata_id": "0xbb0ed639d2c48fba35652e84e3fd1f2a946003280b1cd51612c4e7efc2179c47"
+    },
+    {
+      "package_id": "0x36e683bf2326ee5ee8c68f16b4c07d73f3834316582f60420c8e4aa6198148cd",
+      "module": "gally_entity_12",
+      "witness": "GALLY_ENTITY_12",
+      "treasury_cap_id": "0x7d4bdfd248ebcf297b5998e119af01fa46d26158baefaa20bf7654ee54984c59",
+      "metadata_id": "0xe4da125f91c12a6576114766860b349add7832cebbcf687cba204adbec87606a"
+    },
+    {
+      "package_id": "0x56fc228c5fed6288a4c4cd9b12415b90446388243a4c9f1f76e31f6cbdb2d53e",
+      "module": "gally_entity_13",
+      "witness": "GALLY_ENTITY_13",
+      "treasury_cap_id": "0xad1aea850d89141efaeee0d7d99a4edeae86ddc070cb7594ea8141ca9c99fc61",
+      "metadata_id": "0x639c5e885611b4a3b89ef9f92e254ed5e2f6539617f4d0bebd4d88510795269c"
+    },
+    {
+      "package_id": "0x9a97b13be2288ed5e7384cc47facc11ba97f0c47ca1b788bfec5da23a435ac4c",
+      "module": "gally_entity_14",
+      "witness": "GALLY_ENTITY_14",
+      "treasury_cap_id": "0x476201b91e2691d4abe13fdc86a07dd521463aceb52b7b3b5fe0b4ff49af9d4e",
+      "metadata_id": "0xbbdf8ffc8055391d944f34f7c60dfbca7f68c9580cfcdfc97df9deb04c52e1e7"
+    },
+    {
+      "package_id": "0x93c302e309759c734549633bed6f7e7737fb57f13b16b4afee591fd36ac59f12",
+      "module": "gally_entity_15",
+      "witness": "GALLY_ENTITY_15",
+      "treasury_cap_id": "0x84d3a684fc23782e16896d5aa896e88cbc35d51d758c483af66ba94a93a5e324",
+      "metadata_id": "0xa554b2c5b91efb54c7de0cf7f95e1d80ee057ebe118bfc04add5bc887f7d583f"
+    }
+  ],
+  "entity_tokens_used": 14,
+  "lifecycle": {},
+  "showcase_done": true,
+  "showcase_assets": [
+    "0xd79117f36f79bff334282392ecb1eb5deca98dbbdf607d6b22d47a4ea518d38a",
+    "0xfd53a13204619a9f6a9fe1ed2ae2a45612d65109e942c66f5d3b79fc7ee84be6",
+    "0xeb0b891eac5dfa827a95a116a7c60a765ed04caf6122f1fa0265c902fef990cc",
+    "0x75fcd2ccfc44348992db7d19995f592f682c6201e6a0868123bf48445f2169c0",
+    "0x4a6621169352b22d985eae3ef24062c4bcf6c202ba8ca8ad9e77257841296f30",
+    "0x8170b1a1c421497bad995302e25faaa7c3e287237d9e8785ae5cb1fb87872201",
+    "0x0e9f5012ea0fe9dfe1d81d0f7970cedd889c3fa80bda3f4892930dd6b184ed73",
+    "0x7e45f5af171d902373e704417fcac2eaf624c4234ef098af0994a89887aa7dd6",
+    "0xc4f182397ed12954877b96d9f70b468b8edea7288c3f74d4b22f963362948c6d",
+    "0xa46d83417c379126dd4660047ce77a5f7a854d9294b31d3b7eed32b13e12c15e",
+    "0x1a905df0b3bbeefee156ea03456c325d49452184ab26d9bea4d0a37a0484d6cb",
+    "0xff52b7ff077feab5b339b6befd6c5717f2287fa65776754d4d70366a3bea6201",
+    "0x1e949788de23272451fb2900ce4fb26e291bfa31cc0114cae1fae95b13a7a9bb",
+    "0xc7a511fd930486cde414d69f1a0b0bae5bd83b51ee443cee40927b4454fc7110",
+    "0xa00c7945df14df8710379365d076448fd158cfd0da1b18e7e8f75cb1e65d62a6",
+    "0x159b99255500ac6d22f40cedc94b9795257e50b2d54102351d795f3592becaa3",
+    "0xce740070f4d57076a16093c9698f3fd5e07c851e78d97b8422ed34790cc66622"
+  ]
+}

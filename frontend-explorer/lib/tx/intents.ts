@@ -23,7 +23,18 @@ export type TxIntent =
   | { kind: "wrap"; assetId: string; assetName: string; amount: number; tokenSymbol?: string } // accumulator::wrap_shares<T>
   | { kind: "unwrap"; assetId: string; assetName: string; amount: number; tokenSymbol?: string } // accumulator::unwrap_coins<T>
   | { kind: "split"; assetId: string; assetName: string; amount: number } // share::split_share
-  | { kind: "raise_dispute"; poolId: string; validatorName: string; assetId: string; bond: number } // dispute::initialize_dispute<T>
+  // evidenceBlobId/evidenceSha256 are the real Walrus ref of an attached evidence file
+  // (uploaded + hashed in-browser); both omitted ⇒ a reason-only dispute (empty ref).
+  | {
+      kind: "raise_dispute";
+      poolId: string;
+      validatorName: string;
+      assetId: string;
+      bond: number;
+      reason?: string;
+      evidenceBlobId?: string;
+      evidenceSha256?: string;
+    } // dispute::initialize_dispute<T>
   | { kind: "crank"; crank: CrankKind; targetId: string; label: string; route?: string }; // permissionless cranks
 
 export type IntentKind = TxIntent["kind"];

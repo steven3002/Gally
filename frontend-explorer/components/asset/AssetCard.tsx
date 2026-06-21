@@ -11,6 +11,7 @@ import { Avatar, CategoryBadge, ProgressBar } from "@/components/ui/primitives";
 import { StatePill } from "@/components/ui/bits";
 import { Sparkline } from "@/components/ui/charts";
 import { WatchButton } from "@/components/WatchButton";
+import { ContributeAction } from "@/components/tx/ContributeAction";
 
 function accent(a: Asset): string {
   if (a.state === "OPERATIONAL") return "var(--positive)";
@@ -27,10 +28,8 @@ export function AssetCard({ asset }: { asset: Asset }) {
   const operational = asset.state === "OPERATIONAL";
 
   return (
-    <Link
-      href={`/assets/${asset.id}`}
-      className="group block rounded-[var(--radius-card)] border border-border bg-surface p-4 shadow-[var(--shadow-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[var(--shadow-md)]"
-    >
+    <div className="group relative flex flex-col rounded-[var(--radius-card)] border border-border bg-surface shadow-[var(--shadow-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[var(--shadow-md)]">
+      <Link href={`/assets/${asset.id}`} className="block flex-1 p-4">
       <div className="flex items-start gap-3">
         <Avatar seed={asset.id} label={asset.ticker} size={42} />
         <div className="min-w-0 flex-1">
@@ -97,7 +96,21 @@ export function AssetCard({ asset }: { asset: Asset }) {
           </span>
         </div>
       )}
-    </Link>
+      </Link>
+
+      {/* Prominent invest CTA — visible right on the card so it's never hidden. */}
+      {funding && (
+        <div className="border-t border-border px-4 py-3">
+          <ContributeAction
+            assetId={asset.id}
+            assetName={asset.name}
+            remaining={Math.max(1, asset.fundingGoal - asset.raised)}
+            block
+            size="sm"
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

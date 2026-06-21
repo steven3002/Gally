@@ -1,15 +1,19 @@
 //! Axum router assembly + shared application state.
 
 pub mod extractors;
+pub mod limit;
 pub mod routes;
 
 use std::sync::Arc;
 
-use axum::http::HeaderValue;
-use axum::{routing::get, Router};
+use axum::extract::DefaultBodyLimit;
+use axum::http::{HeaderValue, StatusCode};
+use axum::{middleware, routing::get, Router};
 use sqlx::PgPool;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::timeout::TimeoutLayer;
 
+use crate::api::limit::Limits;
 use crate::metrics::Metrics;
 use crate::sui_client::{ChainTip, ObjectProxy};
 use crate::ws::Hub;
@@ -36,6 +40,27 @@ pub struct AppState {
 /// (`/objects/:id` + legal-docs + token-metadata), and applies CORS. BI-M7 adds the three
 /// WebSocket channels, upgrades `/health` with lag alerting, and adds `/metrics`.
 pub fn router(state: AppState) -> Router {
+    router_with_limits(state, Limits::from_env())
+}
+
+/// Like [`router`], but with explicit abuse-resistance [`Limits`] (so a test can pin a
+/// tiny rate to assert the `429` path). The middleware stack, from outermost in:
+/// request timeout → per-IP rate limit + global in-flight cap → CORS → body-size cap.
+pub fn router_with_limits(state: AppState, limits: Limits) -> Router {
+    let timeout = limits.timeout;
+    let max_body = limits.max_body_bytes;
+    base_router()
+        .layer(DefaultBodyLimit::max(max_body))
+        .layer(cors_layer())
+        .layer(middleware::from_fn_with_state(limits, limit::gate))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            timeout,
+        ))
+        .with_state(state)
+}
+
+fn base_router() -> Router<AppState> {
     Router::new()
         .route("/health", get(routes::health::health))
         .route("/metrics", get(routes::metrics::metrics))
@@ -79,8 +104,6 @@ pub fn router(state: AppState) -> Router {
         .route("/ws/assets/:asset_id", get(routes::ws::ws_asset))
         .route("/ws/portfolio/:address", get(routes::ws::ws_portfolio))
         .route("/ws/disputes/:dispute_id", get(routes::ws::ws_dispute))
-        .layer(cors_layer())
-        .with_state(state)
 }
 
 /// CORS middleware so the Next.js frontend can call this API cross-origin (`m6.md`). Allowed

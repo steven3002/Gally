@@ -1,0 +1,71 @@
+{
+  "validator_pool_id": null,
+  "validator_cap_id": null,
+  "asset_id": null,
+  "entity_cap_id": null,
+  "time_warped": false,
+  "validator_pools": [
+    "0x92a5981f4ceda30a803085074a4e43166a8ea1234fb711bc2cf08f20b7d9d0e1",
+    "0x07a22bcd21526346f7060250dea13ab79f702dc5aee5c0b30dc6ee77d576fdfc",
+    "0x738832d024a9801c97cbb65b3104223620300509a2bd072cc4feba526c853b46",
+    "0x8d56295dde18cadea0c79c1bf18e7cc72e22e7379a542e01254e3807acf9548f",
+    "0x4efa06d9458a66c141e200cc91f5de945174e225a0fb54753b56ed0b08890af6",
+    "0xff34ef52e7d8c8466f02f3869268a6c149da9ad364f98c577b94a43e34d5a44f"
+  ],
+  "validator_caps": [
+    "0xbd63777a37eaf812955f3f4079aab8e98235f1b9d57e117369caebc3b3a72cd7",
+    "0x85322215cbc316498fd34724bdcba905bbecc955c0cde4d8b2b24f53999ad2c7",
+    "0x1b9e724e3bb34765605807220c7c6d83d1416c492e1860bc0af9034df557ae2d",
+    "0x2dd242bfb6acd5b079b8e0160a47f0b7f532a3a34ff58db62ca1ff96c25a7cf8",
+    "0x15d3fd89f1031ec69580e6ca33b126cc029da0a638efe1d93d3f4fd1c6905e30",
+    "0x95f21688ab9649fd60054a929411f8354d1813ed843776adb35ab4f0976f942c"
+  ],
+  "entity_tokens": [
+    {
+      "package_id": "0xe42b7c20ef6222c05e3e73bb8508cdaf074ab429dd10ac74f789b9f72ba1da5f",
+      "module": "gally_entity_1",
+      "witness": "GALLY_ENTITY_1",
+      "treasury_cap_id": "0xa22fb7ea3a7985898a03c2070e9871f0f1590909f4f784b88f41065afce2e192",
+      "metadata_id": "0x933634443773eeb7c08ad178caa7f3ed469aa95e59370239e3916f018e30e2cd"
+    },
+    {
+      "package_id": "0xa06c45211e081b36ba6958cc4437d828e86b99435af07aa9cac4ef8312a236d3",
+      "module": "gally_entity_2",
+      "witness": "GALLY_ENTITY_2",
+      "treasury_cap_id": "0x422c0ab5b7792c60e90cebdde23049e2c4a82dff9fc8766f9ab5b9f974a18fd5",
+      "metadata_id": "0x5dc4f1207443c61e1aa10b495288ba1bfa772bae4b87d8a8a07b065caee7adfe"
+    },
+    {
+      "package_id": "0x592a43b241347afcca4561f47ca144fb458774b1ae57ff79fe79741fa2490a55",
+      "module": "gally_entity_3",
+      "witness": "GALLY_ENTITY_3",
+      "treasury_cap_id": "0x20b3041d9ba3de40cb2339b38fb03c57999d847d272384bb8eca22092b9ca78e",
+      "metadata_id": "0x9f531bcb1149df8ed845bb009567718976c72b96d1cdba833db775891352584a"
+    },
+    {
+      "package_id": "0x1aa71a8524f379a715b77451910049d09705af2679407fcabcef3381a8517e1e",
+      "module": "gally_entity_4",
+      "witness": "GALLY_ENTITY_4",
+      "treasury_cap_id": "0xa1bfacf644205cca02d0c2a83b28a5ce504bf2a131c907a377fe329c6ecbe829",
+      "metadata_id": "0x5c2df75f9f17b59c4b4552c2ba57222e7d4361586c54e452de0810afe6412b16"
+    },
+    {
+      "package_id": "0xaf41ad2ddf8213971f2b800c9813496a8121a7a649c9c82e454ebc9559dcff58",
+      "module": "gally_entity_5",
+      "witness": "GALLY_ENTITY_5",
+      "treasury_cap_id": "0x4267a4db2087f0ada7003cae43115e318cd6e83b9dedcf0388d96d39fdf0993b",
+      "metadata_id": "0xd5e3bb8f93b1d7047f1d1eb6d13b5cd9e03e42a1c1226d86a858d4a4f252a9c6"
+    }
+  ],
+  "entity_tokens_used": 5,
+  "lifecycle": {},
+  "showcase_done": true,
+  "showcase_assets": [
+    "0x90c2312631afbd45862b31b6fb128d5e9cce600da909ae2c32dc8464419424b2",
+    "0xbd01ccd71325723b028e5ca34043daf95e2de6fcae7d72434aa34b643c22faf6",
+    "0xec83ffbf049d3cd8f9d6a5a51ec0f477d3eb409d2529e5a575833c856c02f876",
+    "0xbee5eb7d937be14e8a9de84e3c6e6097c300f3c449b20fe45637a9947934e3d2",
+    "0x52c403a811a6619eef7adc5aff5d15cd55a3bbbdbaae2af1216772028ddfb460",
+    "0xcc2d3cfd467bfd816d373bfdf944f346a1dfaa44c1311f3122c2ea2d22e4b0c2"
+  ]
+}

@@ -7,7 +7,17 @@
 
 import type { Envelope } from "./wire";
 
+// Absolute base — used server-side (SSR fetches the co-located indexer on localhost)
+// and by the WebSocket client (rewrites can't proxy WS).
 export const INDEXER_URL = (process.env.NEXT_PUBLIC_INDEXER_URL ?? "http://127.0.0.1:8088").replace(/\/$/, "");
+// Same-origin path the BROWSER uses — proxied to the indexer by the Next rewrite in
+// `next.config.ts`. This is what makes client-side live reads work over an SSH tunnel
+// (the browser only ever hits the frontend origin, never `127.0.0.1:8088` directly).
+const INDEXER_PROXY_PATH = (process.env.NEXT_PUBLIC_INDEXER_PROXY_PATH ?? "/_idx").replace(/\/$/, "");
+/** Resolve the request base by execution context: relative (same-origin) in the browser, absolute on the server. */
+function baseUrl(): string {
+  return typeof window === "undefined" ? INDEXER_URL : INDEXER_PROXY_PATH;
+}
 const TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_INDEXER_TIMEOUT_MS ?? 6000);
 
 export class IndexerError extends Error {
@@ -23,7 +33,7 @@ export class IndexerError extends Error {
 
 /** GET a JSON resource. Returns `null` on 404; throws `IndexerError` otherwise. */
 export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T | null> {
-  const url = `${INDEXER_URL}${path}`;
+  const url = `${baseUrl()}${path}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   // Chain an external abort into our controller.

@@ -46,7 +46,9 @@ export type PlanArg =
   | { kind: "shared"; id: string; mutable: boolean }
   | { kind: "owned"; id: string }
   | { kind: "clock" }
-  | { kind: "pure"; ty: "u64" | "vector<u8>"; value: number | string }
+  // `enc` controls how a vector<u8> value is byte-encoded: "utf8" (default — the
+  // string's bytes) or "hex" (decode a hex string to raw bytes, e.g. a 32-byte sha256).
+  | { kind: "pure"; ty: "u64" | "vector<u8>"; value: number | string; enc?: "utf8" | "hex" }
   | { kind: "coin"; coinType: "USDC" | "T"; amountMicro: number }
   | { kind: "result"; from: number }; // result of an earlier call in the plan
 
@@ -206,12 +208,14 @@ export function buildPlan(intent: TxIntent, ctx: BuildCtx): TxPlan {
       };
 
     case "raise_dispute": {
+      // Evidence is a real Walrus ref when the challenger attached a file (blob id +
+      // its sha256, hashed in-browser); otherwise an empty ref (reason-only dispute).
       const evidence: MoveCallPlan = {
         target: t("asset::new_walrus_ref"),
         typeArguments: [],
         args: [
-          { kind: "pure", ty: "vector<u8>", value: "evidence" },
-          { kind: "pure", ty: "vector<u8>", value: intent.assetId },
+          { kind: "pure", ty: "vector<u8>", value: intent.evidenceBlobId ?? "" },
+          { kind: "pure", ty: "vector<u8>", value: intent.evidenceSha256 ?? "", enc: "hex" },
         ],
       };
       const dispute: MoveCallPlan = {
@@ -224,7 +228,7 @@ export function buildPlan(intent: TxIntent, ctx: BuildCtx): TxPlan {
           config(),
           { kind: "coin", coinType: "USDC", amountMicro: Math.round(intent.bond * MICRO) },
           { kind: "result", from: 0 }, // the WalrusRef
-          { kind: "pure", ty: "vector<u8>", value: "Challenged via explorer" },
+          { kind: "pure", ty: "vector<u8>", value: intent.reason ?? "Challenged via explorer" },
           clock(),
         ],
       };
@@ -272,6 +276,15 @@ export function buildPlan(intent: TxIntent, ctx: BuildCtx): TxPlan {
   }
 }
 
+/** Decode a hex string (optional `0x`, odd length left-padded) into raw bytes. */
+function hexBytes(hex: string): number[] {
+  const h = hex.startsWith("0x") ? hex.slice(2) : hex;
+  const clean = h.length % 2 ? "0" + h : h;
+  const out: number[] = [];
+  for (let i = 0; i < clean.length; i += 2) out.push(parseInt(clean.slice(i, i + 2), 16));
+  return out;
+}
+
 /** Compile a plan into a real Transaction (live executor). */
 export function planToTransaction(plan: TxPlan, ctx: BuildCtx): Transaction {
   const tx = new Transaction();
@@ -284,8 +297,14 @@ export function planToTransaction(plan: TxPlan, ctx: BuildCtx): Transaction {
         return tx.object(a.id);
       case "clock":
         return tx.object(SUI_CLOCK_OBJECT_ID);
-      case "pure":
-        return a.ty === "u64" ? tx.pure.u64(BigInt(a.value)) : tx.pure.vector("u8", Array.from(new TextEncoder().encode(String(a.value))));
+      case "pure": {
+        if (a.ty === "u64") return tx.pure.u64(BigInt(a.value));
+        const bytes =
+          a.enc === "hex"
+            ? hexBytes(String(a.value))
+            : Array.from(new TextEncoder().encode(String(a.value)));
+        return tx.pure.vector("u8", bytes);
+      }
       case "coin": {
         const srcId = a.coinType === "USDC" ? ctx.owned?.usdcCoinId : ctx.owned?.coinTId;
         const [c] = tx.splitCoins(tx.object(need(srcId, `${a.coinType} coin id`)), [a.amountMicro]);

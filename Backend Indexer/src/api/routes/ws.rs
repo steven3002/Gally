@@ -9,11 +9,24 @@
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
-use axum::response::Response;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
 
+use crate::api::limit::{self, WsPermit};
 use crate::api::AppState;
+
+/// The `503` returned when the process-wide WebSocket cap is full (the long-lived
+/// socket is the cheapest DoS vector — see `api::limit`).
+fn ws_capacity_full() -> Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        [("Retry-After", "5")],
+        "websocket capacity reached\n",
+    )
+        .into_response()
+}
 
 /// `WS /ws/assets/:asset_id` — every new event row whose payload carries this `asset_id`.
 pub async fn ws_asset(
@@ -21,9 +34,12 @@ pub async fn ws_asset(
     Path(asset_id): Path<String>,
     upgrade: WebSocketUpgrade,
 ) -> Response {
+    let Some(permit) = limit::ws_acquire() else {
+        return ws_capacity_full();
+    };
     let key = format!("asset:{asset_id}");
     let channel = format!("assets/{asset_id}");
-    upgrade.on_upgrade(move |socket| run(socket, state, key, channel))
+    upgrade.on_upgrade(move |socket| run(socket, state, key, channel, permit))
 }
 
 /// `WS /ws/portfolio/:address` — every new `position_events`/`raise_progress` row for this actor.
@@ -32,9 +48,12 @@ pub async fn ws_portfolio(
     Path(address): Path<String>,
     upgrade: WebSocketUpgrade,
 ) -> Response {
+    let Some(permit) = limit::ws_acquire() else {
+        return ws_capacity_full();
+    };
     let key = format!("address:{address}");
     let channel = format!("portfolio/{address}");
-    upgrade.on_upgrade(move |socket| run(socket, state, key, channel))
+    upgrade.on_upgrade(move |socket| run(socket, state, key, channel, permit))
 }
 
 /// `WS /ws/disputes/:dispute_id` — jury-vote pushes and the resolution update for one dispute.
@@ -43,15 +62,19 @@ pub async fn ws_dispute(
     Path(dispute_id): Path<String>,
     upgrade: WebSocketUpgrade,
 ) -> Response {
+    let Some(permit) = limit::ws_acquire() else {
+        return ws_capacity_full();
+    };
     let key = format!("dispute:{dispute_id}");
     let channel = format!("disputes/{dispute_id}");
-    upgrade.on_upgrade(move |socket| run(socket, state, key, channel))
+    upgrade.on_upgrade(move |socket| run(socket, state, key, channel, permit))
 }
 
 /// Drive one upgraded socket: subscribe (before the handshake, so no live frame is missed), send
 /// the `connected` frame, then pump broadcast frames out and discard client input until either
-/// side closes. The active-connections gauge is incremented for the lifetime of the loop.
-async fn run(mut socket: WebSocket, state: AppState, key: String, channel: String) {
+/// side closes. The active-connections gauge is incremented for the lifetime of the loop. The WS
+/// cap [`WsPermit`] is held for the same lifetime — dropping it on return frees the slot.
+async fn run(mut socket: WebSocket, state: AppState, key: String, channel: String, _permit: WsPermit) {
     // Subscribe FIRST: the receiver must exist before `connected` is sent so a client that waits
     // for the handshake before triggering work cannot race a publish into the gap.
     let mut rx = state.hub.subscribe(&key);

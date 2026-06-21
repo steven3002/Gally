@@ -65,6 +65,14 @@ pub struct SimState {
     /// state-name (`"pending_vouch"`, …, `"closed"`) → the asset seeded for it.
     #[serde(default)]
     pub lifecycle: BTreeMap<String, LifecycleAsset>,
+
+    // --- curated judge showcase (`--showcase`) ---
+    /// Set once the curated showcase has been fully seeded (re-run skips it, SI-5).
+    #[serde(default)]
+    pub showcase_done: bool,
+    /// Asset ids created by the showcase (reference / so a re-run can be reasoned about).
+    #[serde(default)]
+    pub showcase_assets: Vec<String>,
 }
 
 impl SimState {

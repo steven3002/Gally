@@ -64,9 +64,12 @@ export function bpsToPct(bps: number): string {
   return `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 2)}%`;
 }
 
-/** Shorten a 0x address: 0x1f2e…9a3c */
+/** Shorten any long on-chain identifier: 0x1f2e…9a3c (also base58 tx digests). */
 export function shortAddr(a: string, lead = 6, tail = 4): string {
-  if (!a.startsWith("0x")) return a;
+  // Truncate 0x-hex object ids/addresses AND base58 tx digests alike. Live Sui tx
+  // digests have no `0x` prefix, so the old `!startsWith("0x")` early-return let the
+  // full 44-char digest through and it overflowed its column. Short labels (≤ the
+  // window) are still returned whole.
   if (a.length <= lead + tail + 2) return a;
   return `${a.slice(0, lead)}…${a.slice(-tail)}`;
 }

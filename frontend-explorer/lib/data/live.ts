@@ -50,6 +50,33 @@ import type {
 
 const ASSET_PAGE = 60;
 
+// Marketplace/stats asset states, in display priority. PENDING_VOUCH (byte 0) is
+// deliberately EXCLUDED: the live chain accumulates many un-vouched draft assets (sim
+// noise) that have no validator, no contributions and no holders, and the `/assets`
+// list is ordered oldest-first — so the default first page was a wall of empty drafts
+// while the funded/operational assets (the ones with holders) never surfaced. We fetch
+// each investable/active state explicitly and merge.
+//   1 FUNDING · 4 EXECUTING · 5 OPERATIONAL · 6 COMPENSATING · 7 CLOSED · 2 FAILED · 3 CANCELLED
+const MARKET_STATE_BYTES = [1, 4, 5, 6, 7, 2, 3] as const;
+// Sort priority for the merged list (lower = earlier). Investable + yield-bearing first.
+const STATE_SORT: Record<number, number> = { 1: 0, 5: 1, 4: 2, 6: 3, 7: 4, 2: 5, 3: 6 };
+// Display rank (by derived state name) for the marketplace: OPERATIONAL (the holder-bearing,
+// "alive" assets) first, then investable FUNDING, then the rest.
+const DISPLAY_RANK: Record<string, number> = {
+  OPERATIONAL: 0,
+  FUNDING: 1,
+  FUNDED: 1,
+  EXECUTING: 2,
+  COMPENSATING: 3,
+  DEFAULTED: 3,
+  CLOSED: 4,
+  FAILED: 5,
+  CANCELLED: 6,
+  PENDING_VOUCH: 7,
+};
+// States that mint GallyShare deeds → have a holder ledger worth counting for the card.
+const HOLDER_BEARING_STATES = ["EXECUTING", "OPERATIONAL", "COMPENSATING", "CLOSED", "DEFAULTED"];
+
 /** A Sui object as served by the object-proxy (`/objects/:id`) — same shape as `sui_getObject`'s `result.data`. */
 interface WireObjectProxy {
   data?: {
@@ -76,12 +103,51 @@ async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
   }
 }
 
+/**
+ * The curated marketplace/stats asset set: every investable/active state (no empty
+ * PENDING_VOUCH drafts), merged across `?state=` queries, de-duplicated by id, and
+ * sorted investable-first then newest-first. This is what surfaces the funded +
+ * operational (holder-bearing) assets that the draft-heavy oldest-first default hid.
+ */
+async function curatedAssets(): Promise<Asset[]> {
+  const pages = await Promise.all(
+    MARKET_STATE_BYTES.map((s) => safe(getList<WireAsset>(`/assets?state=${s}&limit=100`), [] as WireAsset[])),
+  );
+  const byId = new Map<string, WireAsset>();
+  for (const row of pages.flat()) byId.set(row.asset_id, row);
+  return [...byId.values()]
+    .sort((a, b) => {
+      const pa = STATE_SORT[a.current_state] ?? 99;
+      const pb = STATE_SORT[b.current_state] ?? 99;
+      if (pa !== pb) return pa - pb;
+      return (b.created_at_ms ?? 0) - (a.created_at_ms ?? 0);
+    })
+    .map((w) => mapAsset(w));
+}
+
 export const liveSource: DataSource = {
   kind: "live",
 
   async listAssets(): Promise<Asset[]> {
-    const rows = await getList<WireAsset>(`/assets?limit=${ASSET_PAGE}`);
-    return rows.map((w) => mapAsset(w));
+    const assets = await curatedAssets();
+    // Enrich post-finalize assets with their REAL holder count. The `/assets` list rows
+    // carry no holder count (only the detail does), so every operational card otherwise
+    // read "0 holders" — making it look like nobody invested. One bounded holders fetch
+    // per holder-bearing asset fixes the card + lets us float the populated ones up.
+    await Promise.all(
+      assets.map(async (a) => {
+        if (!HOLDER_BEARING_STATES.includes(a.state)) return;
+        const env = await safe(getEnvelope<WireHoldersEnvelope>(`/assets/${a.id}/holders?limit=200`), null);
+        if (env) a.holders = env.data.length;
+      }),
+    );
+    return assets.sort((x, y) => {
+      const rx = DISPLAY_RANK[x.state] ?? 9;
+      const ry = DISPLAY_RANK[y.state] ?? 9;
+      if (rx !== ry) return rx - ry;
+      if ((y.holders ?? 0) !== (x.holders ?? 0)) return (y.holders ?? 0) - (x.holders ?? 0);
+      return (y.raised ?? 0) - (x.raised ?? 0);
+    });
   },
 
   async getAsset(id): Promise<Asset | null> {
@@ -350,12 +416,11 @@ export const liveSource: DataSource = {
   },
 
   async getProtocolStats(): Promise<ProtocolStatsDTO> {
-    const [rawAssets, validators, disputes] = await Promise.all([
-      safe(getList<WireAsset>(`/assets?limit=${ASSET_PAGE}`), [] as WireAsset[]),
+    const [assets, validators, disputes] = await Promise.all([
+      curatedAssets(),
       this.listValidators(),
       this.listDisputes(),
     ]);
-    const assets = rawAssets.map((w) => mapAsset(w));
     // Enrich the yield-bearing assets (detail carries accumulator + apy) — bounded.
     const yielding = assets.filter((a) => a.state === "OPERATIONAL" || a.state === "CLOSED").slice(0, 12);
     const details = (await Promise.all(yielding.map((a) => safe(this.getAsset(a.id), null)))).filter((a): a is Asset => a != null);

@@ -23,7 +23,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 anyhow = "1"
 async-trait = "0.1"
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.6", features = ["cors", "timeout"] }
 # Prometheus exposition for `/metrics` (BI-M7). No default features → text encoder only, no protobuf.
 prometheus = { version = "0.13", default-features = false }
 

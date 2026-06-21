@@ -5,6 +5,7 @@
 mod test_api;
 mod test_ingestion;
 mod test_lifecycle;
+mod test_limits;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -69,11 +70,22 @@ pub fn app_state(pool: PgPool, objects: Arc<ObjectProxy>) -> AppState {
 
 /// Bind the app on an ephemeral port, spawn it, and return its base URL (`http://127.0.0.1:PORT`).
 pub async fn spawn(state: AppState) -> String {
-    let app = gally_indexer::api::router(state);
+    spawn_router(gally_indexer::api::router(state)).await
+}
+
+/// Serve a pre-built router (lets a test pin custom abuse-resistance [`Limits`] via
+/// `api::router_with_limits`). Served with `ConnectInfo` so the rate limiter sees the
+/// real TCP peer — mirroring production (`main.rs`).
+pub async fn spawn_router(app: axum::Router) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .unwrap();
     });
     format!("http://{addr}")
 }

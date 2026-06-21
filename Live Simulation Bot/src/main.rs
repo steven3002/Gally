@@ -20,6 +20,7 @@ mod ptb;
 mod reseed;
 mod rng;
 mod seed;
+mod showcase;
 mod sim_state;
 mod walrus;
 mod sui_client;
@@ -154,6 +155,23 @@ fn main() -> Result<()> {
         reseed::tick(&client, &gasf, &cfg).context("re-seeding faucet before genesis")?;
         lifecycle::seed_lifecycle(&client, &cfg).context("seeding all lifecycle states")?;
         info!("SIM-M3 full genesis pass complete");
+        return Ok(());
+    }
+
+    // --showcase: curated, judge-facing dataset — headline assets fully funded by 30+
+    // distinct cohort investors, milestones + tranches disbursed, 3 open raises, 6
+    // disputes (2 rejected / 2 upheld / 2 voting), yields claimed/wrapped, gov events.
+    if cli.showcase {
+        showcase::run_showcase(&client, &cfg).context("seeding the judge showcase")?;
+        info!("showcase seeding pass complete");
+        return Ok(());
+    }
+
+    // --extra-headlines: append N OPERATIONAL assets, each fully funded by EXTRA_INVESTORS
+    // distinct investors who ALL claim their deeds (≥40 holders/asset). One pass.
+    if cli.extra_headlines {
+        showcase::run_extra_headlines(&client, &cfg).context("seeding extra headline assets")?;
+        info!("extra-headlines seeding pass complete");
         return Ok(());
     }
 
