@@ -53,7 +53,13 @@ export function HoldingActions({
           size="sm"
           variant="ghost"
           label="Wrap"
-          amount={{ label: `Wrap deeds into ${sym}`, max: shareCount, default: shareCount, suffix: "deeds" }}
+          amount={{
+            label: `Wrap deeds into ${sym}`,
+            max: shareCount,
+            default: shareCount,
+            suffix: "deeds",
+            availableLabel: "Your deeds",
+          }}
           getIntent={(amount) => ({ kind: "wrap", assetId, assetName, amount, tokenSymbol })}
         />
       )}
@@ -62,7 +68,13 @@ export function HoldingActions({
           size="sm"
           variant="ghost"
           label="Unwrap"
-          amount={{ label: `Unwrap ${sym} to deeds`, max: wrapped, default: wrapped, suffix: sym }}
+          amount={{
+            label: `Unwrap ${sym} to deeds`,
+            max: wrapped,
+            default: wrapped,
+            suffix: sym,
+            availableLabel: `Wrapped ${sym}`,
+          }}
           getIntent={(amount) => ({ kind: "unwrap", assetId, assetName, amount, tokenSymbol })}
         />
       )}
@@ -71,7 +83,13 @@ export function HoldingActions({
           size="sm"
           variant="ghost"
           label="Split"
-          amount={{ label: "Split off deeds", max: shareCount - 1, default: 1, suffix: "deeds" }}
+          amount={{
+            label: "Split off deeds",
+            max: shareCount - 1,
+            default: 1,
+            suffix: "deeds",
+            availableLabel: "Splittable deeds",
+          }}
           getIntent={(amount) => ({ kind: "split", assetId, assetName, amount })}
         />
       )}

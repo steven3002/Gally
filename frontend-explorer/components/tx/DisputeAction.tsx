@@ -11,7 +11,8 @@ import { isLive } from "@/lib/data";
 import { SUI_NETWORK } from "@/lib/tx/config";
 import { uploadBlob } from "@/lib/walrus/client";
 import { shortDigest, shortHash, usd } from "@/lib/format";
-import { Alert, Check, Close, Doc, Scale, Shield, Wallet } from "@/components/ui/icons";
+import { Modal } from "@/components/ui/Modal";
+import { Alert, Check, Doc, Scale, Shield, Wallet } from "@/components/ui/icons";
 
 const VERB = "Raise dispute";
 
@@ -115,142 +116,128 @@ export function DisputeAction({
         <Scale className="h-4 w-4" /> {VERB}
       </button>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-[70] flex items-end justify-center p-3 sm:items-center sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={VERB}
-        >
-          <button className="absolute inset-0 cursor-default bg-black/50" aria-hidden="true" tabIndex={-1} onClick={() => !busy && close()} />
-          <div className="motion-safe:animate-rise relative w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow-lg)]">
-            {/* header */}
-            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
-              <div>
-                <h3 className="text-base font-semibold text-foreground">{VERB}</h3>
-                <p className="mt-0.5 font-mono text-[11px] text-muted-2">dispute::initialize_dispute</p>
-              </div>
-              <button onClick={() => !busy && close()} disabled={busy} aria-label="Close" className="rounded-lg p-1 text-muted-2 transition-colors hover:text-foreground disabled:opacity-40">
-                <Close className="h-5 w-5" />
+      <Modal
+        open={open}
+        onClose={close}
+        busy={busy}
+        label={VERB}
+        subtitle={<p className="font-mono text-[11px] text-muted-2">dispute::initialize_dispute</p>}
+        footer={
+          done ? undefined : (
+            <>
+              <button
+                onClick={close}
+                disabled={busy}
+                className="rounded-xl px-3 py-2 text-sm font-medium text-muted transition-colors hover:text-foreground disabled:opacity-40"
+              >
+                Cancel
               </button>
+              {!connected ? (
+                <button onClick={connect} className="inline-flex items-center gap-2 rounded-xl bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+                  <Wallet className="h-4 w-4" /> Connect wallet
+                </button>
+              ) : failed ? (
+                <button onClick={() => reset()} className="inline-flex items-center gap-2 rounded-xl bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+                  Try again
+                </button>
+              ) : (
+                <button
+                  onClick={handleRun}
+                  disabled={busy || uploading || bondInvalid}
+                  className="inline-flex items-center gap-2 rounded-xl bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                >
+                  {busy && <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />}
+                  {busy ? TX_STATUS_LABEL[status] : `Confirm ${VERB.toLowerCase()}`}
+                </button>
+              )}
+            </>
+          )
+        }
+      >
+        {done ? (
+          <div className="flex flex-col items-center gap-2 py-3 text-center">
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-positive-soft text-positive">
+              <Check className="h-6 w-6" />
+            </span>
+            <p className="text-sm font-semibold text-foreground">{VERB} confirmed</p>
+            {result?.digest && <p className="font-mono text-xs text-muted">{shortDigest(result.digest)}</p>}
+            {intentRoute(baseIntent) && (
+              <Link href={intentRoute(baseIntent)!} onClick={close} className="text-xs font-semibold text-primary hover:text-primary-strong">
+                View details →
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-muted">{intentSummary(baseIntent)}</p>
+
+            {/* Reason */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-muted">Reason</label>
+              <textarea
+                value={reason}
+                disabled={busy}
+                onChange={(e) => setReason(e.target.value)}
+                rows={2}
+                placeholder="Why is this attestation being challenged?"
+                className="w-full resize-none rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none focus:border-border-strong"
+              />
             </div>
 
-            {/* body */}
-            <div className="space-y-4 px-5 py-4">
-              {done ? (
-                <div className="flex flex-col items-center gap-2 py-3 text-center">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-positive-soft text-positive">
-                    <Check className="h-6 w-6" />
-                  </span>
-                  <p className="text-sm font-semibold text-foreground">{VERB} confirmed</p>
-                  {result?.digest && <p className="font-mono text-xs text-muted">{shortDigest(result.digest)}</p>}
-                  {intentRoute(baseIntent) && (
-                    <Link href={intentRoute(baseIntent)!} onClick={close} className="text-xs font-semibold text-primary hover:text-primary-strong">
-                      View details →
-                    </Link>
-                  )}
+            {/* Evidence → Walrus */}
+            <div>
+              <label className="mb-1.5 flex items-center justify-between text-xs font-medium text-muted">
+                <span>Evidence <span className="text-muted-2">(optional)</span></span>
+                <span className="inline-flex items-center gap-1 text-[11px] text-muted-2" title="The file is uploaded to Walrus and its sha256 is computed in your browser; the blob id + hash are pinned on-chain.">
+                  <Shield className="h-3 w-3" /> Walrus + sha256
+                </span>
+              </label>
+              <input ref={fileRef} type="file" disabled={busy || uploading} onChange={onPickFile} className="block w-full text-xs text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-surface-3 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-foreground hover:file:bg-surface-2" />
+
+              {uploading && (
+                <p className="mt-2 inline-flex items-center gap-2 text-[11px] text-muted">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" /> Uploading to Walrus…
+                </p>
+              )}
+              {ev.status === "done" && (
+                <div className="mt-2 rounded-lg border border-positive/30 bg-positive-soft px-3 py-2 text-[11px]">
+                  <div className="flex items-center gap-1.5 font-medium text-positive">
+                    <Doc className="h-3.5 w-3.5" /> {ev.name} — pinned on Walrus
+                  </div>
+                  <div className="mt-1 truncate font-mono text-muted-2" title={ev.blobId}>blob {ev.blobId}</div>
+                  <div className="truncate font-mono text-muted-2" title={ev.sha256}>sha256 {shortHash(ev.sha256)}</div>
                 </div>
-              ) : (
-                <>
-                  <p className="text-sm leading-relaxed text-muted">{intentSummary(baseIntent)}</p>
-
-                  {/* Reason */}
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-muted">Reason</label>
-                    <textarea
-                      value={reason}
-                      disabled={busy}
-                      onChange={(e) => setReason(e.target.value)}
-                      rows={2}
-                      placeholder="Why is this attestation being challenged?"
-                      className="w-full resize-none rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none focus:border-border-strong"
-                    />
-                  </div>
-
-                  {/* Evidence → Walrus */}
-                  <div>
-                    <label className="mb-1.5 flex items-center justify-between text-xs font-medium text-muted">
-                      <span>Evidence <span className="text-muted-2">(optional)</span></span>
-                      <span className="inline-flex items-center gap-1 text-[11px] text-muted-2" title="The file is uploaded to Walrus and its sha256 is computed in your browser; the blob id + hash are pinned on-chain.">
-                        <Shield className="h-3 w-3" /> Walrus + sha256
-                      </span>
-                    </label>
-                    <input ref={fileRef} type="file" disabled={busy || uploading} onChange={onPickFile} className="block w-full text-xs text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-surface-3 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-foreground hover:file:bg-surface-2" />
-
-                    {uploading && (
-                      <p className="mt-2 inline-flex items-center gap-2 text-[11px] text-muted">
-                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" /> Uploading to Walrus…
-                      </p>
-                    )}
-                    {ev.status === "done" && (
-                      <div className="mt-2 rounded-lg border border-positive/30 bg-positive-soft px-3 py-2 text-[11px]">
-                        <div className="flex items-center gap-1.5 font-medium text-positive">
-                          <Doc className="h-3.5 w-3.5" /> {ev.name} — pinned on Walrus
-                        </div>
-                        <div className="mt-1 truncate font-mono text-muted-2" title={ev.blobId}>blob {ev.blobId}</div>
-                        <div className="truncate font-mono text-muted-2" title={ev.sha256}>sha256 {shortHash(ev.sha256)}</div>
-                      </div>
-                    )}
-                    {ev.status === "error" && (
-                      <p className="mt-2 inline-flex items-start gap-1.5 text-[11px] text-danger">
-                        <Alert className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {ev.msg}. You can still file with a reason only.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Bond stake */}
-                  <div className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2 text-sm">
-                    <span className="text-muted">Challenger bond (staked)</span>
-                    <span className="tnum font-semibold text-foreground">{usd(bond)}</span>
-                  </div>
-
-                  {bondInvalid && <p className="text-[11px] text-danger">Challenger bond is unavailable — try again shortly.</p>}
-
-                  {failed && (
-                    <div className="flex items-start gap-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">
-                      <Alert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      <span>{result?.error ?? "Transaction failed."}</span>
-                    </div>
-                  )}
-
-                  <p className="rounded-lg border border-dashed border-border px-3 py-2 text-[11px] text-muted-2">
-                    {isLive
-                      ? `Live execution — this submits a real transaction to ${SUI_NETWORK} and your wallet will ask you to sign. The evidence blob is real Walrus.`
-                      : "Mock execution — no transaction is submitted, but an attached evidence file IS uploaded to real Walrus and hashed in your browser."}
-                  </p>
-                </>
+              )}
+              {ev.status === "error" && (
+                <p className="mt-2 inline-flex items-start gap-1.5 text-[11px] text-danger">
+                  <Alert className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {ev.msg}. You can still file with a reason only.
+                </p>
               )}
             </div>
 
-            {/* footer */}
-            {!done && (
-              <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-                <button onClick={close} disabled={busy} className="rounded-xl px-3 py-2 text-sm font-medium text-muted transition-colors hover:text-foreground disabled:opacity-40">
-                  Cancel
-                </button>
-                {!connected ? (
-                  <button onClick={connect} className="inline-flex items-center gap-2 rounded-xl bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
-                    <Wallet className="h-4 w-4" /> Connect wallet
-                  </button>
-                ) : failed ? (
-                  <button onClick={() => reset()} className="inline-flex items-center gap-2 rounded-xl bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
-                    Try again
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleRun}
-                    disabled={busy || uploading || bondInvalid}
-                    className="inline-flex items-center gap-2 rounded-xl bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                  >
-                    {busy && <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />}
-                    {busy ? TX_STATUS_LABEL[status] : `Confirm ${VERB.toLowerCase()}`}
-                  </button>
-                )}
+            {/* Bond stake */}
+            <div className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2 text-sm">
+              <span className="text-muted">Challenger bond (staked)</span>
+              <span className="tnum font-semibold text-foreground">{usd(bond)}</span>
+            </div>
+
+            {bondInvalid && <p className="text-[11px] text-danger">Challenger bond is unavailable — try again shortly.</p>}
+
+            {failed && (
+              <div className="flex items-start gap-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">
+                <Alert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{result?.error ?? "Transaction failed."}</span>
               </div>
             )}
+
+            <p className="rounded-lg border border-dashed border-border px-3 py-2 text-[11px] text-muted-2">
+              {isLive
+                ? `Live execution — this submits a real transaction to ${SUI_NETWORK} and your wallet will ask you to sign. The evidence blob is real Walrus.`
+                : "Mock execution — no transaction is submitted, but an attached evidence file IS uploaded to real Walrus and hashed in your browser."}
+            </p>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </>
   );
 }

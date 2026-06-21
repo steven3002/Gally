@@ -166,6 +166,34 @@ body {
   animation: gally-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Backdrop / overlay fade-in (modals). */
+@keyframes gally-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade {
+  animation: gally-fade 0.18s ease both;
+}
+
+/* Dialog panel pop — a touch more presence than `rise` for centered modals. */
+@keyframes gally-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-pop {
+  animation: gally-pop 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @keyframes gally-pulse {
   0%,
   100% {
