@@ -4,14 +4,12 @@ claude.md
 milestone
 milestone.zip
 CLAUDE.md
-# Move build output + ephemeral per-environment publication records
+
 build/
 Published.toml
-# ...but the `usdc` package's Published.toml carries the STATIC mainnet→Circle USDC
-# mapping (production config the `--build-env mainnet` build needs), so it IS committed.
-# (Its localnet entry stays ephemeral — written by run_stack.sh, not stored here.)
+
 !usdc/Published.toml
 
-# operator + simulation private keys — never commit (key-leak incident 2026-06-27)
 config*.toml
 sim_users*.json
+
