@@ -9,8 +9,12 @@ export const SUI_NETWORK = process.env.NEXT_PUBLIC_SUI_NETWORK ?? "localnet";
 export const GALLY_PACKAGE_ID = process.env.NEXT_PUBLIC_GALLY_PACKAGE_ID ?? "";
 export const PROTOCOL_CONFIG_ID = process.env.NEXT_PUBLIC_PROTOCOL_CONFIG_ID ?? "";
 
-/** Are we connected to the public Sui Devnet? (drives the onboarding banner.) */
-export const IS_DEVNET = SUI_NETWORK === "devnet";
+/** On a public faucet-enabled test network (devnet OR testnet)? Drives the onboarding
+ *  banner + claim-tokens button. */
+export const IS_DEVNET = SUI_NETWORK === "devnet" || SUI_NETWORK === "testnet";
+
+/** Current network as a display label, capitalised ("Testnet" / "Devnet" / "Mainnet"). */
+export const NETWORK_LABEL = SUI_NETWORK.charAt(0).toUpperCase() + SUI_NETWORK.slice(1);
 
 /** The standalone `usdc` package (canonical USDC type provider — the Devnet proxy). */
 export const USDC_PACKAGE_ID = process.env.NEXT_PUBLIC_USDC_PACKAGE_ID ?? GALLY_PACKAGE_ID;

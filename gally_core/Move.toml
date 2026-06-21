@@ -4,9 +4,6 @@ edition = "2024"
 
 # SIM live-soak: declare the local node's chain identifier so Sui 1.73's env-aware
 # publish (automated address management) will deploy here. Sim-only deployment config.
-[environments]
-localnet = "2008d900"
-
 [dependencies]
 # Canonical USDC type provider (`usdc::usdc::USDC`). Local source = mintable mock for
 # localnet/sim/test; mainnet resolves to Circle's published USDC via usdc/Published.toml.

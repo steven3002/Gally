@@ -151,7 +151,7 @@ export const liveSource: DataSource = {
   },
 
   async getAsset(id): Promise<Asset | null> {
-    const base = await getJson<WireAsset>(`/assets/${id}`);
+    const base = await safe(getJson<WireAsset>(`/assets/${id}`), null);
     if (!base) return null;
 
     // Enrich in parallel; each branch degrades to empty on failure.
@@ -199,22 +199,22 @@ export const liveSource: DataSource = {
   },
 
   async listValidators(): Promise<Validator[]> {
-    const rows = await getList<WireValidator>(`/validators?limit=100`);
+    const rows = await safe(getList<WireValidator>(`/validators?limit=100`), [] as WireValidator[]);
     return rows.map((w) => mapValidator(w));
   },
 
   async getValidator(poolId): Promise<Validator | null> {
-    const w = await getJson<WireValidatorDetail>(`/validators/${poolId}`);
+    const w = await safe(getJson<WireValidatorDetail>(`/validators/${poolId}`), null);
     return w ? mapValidator(w, w) : null;
   },
 
   async listDisputes(): Promise<Dispute[]> {
-    const rows = await getList<WireDispute>(`/disputes?limit=100`);
+    const rows = await safe(getList<WireDispute>(`/disputes?limit=100`), [] as WireDispute[]);
     return rows.map(mapDispute);
   },
 
   async getDispute(id): Promise<Dispute | null> {
-    const w = await getJson<WireDispute>(`/disputes/${id}`);
+    const w = await safe(getJson<WireDispute>(`/disputes/${id}`), null);
     return w ? mapDispute(w) : null;
   },
 
@@ -330,12 +330,12 @@ export const liveSource: DataSource = {
   },
 
   async getTx(digest): Promise<TxRow | null> {
-    const w = await getJson<WireTx>(`/tx/${digest}`);
+    const w = await safe(getJson<WireTx>(`/tx/${digest}`), null);
     return w ? mapTx(w) : null;
   },
 
   async getAddress(address): Promise<AddressResult> {
-    const w = await getJson<WireAddress>(`/address/${address}`);
+    const w = await safe(getJson<WireAddress>(`/address/${address}`), null);
     if (!w) return { address, roles: [], holdings: [] };
     // Join each holding to its asset for the display context.
     const holdings: Holding[] = [];

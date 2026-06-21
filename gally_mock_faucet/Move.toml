@@ -3,9 +3,6 @@ name = "gally_mock_faucet"
 edition = "2024"
 
 # SIM live-soak: chain identifier of the local node (Sui 1.73 env-aware publish).
-[environments]
-localnet = "2008d900"
-
 [dependencies]
 # Depends on the `usdc` package ONLY to name the settlement coin type
 # `usdc::usdc::USDC` (protocol_flow.md §2) — the canonical USDC type (Circle's

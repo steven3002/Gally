@@ -8,6 +8,7 @@ import { useState } from "react";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 import { ClaimTokensModal } from "./ClaimTokensModal";
 import { Coins } from "@/components/ui/icons";
+import { NETWORK_LABEL } from "@/lib/tx/config";
 
 export function ClaimTokensButton() {
   const account = useCurrentAccount();
@@ -19,8 +20,8 @@ export function ClaimTokensButton() {
       <button
         onClick={() => setOpen(true)}
         data-tour="claim"
-        aria-label="Claim free Devnet USDC"
-        title="Claim free Devnet USDC"
+        aria-label={`Claim free ${NETWORK_LABEL} USDC`}
+        title={`Claim free ${NETWORK_LABEL} USDC`}
         className="flex shrink-0 items-center gap-1.5 rounded-xl border border-warning/40 bg-warning-soft px-2 py-2 text-[11px] font-bold text-warning transition-colors hover:bg-warning/15 sm:px-2.5"
       >
         <Coins className="h-4 w-4" />
