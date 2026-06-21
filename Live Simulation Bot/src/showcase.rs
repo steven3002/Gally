@@ -18,7 +18,7 @@
 //! (`sim_state.showcase_done`); per-tick failures are contained (logged, never panic).
 
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
@@ -372,6 +372,20 @@ impl<'a> Showcase<'a> {
         Ok(())
     }
 
+    /// Drive a vouched, under-funded asset to FAILED once its funding deadline lapses
+    /// (releases the voucher's coverage; refunds become claimable). Real-clock gated.
+    fn abort_failed(&self, asset: &str, pool: &str) -> Result<()> {
+        self.exec_op(&[
+            "--move-call".into(),
+            format!("{}::asset::abort_failed_raise", self.gally),
+            format!("@{asset}"),
+            format!("@{pool}"),
+            format!("@{}", self.config_id),
+            "@0x6".into(),
+        ])?;
+        Ok(())
+    }
+
     fn deposit_revenue(&self, asset: &str, acc: &str, tok: &EntityToken, gross: u64) -> Result<()> {
         let mut args = self.mint(gross, "rev");
         args.extend([
@@ -582,6 +596,16 @@ const EXTRA_NAMES: [(&str, &str); 6] = [
     ("Lagos Metro Depot", "LMD"),
 ];
 
+/// Names for the extra OPEN/FUNDING assets (judge-investable, partially pre-filled).
+const FUNDING_NAMES: [(&str, &str); 6] = [
+    ("Abuja Solar Park", "ASP"),
+    ("Kaduna Textile Hub", "KTH"),
+    ("Ibadan Cold Storage", "ICS"),
+    ("Enugu Rail Logistics", "ERL"),
+    ("Warri Port Upgrade", "WPU"),
+    ("Calabar Agro Estate", "CAE"),
+];
+
 /// Entry point for `--extra-headlines`: append OPERATIONAL assets whose ENTIRE investor
 /// set converts receipts → deeds, so each asset shows ≥`EXTRA_INVESTORS` holders (the
 /// ledger counts deed owners). Distinct from `run_showcase` (which caps deed-claims at
@@ -692,9 +716,40 @@ pub fn run_extra_headlines(client: &SuiClient, cfg: &Config) -> Result<()> {
         info!(asset = %asset, holders = shares.len(), "extra headline OPERATIONAL with deeds");
     }
 
+    // ---- extra FUNDING assets (open, partially pre-filled — judges fund the rest) ----
+    let funding = env_usize("EXTRA_FUNDING", 0);
+    if funding > 0 {
+        // One fresh, heavily-staked validator vouches every open raise (stays ACTIVE).
+        let (fpool, fvcap) = sc.register_one_validator(&mut st, VALIDATOR_STAKE_BASE * 6)?;
+        let fund_goal: u64 = 60_000_000_000; // 60k goal — leaves plenty for judges to fund
+        let fills = [3_000u64, 5_000, 7_000, 4_000, 6_000, 2_500]; // % pre-filled (varied bars)
+        for k in 0..funding {
+            let (name, ticker) = FUNDING_NAMES[k % FUNDING_NAMES.len()];
+            let meta = metadata_named(k % 6, name, ticker);
+            let (asset, _cap) = match sc.create_vouched(meta, fund_goal, OCT_1_2026_MS, &fpool, &fvcap) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!(error = %e, "funding-asset create+vouch failed (continuing)");
+                    continue;
+                }
+            };
+            st.showcase_assets.push(asset.clone());
+            st.save(&sc.sim_path)?;
+            let target = fund_goal * fills[k % fills.len()] / 10_000;
+            let backers = sc.take_investors(5);
+            sc.fund_to_goal(&asset, target, &backers);
+            info!(asset = %asset, fill_bps = fills[k % fills.len()], "extra FUNDING asset open for judges");
+        }
+    }
+
     st.save(&sc.sim_path)?;
-    info!(added = count, "✅ extra-headlines seeding complete");
+    info!(added = count, funding, "✅ extra-headlines seeding complete");
     Ok(())
+}
+
+/// Wall-clock epoch milliseconds (matches the on-chain Clock `0x6` on a live network).
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 /// Read a `usize` scale knob from the environment (defaults keep the full scenario).
@@ -783,6 +838,40 @@ pub fn run_showcase(client: &SuiClient, cfg: &Config) -> Result<()> {
     sc.set_dispute_window(SHORT_WINDOW_MS).ok();
 
     sc.register_validators(&mut st)?;
+
+    // ---- 0b. FAILED assets (vouched, partially funded, deadline lapses → abort) ----
+    // Done first, while every validator is still ACTIVE (before disputes freeze/slash any).
+    let failed = env_usize("SHOWCASE_FAILED", 0);
+    for i in 0..failed {
+        let voucher = i % st.validator_pools.len();
+        let p = catalog::project(i);
+        let meta = catalog::metadata_args(p);
+        let fd = now_ms() + 9_000; // 9s real-clock funding window
+        let (asset, _cap) = match sc.create_vouched(
+            meta,
+            DISPUTE_GOAL,
+            fd,
+            &st.validator_pools[voucher],
+            &st.validator_caps[voucher],
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "failed-asset create+vouch failed (continuing)");
+                continue;
+            }
+        };
+        st.showcase_assets.push(asset.clone());
+        st.save(&sc.sim_path)?;
+        // Partially fund (well below goal) so it can NEVER finalize.
+        let backer = sc.take_investors(1);
+        sc.fund_to_goal(&asset, DISPUTE_GOAL / 4, &backer);
+        info!(asset = %asset, "failed asset partially funded; waiting out the deadline");
+        sleep(Duration::from_millis(11_000)); // wait past fd, then abort
+        match sc.abort_failed(&asset, &st.validator_pools[voucher]) {
+            Ok(()) => info!(asset = %asset, "asset marked FAILED"),
+            Err(e) => warn!(error = %e, "abort_failed_raise failed (continuing)"),
+        }
+    }
 
     // ---- 1. headline assets (fully funded by ≥30 distinct investors) ----
     for i in 0..headline {

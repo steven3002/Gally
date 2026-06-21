@@ -8,7 +8,7 @@
 import { useCallback, useState } from "react";
 import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { FAUCET_PACKAGE_ID, MOCK_FAUCET_ID } from "@/lib/tx/config";
+import { FAUCET_PACKAGE_ID, MOCK_FAUCET_ID, NETWORK_LABEL } from "@/lib/tx/config";
 import { Check, Coins, Close, Wallet } from "@/components/ui/icons";
 
 type Phase = "idle" | "claiming" | "done" | "error";
@@ -41,7 +41,7 @@ export function ClaimTokensModal({ onClose, onClaimed }: { onClose: () => void; 
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // Friendly mapping of the two faucet aborts (already-claimed / reservoir-empty).
-      if (/EAlreadyClaimed|, 0\b/.test(msg)) setError("This wallet has already claimed its Devnet tokens.");
+      if (/EAlreadyClaimed|, 0\b/.test(msg)) setError(`This wallet has already claimed its ${NETWORK_LABEL} tokens.`);
       else if (/EReservoirEmpty|, 1\b/.test(msg)) setError("The faucet is temporarily empty — try again shortly.");
       else if (/reject|cancel|denied/i.test(msg)) setError("Claim cancelled in your wallet.");
       else setError(msg.length > 140 ? msg.slice(0, 137) + "…" : msg);
@@ -76,9 +76,9 @@ export function ClaimTokensModal({ onClose, onClaimed }: { onClose: () => void; 
           </>
         ) : (
           <>
-            <h2 className="mt-4 text-lg font-bold text-foreground">Welcome to Gally on Devnet</h2>
+            <h2 className="mt-4 text-lg font-bold text-foreground">Welcome to Gally on {NETWORK_LABEL}</h2>
             <p className="mt-1 text-sm text-muted">
-              This is a public <strong>test network</strong> — tokens have no real value. Claim free Devnet USDC to fund
+              This is a public <strong>test network</strong> — tokens have no real value. Claim free {NETWORK_LABEL} USDC to fund
               your wallet and try the full app: invest in real-world asset raises, earn yield, and run keeper cranks.
             </p>
 
@@ -102,7 +102,7 @@ export function ClaimTokensModal({ onClose, onClaimed }: { onClose: () => void; 
                 </>
               ) : (
                 <>
-                  <Wallet className="h-4 w-4" /> Claim Devnet Tokens
+                  <Wallet className="h-4 w-4" /> Claim {NETWORK_LABEL} Tokens
                 </>
               )}
             </button>

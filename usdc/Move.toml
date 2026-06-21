@@ -18,8 +18,5 @@ edition = "2024"
 #
 # Standard environments (mainnet/testnet) are known to the sui client globally; only the
 # local chain needs declaring here. `run_stack.sh` rewrites this for each fresh chain.
-[environments]
-localnet = "2008d900"
-
 [dependencies]
 # Sui framework is an implicit system dependency in edition 2024.
