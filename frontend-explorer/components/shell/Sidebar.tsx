@@ -7,7 +7,7 @@ import { GallyWordmark, Close } from "@/components/ui/icons";
 import { cn } from "@/lib/format";
 import { protocolStats, protocolConfig } from "@/lib/mock/data";
 import { data, isLive } from "@/lib/data";
-import { useLive } from "@/lib/data/useLive";
+import { useLiveLoadable } from "@/lib/data/useLive";
 import { usdCompact } from "@/lib/format";
 
 // DEV-M1 — product-tour spotlight anchors: nav href → tour step key.
@@ -23,7 +23,7 @@ const TOUR_ANCHORS: Record<string, string> = {
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const stats = useLive(protocolStats, () => data.getProtocolStats());
+  const { data: stats, loading: statsLoading } = useLiveLoadable(protocolStats, () => data.getProtocolStats());
 
   return (
     <div className="flex h-full flex-col">
@@ -96,12 +96,21 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               live
             </span>
           </div>
-          <div className="tnum mt-1 text-xl font-bold tracking-tight text-foreground">
-            {usdCompact(stats.tvl)}
-          </div>
-          <div className="mt-0.5 text-[11px] text-muted">
-            {stats.activeAssets} active assets · {stats.validators} validators
-          </div>
+          {statsLoading ? (
+            <>
+              <div className="mt-1.5 h-6 w-28 animate-pulse rounded-md bg-surface-3" />
+              <div className="mt-1.5 h-3 w-36 animate-pulse rounded bg-surface-3" />
+            </>
+          ) : (
+            <>
+              <div className="tnum mt-1 text-xl font-bold tracking-tight text-foreground">
+                {usdCompact(stats.tvl)}
+              </div>
+              <div className="mt-0.5 text-[11px] text-muted">
+                {stats.activeAssets} active assets · {stats.validators} validators
+              </div>
+            </>
+          )}
         </div>
       </div>
 

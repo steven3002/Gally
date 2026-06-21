@@ -6,6 +6,7 @@
 // transfer to the sender) — no protocol intent needed; this is onboarding infrastructure.
 
 import { useCallback, useState } from "react";
+import { createPortal } from "react-dom";
 import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
 import { FAUCET_PACKAGE_ID, MOCK_FAUCET_ID, NETWORK_LABEL } from "@/lib/tx/config";
@@ -118,10 +119,13 @@ export function ClaimTokensModal({ onClose, onClaimed }: { onClose: () => void; 
 }
 
 function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    // Centered pop-up: a full-screen overlay above everything (topbar is z-30) that
-    // vertically + horizontally centers the card. `overflow-y-auto` + `my-auto` on the
-    // child keep it scrollable (never clipped) on short screens.
+  // PORTAL to <body>: the trigger (e.g. the topbar "Get test USDC" button) sits inside the
+  // Topbar, which has `backdrop-blur` — a backdrop-filter makes its element the containing
+  // block for any `position: fixed` descendant, so a `fixed inset-0` overlay would be
+  // trapped inside the 64px header instead of covering the viewport. Rendering into
+  // document.body escapes that and centres the card on the whole screen.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-[rgba(2,6,23,0.6)] p-4 backdrop-blur-sm animate-[gally-rise_160ms_ease-out]"
       onClick={onClose}
@@ -129,7 +133,8 @@ function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: (
       aria-modal="true"
     >
       <div onClick={(e) => e.stopPropagation()} className="my-auto">{children}</div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -28,3 +28,34 @@ export function useLive<T>(fallback: T, fetcher: () => Promise<T>): T {
   }, []);
   return isLive ? value : fallback;
 }
+
+/**
+ * Like `useLive`, but also reports `loading` so the UI can show a skeleton INSTEAD of the
+ * mock fallback while the live value is in flight (no "$14M flashes then corrects" jank).
+ * Mock mode: returns the fallback, never loading. Live mode: `loading` is true until the
+ * first fetch settles (success → live value; failure → fallback for graceful degradation).
+ */
+export function useLiveLoadable<T>(fallback: T, fetcher: () => Promise<T>): { data: T; loading: boolean } {
+  const [value, setValue] = useState<T>(fallback);
+  const [loading, setLoading] = useState<boolean>(isLive);
+  useEffect(() => {
+    if (!isLive) return;
+    let alive = true;
+    fetcher()
+      .then((r) => {
+        if (alive) setValue(r);
+      })
+      .catch(() => {
+        /* keep fallback on failure */
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!isLive) return { data: fallback, loading: false };
+  return { data: value, loading };
+}
