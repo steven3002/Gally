@@ -44,8 +44,9 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
       </button>
 
       <div className="ml-auto flex items-center gap-1.5">
-        {/* Persistent "Take tour" — anyone can (re)start the guided tour (desktop). */}
-        {isLive && <TakeTourButton />}
+        {/* Persistent "Take tour" — anyone can (re)start the guided tour (desktop).
+            Shown in both mock and live so the offline dev build keeps the tour. */}
+        <TakeTourButton />
         <ThemeToggle />
         {/* Notifications — non-critical, hidden on mobile to free room for wallet controls. */}
         <span className="hidden sm:inline-flex">
