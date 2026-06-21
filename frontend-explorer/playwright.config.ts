@@ -11,6 +11,13 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = 3000;
 const baseURL = `http://localhost:${PORT}`;
 
+// The e2e suite is written against the deterministic mock build (no node/RPC/indexer).
+// Default to mock and only go live when a caller explicitly opts in (`test:e2e:live`).
+// This is handed to `pnpm build && pnpm start` below so it wins over a local `.env.local`
+// (which Next loads in production mode): `@next/env` never overrides an already-set
+// process.env value, so an exported `NEXT_PUBLIC_DATA_SOURCE` takes precedence.
+const DATA_SOURCE = process.env.NEXT_PUBLIC_DATA_SOURCE ?? "mock";
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -40,6 +47,9 @@ export default defineConfig({
   ],
   webServer: {
     command: "pnpm build && pnpm start",
+    // Force the data source for the build+serve so e2e never picks up a local
+    // `.env.local` (e.g. the live/devnet judging config). Mock unless overridden.
+    env: { NEXT_PUBLIC_DATA_SOURCE: DATA_SOURCE },
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
